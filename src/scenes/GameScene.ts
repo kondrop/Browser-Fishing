@@ -3,7 +3,7 @@ import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
 import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, type RarityBonuses } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
-import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount } from '../data/inventory';
+import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus } from '../data/inventory';
 import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, getRodById, getBaitById, getLureById, getNextRod, getNextInventoryUpgrade } from '../data/shopConfig';
 
 enum FishingState {
@@ -60,10 +60,8 @@ export default class GameScene extends Phaser.Scene {
   // プレイヤーデータ
   private playerData!: PlayerData;
 
-  // ステータスUI
-  private moneyText!: Phaser.GameObjects.Text;
-  private inventoryText!: Phaser.GameObjects.Text;
-  private collectionText!: Phaser.GameObjects.Text;
+  // ステータスUI（HTML/CSS）
+  private statusUIElement!: HTMLElement;
 
   // インベントリUI
   private inventoryContainer!: Phaser.GameObjects.Container;
@@ -330,7 +328,11 @@ export default class GameScene extends Phaser.Scene {
         .setStrokeStyle(2, 0xffffff);
     this.fightContainer.add(bg);
     
-    this.uiPlayerBar = this.add.rectangle(0, 0, fightCfg['5-3_バー幅'], fightCfg['5-3_バー高さ'], 0x00ff00);
+    // プレイヤーバーの高さを判定範囲に応じて設定
+    const barHeight = fightCfg['5-9_バー判定範囲'];
+    const bgHeight = fightCfg['5-2_背景高さ'];
+    const barDisplayHeight = barHeight * bgHeight;  // 判定範囲をピクセルに変換
+    this.uiPlayerBar = this.add.rectangle(0, 0, fightCfg['5-3_バー幅'], barDisplayHeight, 0x00ff00);
     this.fightContainer.add(this.uiPlayerBar);
 
     const fishSize = fightCfg['5-4_魚サイズ'];
@@ -487,40 +489,60 @@ export default class GameScene extends Phaser.Scene {
   }
 
   createStatusUI() {
-    // 所持金（25%大きく）
-    this.moneyText = this.add.text(0, 0, '', {
-        fontSize: '20px',  // 16 * 1.25
-        color: '#ffff00',
-        backgroundColor: '#000000aa',
-        padding: { x: 10, y: 5 }
-    }).setOrigin(1, 0).setDepth(200);
-
-    // インベントリ数
-    this.inventoryText = this.add.text(0, 0, '', {
-        fontSize: '18px',  // 14 * 1.25 ≈ 18
-        color: '#ffffff',
-        backgroundColor: '#000000aa',
-        padding: { x: 10, y: 5 }
-    }).setOrigin(1, 0).setDepth(200);
-
-    // 図鑑コンプ率
-    this.collectionText = this.add.text(0, 0, '', {
-        fontSize: '18px',  // 14 * 1.25 ≈ 18
-        color: '#aaffaa',
-        backgroundColor: '#000000aa',
-        padding: { x: 10, y: 5 }
-    }).setOrigin(1, 0).setDepth(200);
-
+    // HTML/CSSでステータスUIを作成（画面固定）
+    const statusHTML = `
+      <div id="status-ui" style="position: fixed; pointer-events: none; z-index: 1000; top: 0; left: 0; width: 100%; height: 100%;">
+        <!-- 左上: レベルと経験値 -->
+        <div id="level-section" style="position: absolute; top: 10px; left: 10px;">
+          <div id="level-text" class="stat-item">⭐ Lv.1</div>
+          <div id="exp-bar-bg">
+            <div id="exp-bar-fill"></div>
+          </div>
+        </div>
+        
+        <!-- 右上: 所持金、インベントリ、図鑑 -->
+        <div id="stats-section" style="position: absolute; top: 10px; right: 10px;">
+          <div id="money-text" class="stat-item">💰 0 G</div>
+          <div id="inventory-text" class="stat-item">🎒 0/9</div>
+          <div id="collection-text" class="stat-item">📖 図鑑 0/0</div>
+        </div>
+      </div>
+    `;
+    
+    // DOM要素を直接bodyに追加（画面固定）
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = statusHTML;
+    this.statusUIElement = tempDiv.firstElementChild as HTMLElement;
+    document.body.appendChild(this.statusUIElement);
+    
     this.updateStatusUI();
   }
 
   updateStatusUI() {
-    this.moneyText.setText(`💰 ${this.playerData.money.toLocaleString()} G`);
-    this.inventoryText.setText(`🎒 ${getInventoryCount(this.playerData)}/${this.playerData.maxInventorySlots}`);
+    if (!this.statusUIElement) return;
     
+    // 所持金
+    const moneyEl = this.statusUIElement.querySelector('#money-text');
+    if (moneyEl) moneyEl.textContent = `💰 ${this.playerData.money.toLocaleString()} G`;
+    
+    // インベントリ
+    const inventoryEl = this.statusUIElement.querySelector('#inventory-text');
+    if (inventoryEl) inventoryEl.textContent = `🎒 ${getInventoryCount(this.playerData)}/${this.playerData.maxInventorySlots}`;
+    
+    // 図鑑
     const totalFish = getRealFishCount();
     const caught = Array.from(this.playerData.caughtFishIds).filter(id => !id.startsWith('junk')).length;
-    this.collectionText.setText(`📖 図鑑 ${caught}/${totalFish}`);
+    const collectionEl = this.statusUIElement.querySelector('#collection-text');
+    if (collectionEl) collectionEl.textContent = `📖 図鑑 ${caught}/${totalFish}`;
+    
+    // レベル
+    const levelEl = this.statusUIElement.querySelector('#level-text');
+    if (levelEl) levelEl.textContent = `⭐ Lv.${this.playerData.level}`;
+    
+    // 経験値バー
+    const expProgress = getExpProgress(this.playerData);
+    const expBarFill = this.statusUIElement.querySelector('#exp-bar-fill') as HTMLElement;
+    if (expBarFill) expBarFill.style.width = `${expProgress * 100}%`;
   }
 
   updateUIPositions() {
@@ -553,13 +575,11 @@ export default class GameScene extends Phaser.Scene {
     // ファイトUI（画面右側）
     this.fightContainer.setPosition(screenRight - 80, screenCenterY);
 
-    // ステータスUI（画面右上）
-    this.moneyText.setPosition(screenRight - 10, screenTop + 10);
-    this.inventoryText.setPosition(screenRight - 10, screenTop + 45);
-    this.collectionText.setPosition(screenRight - 10, screenTop + 78);
+    // ステータスUI（HTML/CSSは画面座標で固定配置されるため、位置更新は不要）
+    // HTML/CSSのUIは画面左上を基準に配置される
 
-    // 操作説明（画面左上）
-    this.controlsText.setPosition(screenLeft + 10, screenTop + 10);
+    // 操作説明（レベル表示の下）
+    this.controlsText.setPosition(screenLeft + 10, screenTop + 55);
 
     // インベントリ（画面中央）
     this.inventoryContainer.setPosition(screenCenterX, screenCenterY);
@@ -1015,8 +1035,10 @@ export default class GameScene extends Phaser.Scene {
         lerpSpeed
     );
 
-    // 判定
-    const barHeight = cfg['5-9_バー判定範囲'];
+    // 判定（レベルボーナスを適用）
+    const baseBarHeight = cfg['5-9_バー判定範囲'];
+    const levelBarBonus = getLevelBarRangeBonus(this.playerData.level);
+    const barHeight = Math.min(1.0, baseBarHeight + levelBarBonus);  // 最大1.0まで
     const isCatching = (this.fishBarPosition >= this.playerBarPosition && 
                         this.fishBarPosition <= this.playerBarPosition + barHeight);
 
@@ -1025,8 +1047,11 @@ export default class GameScene extends Phaser.Scene {
     const rodCatchBonus = equippedRod?.catchRateBonus || 1.0;
 
     if (isCatching) {
-        // 全体設定 × 魚ごとの捕まえやすさ × 竿のボーナス
-        this.catchProgress += cfg['5-10_ゲージ増加速度'] * catchRate * rodCatchBonus * dt;
+        // 全体設定 × 魚ごとの捕まえやすさ × 竿のボーナス × レベルボーナス
+        const baseGaugeSpeed = cfg['5-10_ゲージ増加速度'];
+        const levelGaugeBonus = getLevelGaugeSpeedBonus(this.playerData.level);
+        const gaugeSpeed = baseGaugeSpeed + levelGaugeBonus;
+        this.catchProgress += gaugeSpeed * catchRate * rodCatchBonus * dt;
         this.uiPlayerBar.setFillStyle(0x00ff00);
     } else {
         // 全体設定 × 魚ごとの逃げやすさ
@@ -1041,6 +1066,10 @@ export default class GameScene extends Phaser.Scene {
     const mapY = (pos: number) => (bgHeight / 2) - (pos * bgHeight);
 
     this.uiFish.y = mapY(this.fishBarPosition);
+    
+    // プレイヤーバーの高さを判定範囲に応じて動的に変更
+    const barDisplayHeight = barHeight * bgHeight;  // 判定範囲をピクセルに変換
+    this.uiPlayerBar.setSize(cfg['5-3_バー幅'], barDisplayHeight);
     this.uiPlayerBar.y = mapY(this.playerBarPosition + barHeight / 2);
     
     // 進行ゲージ：下から上に伸びる
@@ -1071,26 +1100,36 @@ export default class GameScene extends Phaser.Scene {
             // 図鑑には登録
             this.playerData.caughtFishIds.add(this.currentFish.id);
             this.playerData.totalCaught++;
+            // 経験値も獲得
+            const leveledUp = addExp(this.playerData, getExpByRarity(this.currentFish.rarity));
             savePlayerData(this.playerData);
             this.updateStatusUI();
 
             const stars = rarityStars[this.currentFish.rarity];
             const duration = config.result['6-2_成功表示時間'] * 1000;
-            this.showResult(`${this.currentFish.emoji} ${this.currentFish.name} ${stars}\nバッグ満杯！自動売却 +${earnings} G`, duration);
+            let resultMessage = `${this.currentFish.emoji} ${this.currentFish.name} ${stars}\nバッグ満杯！自動売却 +${earnings} G`;
+            if (leveledUp) {
+              resultMessage += `\n🎉 レベルアップ！ Lv.${this.playerData.level}`;
+            }
+            this.showResult(resultMessage, duration);
             return;
         }
 
         // インベントリに追加
-        addFishToInventory(this.playerData, this.currentFish);
+        const leveledUp = addFishToInventory(this.playerData, this.currentFish);
         savePlayerData(this.playerData);
         this.updateStatusUI();
 
         const stars = rarityStars[this.currentFish.rarity];
         const duration = config.result['6-2_成功表示時間'] * 1000;
-        this.showResult(
-            `${this.currentFish.emoji} ${this.currentFish.name} を釣った！\n${stars} | ${this.currentFish.price}G`,
-            duration
-        );
+        let resultMessage = `${this.currentFish.emoji} ${this.currentFish.name} を釣った！\n${stars} | ${this.currentFish.price}G`;
+        
+        // レベルアップ時のメッセージを追加
+        if (leveledUp) {
+          resultMessage += `\n🎉 レベルアップ！ Lv.${this.playerData.level}`;
+        }
+        
+        this.showResult(resultMessage, duration);
     }
     
     this.currentFish = null;

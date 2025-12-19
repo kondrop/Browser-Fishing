@@ -26,6 +26,9 @@ export interface PlayerData {
   ownedLures: string[];        // 所有しているルアーID一覧
   equippedLureId: string | null; // 装備中のルアーID（null = ルアーなし）
   maxInventorySlots: number;   // 最大インベントリスロット数
+  // レベルシステム
+  exp: number;                 // 経験値
+  level: number;               // 現在のレベル
 }
 
 // プレイヤーデータの初期値
@@ -43,14 +46,21 @@ export function createInitialPlayerData(): PlayerData {
     ownedLures: [],
     equippedLureId: null,
     maxInventorySlots: 9,
+    // レベルシステムの初期値
+    exp: 0,
+    level: 1,
   };
 }
 
 // インベントリに魚を追加
-export function addFishToInventory(playerData: PlayerData, fish: FishConfig): void {
+export function addFishToInventory(playerData: PlayerData, fish: FishConfig): boolean {
   // 図鑑に登録
   playerData.caughtFishIds.add(fish.id);
   playerData.totalCaught++;
+  
+  // 経験値を追加
+  const expGained = getExpByRarity(fish.rarity);
+  const leveledUp = addExp(playerData, expGained);
   
   // インベントリに追加
   const existingItem = playerData.inventory.find(item => item.fishId === fish.id);
@@ -59,6 +69,9 @@ export function addFishToInventory(playerData: PlayerData, fish: FishConfig): vo
   } else {
     playerData.inventory.push({ fishId: fish.id, count: 1 });
   }
+  
+  // レベルアップしたかどうかを返す
+  return leveledUp;
 }
 
 // インベントリから魚を削除（売却時など）
@@ -155,6 +168,9 @@ export function loadPlayerData(): PlayerData {
         ownedLures: parsed.ownedLures || initial.ownedLures,
         equippedLureId: parsed.equippedLureId !== undefined ? parsed.equippedLureId : initial.equippedLureId,
         maxInventorySlots: parsed.maxInventorySlots || initial.maxInventorySlots,
+        // レベルシステム（互換性のため）
+        exp: parsed.exp !== undefined ? parsed.exp : initial.exp,
+        level: parsed.level !== undefined ? parsed.level : initial.level,
       };
     } catch {
       console.error('Failed to load player data');
@@ -195,5 +211,83 @@ export function consumeBait(playerData: PlayerData): boolean {
 export function getBaitCount(playerData: PlayerData, baitId: string): number {
   const baitItem = playerData.baits.find(b => b.baitId === baitId);
   return baitItem?.count || 0;
+}
+
+// ============================================
+// レベルシステム
+// ============================================
+
+// レア度に応じた経験値を取得
+export function getExpByRarity(rarity: string): number {
+  switch (rarity) {
+    case 'common':
+      return 10;
+    case 'uncommon':
+      return 25;
+    case 'rare':
+      return 50;
+    case 'epic':
+      return 100;
+    case 'legendary':
+      return 200;
+    default:
+      return 10;
+  }
+}
+
+// レベルに必要な累積経験値を計算
+export function getRequiredExp(level: number): number {
+  // レベル1: 0, レベル2: 100, レベル3: 250, レベル4: 450, ...
+  // 式: 50 * level * (level - 1) + 50
+  if (level <= 1) return 0;
+  return 50 * level * (level - 1) + 50;
+}
+
+// 経験値からレベルを計算
+export function calculateLevel(exp: number): number {
+  let level = 1;
+  while (getRequiredExp(level + 1) <= exp) {
+    level++;
+  }
+  return level;
+}
+
+// 現在のレベルでの経験値進捗を取得（0.0〜1.0）
+export function getExpProgress(playerData: PlayerData): number {
+  const currentLevelExp = getRequiredExp(playerData.level);
+  const nextLevelExp = getRequiredExp(playerData.level + 1);
+  const expInCurrentLevel = playerData.exp - currentLevelExp;
+  const expNeededForNextLevel = nextLevelExp - currentLevelExp;
+  
+  if (expNeededForNextLevel === 0) return 1.0;
+  return Math.min(1.0, expInCurrentLevel / expNeededForNextLevel);
+}
+
+// 経験値を追加し、レベルアップをチェック
+export function addExp(playerData: PlayerData, exp: number): boolean {
+  const oldLevel = playerData.level;
+  playerData.exp += exp;
+  playerData.level = calculateLevel(playerData.exp);
+  
+  // レベルアップしたかどうか
+  return playerData.level > oldLevel;
+}
+
+// ============================================
+// レベルボーナス
+// ============================================
+
+// レベルに応じたバー判定範囲のボーナスを取得
+// レベル1: +0.00, レベル2: +0.01, レベル3: +0.02, ...
+export function getLevelBarRangeBonus(level: number): number {
+  if (level <= 1) return 0;
+  return (level - 1) * 0.01;
+}
+
+// レベルに応じたゲージ増加速度のボーナスを取得
+// レベル1: +0.000, レベル2: +0.005, レベル3: +0.010, ...
+export function getLevelGaugeSpeedBonus(level: number): number {
+  if (level <= 1) return 0;
+  return (level - 1) * 0.005;
 }
 
