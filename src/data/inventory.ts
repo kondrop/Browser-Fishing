@@ -20,6 +20,7 @@ export interface PlayerData {
   totalCaught: number;         // 総釣果数
   // ショップ関連
   equippedRodId: string;       // 装備中の竿ID
+  ownedRods: string[];        // 所有している竿ID一覧
   baits: BaitItem[];           // 所持しているエサ
   equippedBaitId: string | null; // 装備中のエサID（null = エサなし）
   ownedLures: string[];        // 所有しているルアーID一覧
@@ -36,6 +37,7 @@ export function createInitialPlayerData(): PlayerData {
     totalCaught: 0,
     // ショップ関連の初期値
     equippedRodId: 'rod_basic',
+    ownedRods: ['rod_basic'],  // 初期装備の竿を所持リストに追加
     baits: [],
     equippedBaitId: null,
     ownedLures: [],
@@ -147,6 +149,7 @@ export function loadPlayerData(): PlayerData {
         caughtFishIds: new Set(parsed.caughtFishIds || []),
         // 新しいフィールドが存在しない場合はデフォルト値を使用
         equippedRodId: parsed.equippedRodId || initial.equippedRodId,
+        ownedRods: parsed.ownedRods || (parsed.equippedRodId ? [parsed.equippedRodId] : initial.ownedRods),  // 互換性: 既存データの場合は装備中の竿を所持リストに追加
         baits: parsed.baits || initial.baits,
         equippedBaitId: parsed.equippedBaitId !== undefined ? parsed.equippedBaitId : initial.equippedBaitId,
         ownedLures: parsed.ownedLures || initial.ownedLures,

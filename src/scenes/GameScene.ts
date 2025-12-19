@@ -147,6 +147,35 @@ export default class GameScene extends Phaser.Scene {
     for (const [fishId, fileName] of Object.entries(fishImages)) {
       this.load.image(fishId, `/images/fish/${fileName}.png`);
     }
+
+    // ショップアイテムの画像を読み込み（IDと日本語ファイル名のマッピング）
+    const itemImages: { [id: string]: string } = {
+      // 竿
+      'rod_basic': '木の竿',
+      'rod_bamboo': '竹の竿',
+      'rod_carbon': 'カーボンロッド',
+      'rod_master': '名人の竿',
+      'rod_legendary': '達人の竿',
+      // エサ
+      'bait_worm': 'ミミズ',
+      'bait_shrimp': '小エビ',
+      'bait_minnow': '小魚',
+      'bait_golden': '黄金虫',
+      // ルアー
+      'lure_basic': 'スプーン',
+      'lure_minnow': 'ミノー',
+      'lure_popper': 'ポッパー',
+      'lure_legendary': 'スピナー',
+      // バッグ
+      'inv_9': '基本バッグ',
+      'inv_12': '中型バッグ',
+      'inv_15': '大型バッグ',
+      'inv_18': '釣り師のバッグ',  // ファイル名に合わせて「釣り師のバッグ」
+    };
+
+    for (const [itemId, fileName] of Object.entries(itemImages)) {
+      this.load.image(itemId, `/images/items/${fileName}.png`);
+    }
   }
 
   create() {
@@ -1115,23 +1144,26 @@ export default class GameScene extends Phaser.Scene {
     const slotSize = 100;  // 80 * 1.25
     const padding = 10;    // 8 * 1.25
     const gridSize = 3;
+    const maxRows = 6;  // 最大18スロット（3列×6行）
     const containerWidth = gridSize * slotSize + (gridSize + 1) * padding;
-    const containerHeight = gridSize * slotSize + (gridSize + 1) * padding + 75;  // 60 * 1.25
+    // 高さは動的に計算（後で更新される）
 
     this.inventoryContainer = this.add.container(400, 300).setDepth(300).setVisible(false);
 
-    // 背景
-    const bg = this.add.rectangle(0, 0, containerWidth, containerHeight, 0x222222, 0.95)
+    // 背景（高さは後で更新）
+    const bg = this.add.rectangle(0, 0, containerWidth, 400, 0x222222, 0.95)
         .setStrokeStyle(4, 0xffffff);
     this.inventoryContainer.add(bg);
+    this.inventoryContainer.setData('bg', bg);
 
     // タイトル
-    const title = this.add.text(0, -containerHeight / 2 + 30, '🎒 インベントリ', {
+    const title = this.add.text(0, -180, '🎒 インベントリ', {
         fontSize: '25px',  // 20 * 1.25
         color: '#ffffff',
         fontStyle: 'bold'
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setName('inventoryTitle');
     this.inventoryContainer.add(title);
+    this.inventoryContainer.setData('title', title);
 
     // 選択カーソル
     this.selectionCursor = this.add.rectangle(0, 0, slotSize + 5, slotSize + 5)
@@ -1139,11 +1171,11 @@ export default class GameScene extends Phaser.Scene {
         .setFillStyle(0xffff00, 0.2);
     this.inventoryContainer.add(this.selectionCursor);
 
-    // 9スロット作成
+    // 最大18スロット作成（3列×6行）
     const startX = -((gridSize - 1) * (slotSize + padding)) / 2;
-    const startY = -((gridSize - 1) * (slotSize + padding)) / 2 + 38;
+    const startY = -140;  // タイトルの下から開始
 
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < maxRows * gridSize; i++) {
         const row = Math.floor(i / gridSize);
         const col = i % gridSize;
         const x = startX + col * (slotSize + padding);
@@ -1203,13 +1235,62 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // 操作ヒント
-    const hint = this.add.text(0, containerHeight / 2 - 25, '矢印: 選択 | Enter: 詳細 | I/ESC: 閉じる', {
+    const hint = this.add.text(0, 200, '矢印: 選択 | Enter: 詳細 | I/ESC: 閉じる', {
         fontSize: '15px',  // 12 * 1.25
         color: '#aaaaaa'
     }).setOrigin(0.5);
     this.inventoryContainer.add(hint);
+    this.inventoryContainer.setData('hint', hint);
 
+    this.updateInventoryLayout();
     this.updateSelectionCursor();
+  }
+
+  updateInventoryLayout() {
+    // 現在のmaxInventorySlotsに基づいてレイアウトを更新
+    const slotSize = 100;
+    const padding = 10;
+    const gridSize = 3;
+    const rows = Math.ceil(this.playerData.maxInventorySlots / gridSize);
+    const containerHeight = rows * slotSize + (rows + 1) * padding + 75;
+
+    // 背景の高さを更新
+    const bg = this.inventoryContainer.getData('bg') as Phaser.GameObjects.Rectangle;
+    if (bg) {
+      bg.setSize(bg.width, containerHeight);
+    }
+
+    // タイトルの位置を更新（コンテナの上端から30px下）
+    const title = this.inventoryContainer.getData('title') as Phaser.GameObjects.Text;
+    if (title) {
+      title.setY(-containerHeight / 2 + 30);
+    }
+
+    // ヒントの位置を更新
+    const hint = this.inventoryContainer.getData('hint') as Phaser.GameObjects.Text;
+    if (hint) {
+      hint.setY(containerHeight / 2 - 25);
+    }
+
+    // スロットの位置を再計算
+    const startX = -((gridSize - 1) * (slotSize + padding)) / 2;
+    const startY = -containerHeight / 2 + 75;  // タイトルの下から開始
+
+    // スロットの表示/非表示と位置を更新
+    for (let i = 0; i < this.inventorySlots.length; i++) {
+      const slot = this.inventorySlots[i];
+      if (i < this.playerData.maxInventorySlots) {
+        slot.setVisible(true);
+        // 位置を再計算
+        const row = Math.floor(i / gridSize);
+        const col = i % gridSize;
+        const x = startX + col * (slotSize + padding);
+        const y = startY + row * (slotSize + padding);
+        slot.setPosition(x, y);
+      } else {
+        slot.setVisible(false);
+      }
+    }
   }
 
   createDetailModal() {
@@ -1259,7 +1340,7 @@ export default class GameScene extends Phaser.Scene {
     const descText = this.add.text(0, 50, '', {
         fontSize: '16px',  // 13 * 1.25 ≈ 16
         color: '#cccccc',
-        wordWrap: { width: 300 },  // 240 * 1.25
+        wordWrap: { width: 310, useAdvancedWrap: true },  // モーダル幅350px - パディング40px
         align: 'center'
     }).setOrigin(0.5, 0).setName('desc');
     this.detailModalContainer.add(descText);
@@ -1285,6 +1366,7 @@ export default class GameScene extends Phaser.Scene {
     
     this.inventoryOpen = true;
     this.selectedSlotIndex = 0;
+    this.updateInventoryLayout();  // レイアウトを更新
     this.updateInventorySlots();
     this.updateSelectionCursor();
     this.inventoryContainer.setVisible(true);
@@ -1307,7 +1389,8 @@ export default class GameScene extends Phaser.Scene {
         }
     }
     
-    for (let i = 0; i < 9; i++) {
+    // maxInventorySlotsに基づいてスロットを更新
+    for (let i = 0; i < this.playerData.maxInventorySlots; i++) {
         const slot = this.inventorySlots[i];
         const fishImage = slot.getData('fishImage') as Phaser.GameObjects.Image;
         const fishEmoji = slot.getData('fishEmoji') as Phaser.GameObjects.Text;
@@ -1354,6 +1437,11 @@ export default class GameScene extends Phaser.Scene {
 
   updateSelectionCursor() {
     if (this.inventorySlots.length === 0) return;
+    
+    // selectedSlotIndexがmaxInventorySlotsを超えないようにする
+    if (this.selectedSlotIndex >= this.playerData.maxInventorySlots) {
+      this.selectedSlotIndex = Math.max(0, this.playerData.maxInventorySlots - 1);
+    }
     
     const slot = this.inventorySlots[this.selectedSlotIndex];
     this.selectionCursor.setPosition(slot.x, slot.y);
@@ -1419,19 +1507,28 @@ export default class GameScene extends Phaser.Scene {
     if (!this.inventoryOpen || this.detailModalOpen) return;
 
     const gridSize = 3;
+    const maxRows = Math.ceil(this.playerData.maxInventorySlots / gridSize);
     let newIndex = this.selectedSlotIndex;
 
     if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) {
         if (this.selectedSlotIndex % gridSize > 0) newIndex--;
     } else if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) {
-        if (this.selectedSlotIndex % gridSize < gridSize - 1) newIndex++;
+        if (this.selectedSlotIndex % gridSize < gridSize - 1 && newIndex + 1 < this.playerData.maxInventorySlots) newIndex++;
     } else if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
         if (this.selectedSlotIndex >= gridSize) newIndex -= gridSize;
     } else if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
-        if (this.selectedSlotIndex < 6) newIndex += gridSize;
+        const currentRow = Math.floor(this.selectedSlotIndex / gridSize);
+        if (currentRow < maxRows - 1 && newIndex + gridSize < this.playerData.maxInventorySlots) {
+          newIndex += gridSize;
+        }
     }
 
-    if (newIndex !== this.selectedSlotIndex) {
+    // maxInventorySlotsを超えないようにする
+    if (newIndex >= this.playerData.maxInventorySlots) {
+      newIndex = this.playerData.maxInventorySlots - 1;
+    }
+
+    if (newIndex !== this.selectedSlotIndex && newIndex >= 0) {
         this.selectedSlotIndex = newIndex;
         this.updateSelectionCursor();
     }
@@ -1608,7 +1705,7 @@ export default class GameScene extends Phaser.Scene {
     const descText = this.add.text(0, 50, '', {
         fontSize: '15px',  // 12 * 1.25
         color: '#cccccc',
-        wordWrap: { width: 325 },  // 260 * 1.25
+        wordWrap: { width: 335, useAdvancedWrap: true },  // モーダル幅375px - パディング40px
         align: 'center'
     }).setOrigin(0.5, 0).setName('desc');
     this.bookDetailContainer.add(descText);
@@ -1978,7 +2075,7 @@ export default class GameScene extends Phaser.Scene {
         icon: rod.icon,
         price: rod.price,
         info: `距離+${Math.round((rod.castDistanceBonus - 1) * 100)}% 捕獲+${Math.round((rod.catchRateBonus - 1) * 100)}% レア+${Math.round((rod.rareChanceBonus - 1) * 100)}%`,
-        owned: rod.price === 0 || this.hasRod(rod.id),
+        owned: this.hasRod(rod.id),
         equipped: this.playerData.equippedRodId === rod.id,
       }));
     } else if (this.shopTab === 'bait') {
@@ -2033,11 +2130,23 @@ export default class GameScene extends Phaser.Scene {
       });
       this.shopContainer.add(itemBg);
 
-      // アイコン
-      const icon = this.add.text(-200, y, item.icon, {
+      // アイコン（画像がある場合は画像、ない場合は絵文字）
+      let iconElement: Phaser.GameObjects.GameObject;
+      if (this.textures.exists(item.id)) {
+        // 画像がある場合
+        const iconImage = this.add.image(-200, y, item.id);
+        iconImage.setDisplaySize(40, 40);  // アイコンサイズを40x40に設定
+        iconImage.setOrigin(0.5);
+        iconImage.setName(`shopItem_icon_${index}`);
+        iconElement = iconImage;
+      } else {
+        // 画像がない場合は絵文字を使用
+        const iconText = this.add.text(-200, y, item.icon, {
           fontSize: '28px'
-      }).setOrigin(0.5).setName(`shopItem_icon_${index}`);
-      this.shopContainer.add(icon);
+        }).setOrigin(0.5).setName(`shopItem_icon_${index}`);
+        iconElement = iconText;
+      }
+      this.shopContainer.add(iconElement);
 
       // 名前
       const nameColor = item.equipped ? '#00ff00' : (item.owned ? '#aaaaaa' : '#ffffff');
@@ -2097,15 +2206,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   hasRod(rodId: string): boolean {
-    // 既に購入済みかチェック（価格0の竿は初期装備）
-    const rod = getRodById(rodId);
-    if (!rod) return false;
-    if (rod.price === 0) return true;
-    
-    // 現在装備中または上位の竿を持っている場合
-    const currentRodIndex = rodConfigs.findIndex(r => r.id === this.playerData.equippedRodId);
-    const targetRodIndex = rodConfigs.findIndex(r => r.id === rodId);
-    return targetRodIndex <= currentRodIndex;
+    // ownedRods配列に含まれているかチェック
+    return this.playerData.ownedRods.includes(rodId);
   }
 
   purchaseOrEquipItem() {
@@ -2138,6 +2240,10 @@ export default class GameScene extends Phaser.Scene {
     } else if (this.playerData.money >= rod.price) {
       // 購入
       this.playerData.money -= rod.price;
+      // ownedRodsに追加（まだ含まれていない場合のみ）
+      if (!this.playerData.ownedRods.includes(rod.id)) {
+        this.playerData.ownedRods.push(rod.id);
+      }
       this.playerData.equippedRodId = rod.id;
       savePlayerData(this.playerData);
       this.updateStatusUI();
@@ -2216,6 +2322,11 @@ export default class GameScene extends Phaser.Scene {
       savePlayerData(this.playerData);
       this.updateStatusUI();
       this.updateShopContent();
+      // インベントリが開いている場合はレイアウトを更新
+      if (this.inventoryOpen) {
+        this.updateInventoryLayout();
+        this.updateInventorySlots();
+      }
       this.showResult(`${upgrade.name}を購入！ ${upgrade.slotCount}スロットに拡張！`, 2000);
     } else {
       this.showResult('お金が足りません...', 1500);
