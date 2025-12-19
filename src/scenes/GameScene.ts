@@ -29,7 +29,8 @@ export default class GameScene extends Phaser.Scene {
   private biteTimer?: Phaser.Time.TimerEvent;
   private biteTimeout?: Phaser.Time.TimerEvent;
   private exclamation!: Phaser.GameObjects.Text;
-  private resultText!: Phaser.GameObjects.Text;
+  // 結果表示テキスト（HTML/CSS）
+  private resultTextElement!: HTMLElement;
   private hintText!: Phaser.GameObjects.Text;
 
   // 投擲用
@@ -63,37 +64,33 @@ export default class GameScene extends Phaser.Scene {
   // ステータスUI（HTML/CSS）
   private statusUIElement!: HTMLElement;
 
-  // インベントリUI
-  private inventoryContainer!: Phaser.GameObjects.Container;
-  private inventorySlots: Phaser.GameObjects.Container[] = [];
+  // インベントリUI（HTML/CSS）
+  private inventoryUIElement!: HTMLElement;
+  private inventorySlots: HTMLElement[] = [];
   private inventoryOpen: boolean = false;
   private selectedSlotIndex: number = 0;
-  private selectionCursor!: Phaser.GameObjects.Rectangle;
 
-  // 詳細モーダル
-  private detailModalContainer!: Phaser.GameObjects.Container;
+  // 詳細モーダル（HTML/CSS）
+  private detailModalElement!: HTMLElement;
   private detailModalOpen: boolean = false;
 
-  // 図鑑UI
-  private bookContainer!: Phaser.GameObjects.Container;
-  private bookSlots: Phaser.GameObjects.Container[] = [];
+  // 図鑑UI（HTML/CSS）
+  private bookUIElement!: HTMLElement;
+  private bookSlots: HTMLElement[] = [];
   private bookOpen: boolean = false;
   private bookPage: number = 0;
   private bookSelectedIndex: number = 0;
-  private bookSelectionCursor!: Phaser.GameObjects.Rectangle;
-  private bookPageText!: Phaser.GameObjects.Text;
-  private bookDetailContainer!: Phaser.GameObjects.Container;
+  private bookDetailElement!: HTMLElement;
   private bookDetailOpen: boolean = false;
 
-  // ショップUI
-  private shopContainer!: Phaser.GameObjects.Container;
+  // ショップUI（HTML/CSS）
+  private shopUIElement!: HTMLElement;
   private shopOpen: boolean = false;
   private shopSelectedIndex: number = 0;
-  private shopSelectionCursor!: Phaser.GameObjects.Rectangle;
   private shopTab: 'rod' | 'bait' | 'lure' | 'inventory' = 'rod';
 
-  // 操作説明テキスト
-  private controlsText!: Phaser.GameObjects.Text;
+  // 操作説明テキスト（HTML/CSS）
+  private controlsTextElement!: HTMLElement;
 
   constructor() {
     super('GameScene');
@@ -300,12 +297,14 @@ export default class GameScene extends Phaser.Scene {
         strokeThickness: 8
     }).setOrigin(0.5).setVisible(false).setDepth(150);
 
-    this.resultText = this.add.text(0, 0, '', {
-        fontSize: `${Math.round(config.result['6-1_フォントサイズ'] * 1.25)}px`,
-        color: '#ffffff',
-        backgroundColor: '#000000aa',
-        padding: { x: 12, y: 6 }
-    }).setOrigin(0.5).setVisible(false).setDepth(100);
+    // HTML/CSSで結果表示を作成
+    const resultHTML = `
+      <div id="result-text" class="result-text" style="display: none;"></div>
+    `;
+    const tempDiv1 = document.createElement('div');
+    tempDiv1.innerHTML = resultHTML;
+    this.resultTextElement = tempDiv1.firstElementChild as HTMLElement;
+    document.body.appendChild(this.resultTextElement);
 
     // パワーゲージ（25%大きく）
     const castCfg = config.casting;
@@ -469,12 +468,14 @@ export default class GameScene extends Phaser.Scene {
     // デッドゾーンを0にして常に中央追従
     this.cameras.main.setDeadzone(0, 0);
     
-    this.controlsText = this.add.text(10, 10, '移動: 矢印 | 釣り: SPACE | 売却: E | 持ち物: I | 図鑑: B | ショップ: S', { 
-        fontSize: '18px',
-        color: '#fff', 
-        backgroundColor: '#000000aa',
-        padding: { x: 6, y: 6 }
-    }).setDepth(200);
+    // HTML/CSSで操作説明を作成
+    const controlsHTML = `
+      <div id="controls-text" class="controls-text">移動: 矢印 | 釣り: SPACE | 売却: E | 持ち物: I | 図鑑: B | ショップ: S</div>
+    `;
+    const tempDiv2 = document.createElement('div');
+    tempDiv2.innerHTML = controlsHTML;
+    this.controlsTextElement = tempDiv2.firstElementChild as HTMLElement;
+    document.body.appendChild(this.controlsTextElement);
 
     // UI位置を画面サイズに合わせて初期化
     this.updateUIPositions();
@@ -485,6 +486,19 @@ export default class GameScene extends Phaser.Scene {
         this.cameras.main.setSize(gameSize.width, gameSize.height);
         // UI位置を更新
         this.updateUIPositions();
+    });
+
+    // 定期的にモーダルの位置を更新（Canvasの位置が変わる可能性があるため）
+    this.time.addEvent({
+      delay: 100,
+      callback: () => {
+        const canvas = this.game.canvas;
+        if (canvas) {
+          const canvasRect = canvas.getBoundingClientRect();
+          this.updateModalPositions(canvasRect);
+        }
+      },
+      loop: true
     });
   }
 
@@ -565,9 +579,6 @@ export default class GameScene extends Phaser.Scene {
     // ヒントテキスト（画面上部中央）
     this.hintText.setPosition(screenCenterX, screenTop + 100);
 
-    // 結果テキスト（画面中央）
-    this.resultText.setPosition(screenCenterX, screenCenterY);
-
     // パワーゲージ（画面下部中央）
     this.powerBarBg.setPosition(screenCenterX, screenBottom - 50);
     this.powerBarFill.setPosition(screenCenterX - 98, screenBottom - 50);
@@ -575,26 +586,35 @@ export default class GameScene extends Phaser.Scene {
     // ファイトUI（画面右側）
     this.fightContainer.setPosition(screenRight - 80, screenCenterY);
 
-    // ステータスUI（HTML/CSSは画面座標で固定配置されるため、位置更新は不要）
-    // HTML/CSSのUIは画面左上を基準に配置される
+    // PhaserのCanvas要素を取得
+    const canvas = this.game.canvas;
+    if (canvas) {
+      const canvasRect = canvas.getBoundingClientRect();
+      
+      // モーダルの位置をCanvasに合わせて更新
+      this.updateModalPositions(canvasRect);
+    }
+  }
 
-    // 操作説明（レベル表示の下）
-    this.controlsText.setPosition(screenLeft + 10, screenTop + 55);
+  updateModalPositions(canvasRect: DOMRect) {
+    // すべてのモーダルをCanvasの位置に合わせて配置
+    const modals = [
+      this.inventoryUIElement,
+      this.detailModalElement,
+      this.bookUIElement,
+      this.bookDetailElement,
+      this.shopUIElement,
+    ];
 
-    // インベントリ（画面中央）
-    this.inventoryContainer.setPosition(screenCenterX, screenCenterY);
-
-    // 詳細モーダル（画面中央）
-    this.detailModalContainer.setPosition(screenCenterX, screenCenterY);
-
-    // 図鑑（画面中央）
-    this.bookContainer.setPosition(screenCenterX, screenCenterY);
-
-    // 図鑑詳細モーダル（画面中央）
-    this.bookDetailContainer.setPosition(screenCenterX, screenCenterY);
-
-    // ショップ（画面中央）
-    this.shopContainer.setPosition(screenCenterX, screenCenterY);
+    modals.forEach(modal => {
+      if (modal) {
+        modal.style.position = 'fixed';
+        modal.style.left = `${canvasRect.left}px`;
+        modal.style.top = `${canvasRect.top}px`;
+        modal.style.width = `${canvasRect.width}px`;
+        modal.style.height = `${canvasRect.height}px`;
+      }
+    });
   }
 
   sellAll() {
@@ -820,7 +840,9 @@ export default class GameScene extends Phaser.Scene {
     this.powerBarBg.setVisible(false);
     this.powerBarFill.setVisible(false);
     this.hintText.setVisible(false);
-    this.resultText.setVisible(false);
+    if (this.resultTextElement) {
+      this.resultTextElement.style.display = 'none';
+    }
 
     const waitCfg = config.waiting;
     
@@ -1157,20 +1179,27 @@ export default class GameScene extends Phaser.Scene {
   }
 
   showResult(text: string, duration: number) {
-    this.resultText.setText(text).setVisible(true);
+    if (this.resultTextElement) {
+      this.resultTextElement.textContent = text;
+      this.resultTextElement.style.display = 'block';
+    }
     
     this.time.delayedCall(duration, () => {
         if (this.state === FishingState.SUCCESS || this.state === FishingState.FAIL) {
             this.resetState();
         }
-        this.resultText.setVisible(false);
+        if (this.resultTextElement) {
+          this.resultTextElement.style.display = 'none';
+        }
     });
   }
 
   resetState() {
     this.state = FishingState.IDLE;
     this.cleanupFishingTools();
-    this.resultText.setVisible(false);
+    if (this.resultTextElement) {
+      this.resultTextElement.style.display = 'none';
+    }
     this.fightContainer.setVisible(false);
     this.hintText.setVisible(false);
   }
@@ -1180,216 +1209,113 @@ export default class GameScene extends Phaser.Scene {
   // ============================================
 
   createInventoryUI() {
-    const slotSize = 100;  // 80 * 1.25
-    const padding = 10;    // 8 * 1.25
-    const gridSize = 3;
-    const maxRows = 6;  // 最大18スロット（3列×6行）
-    const containerWidth = gridSize * slotSize + (gridSize + 1) * padding;
-    // 高さは動的に計算（後で更新される）
-
-    this.inventoryContainer = this.add.container(400, 300).setDepth(300).setVisible(false);
-
-    // 背景（高さは後で更新）
-    const bg = this.add.rectangle(0, 0, containerWidth, 400, 0x222222, 0.95)
-        .setStrokeStyle(4, 0xffffff);
-    this.inventoryContainer.add(bg);
-    this.inventoryContainer.setData('bg', bg);
-
-    // タイトル
-    const title = this.add.text(0, -180, '🎒 インベントリ', {
-        fontSize: '25px',  // 20 * 1.25
-        color: '#ffffff',
-        fontStyle: 'bold'
-    }).setOrigin(0.5).setName('inventoryTitle');
-    this.inventoryContainer.add(title);
-    this.inventoryContainer.setData('title', title);
-
-    // 選択カーソル
-    this.selectionCursor = this.add.rectangle(0, 0, slotSize + 5, slotSize + 5)
-        .setStrokeStyle(4, 0xffff00)
-        .setFillStyle(0xffff00, 0.2);
-    this.inventoryContainer.add(this.selectionCursor);
-
-    // 最大18スロット作成（3列×6行）
-    const startX = -((gridSize - 1) * (slotSize + padding)) / 2;
-    const startY = -140;  // タイトルの下から開始
-
-    for (let i = 0; i < maxRows * gridSize; i++) {
-        const row = Math.floor(i / gridSize);
-        const col = i % gridSize;
-        const x = startX + col * (slotSize + padding);
-        const y = startY + row * (slotSize + padding);
-
-        const slotContainer = this.add.container(x, y);
-
-        // スロット背景（レア度で色が変わる）
-        const slotBg = this.add.rectangle(0, 0, slotSize, slotSize, 0x333333)
-            .setStrokeStyle(3, 0x555555)
-            .setInteractive({ useHandCursor: true });
-
-        // 魚の画像（スロット100px内に収める）
-        const fishImage = this.add.image(0, -6, '').setVisible(false);
-
-        // 魚の絵文字（画像がない場合のフォールバック）
-        const fishEmoji = this.add.text(0, -6, '', {
-            fontSize: '30px'  // 24 * 1.25
-        }).setOrigin(0.5);
-
-        // 魚の名前
-        const nameText = this.add.text(0, 28, '', {
-            fontSize: '13px',  // 10 * 1.25 ≈ 13
-            color: '#ffffff',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-
-        // 金額
-        const priceText = this.add.text(0, 42, '', {
-            fontSize: '11px',  // 9 * 1.25 ≈ 11
-            color: '#ffdd44'
-        }).setOrigin(0.5);
-
-        slotContainer.add([slotBg, fishImage, fishEmoji, nameText, priceText]);
-        slotContainer.setData('index', i);
-        slotContainer.setData('slotBg', slotBg);
-        slotContainer.setData('fishImage', fishImage);
-        slotContainer.setData('fishEmoji', fishEmoji);
-        slotContainer.setData('nameText', nameText);
-        slotContainer.setData('priceText', priceText);
-
-        // クリックイベント
-        slotBg.on('pointerdown', () => {
-            this.selectedSlotIndex = i;
-            this.updateSelectionCursor();
-            this.openDetailModal();
-        });
-
-        // ホバーイベント
-        slotBg.on('pointerover', () => {
-            this.selectedSlotIndex = i;
-            this.updateSelectionCursor();
-        });
-
-        this.inventorySlots.push(slotContainer);
-        this.inventoryContainer.add(slotContainer);
-    }
-
-    // 操作ヒント
-    const hint = this.add.text(0, 200, '矢印: 選択 | Enter: 詳細 | I/ESC: 閉じる', {
-        fontSize: '15px',  // 12 * 1.25
-        color: '#aaaaaa'
-    }).setOrigin(0.5);
-    this.inventoryContainer.add(hint);
-    this.inventoryContainer.setData('hint', hint);
-
-    this.updateInventoryLayout();
-    this.updateSelectionCursor();
-  }
-
-  updateInventoryLayout() {
-    // 現在のmaxInventorySlotsに基づいてレイアウトを更新
+    // HTML/CSSでインベントリUIを作成
     const slotSize = 100;
     const padding = 10;
     const gridSize = 3;
-    const rows = Math.ceil(this.playerData.maxInventorySlots / gridSize);
-    const containerHeight = rows * slotSize + (rows + 1) * padding + 75;
+    const maxSlots = 18;  // 最大18スロット
 
-    // 背景の高さを更新
-    const bg = this.inventoryContainer.getData('bg') as Phaser.GameObjects.Rectangle;
-    if (bg) {
-      bg.setSize(bg.width, containerHeight);
+    // スロットHTMLを生成
+    let slotsHTML = '';
+    for (let i = 0; i < maxSlots; i++) {
+      slotsHTML += `
+        <div class="inventory-slot" data-index="${i}">
+          <div class="slot-bg"></div>
+          <canvas class="slot-image" width="70" height="70" style="display: none;"></canvas>
+          <div class="slot-emoji"></div>
+          <div class="slot-name"></div>
+          <div class="slot-price"></div>
+        </div>
+      `;
     }
 
-    // タイトルの位置を更新（コンテナの上端から30px下）
-    const title = this.inventoryContainer.getData('title') as Phaser.GameObjects.Text;
-    if (title) {
-      title.setY(-containerHeight / 2 + 30);
-    }
+    const inventoryHTML = `
+      <div id="inventory-modal" class="modal" style="display: none;">
+        <div class="modal-content inventory-modal">
+          <div class="modal-header">
+            <h2>🎒 インベントリ</h2>
+          </div>
+          <div id="inventory-slots-grid" class="inventory-grid">
+            ${slotsHTML}
+          </div>
+          <div class="modal-footer">
+            <div class="hint-text">矢印: 選択 | Enter: 詳細 | I/ESC: 閉じる</div>
+          </div>
+        </div>
+      </div>
+    `;
 
-    // ヒントの位置を更新
-    const hint = this.inventoryContainer.getData('hint') as Phaser.GameObjects.Text;
-    if (hint) {
-      hint.setY(containerHeight / 2 - 25);
-    }
+    // DOM要素を追加
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = inventoryHTML;
+    this.inventoryUIElement = tempDiv.firstElementChild as HTMLElement;
+    document.body.appendChild(this.inventoryUIElement);
 
-    // スロットの位置を再計算
-    const startX = -((gridSize - 1) * (slotSize + padding)) / 2;
-    const startY = -containerHeight / 2 + 75;  // タイトルの下から開始
+    // スロット要素を取得
+    this.inventorySlots = Array.from(this.inventoryUIElement.querySelectorAll('.inventory-slot')) as HTMLElement[];
 
-    // スロットの表示/非表示と位置を更新
+    // スロットにイベントリスナーを追加
+    this.inventorySlots.forEach((slot, index) => {
+      slot.addEventListener('click', () => {
+        this.selectedSlotIndex = index;
+        this.updateInventorySelection();
+        this.openDetailModal();
+      });
+      slot.addEventListener('mouseenter', () => {
+        this.selectedSlotIndex = index;
+        this.updateInventorySelection();
+      });
+    });
+
+    this.updateInventoryLayout();
+    this.updateInventorySelection();
+  }
+
+  updateInventoryLayout() {
+    if (!this.inventoryUIElement) return;
+    
+    // スロットの表示/非表示を更新
     for (let i = 0; i < this.inventorySlots.length; i++) {
       const slot = this.inventorySlots[i];
       if (i < this.playerData.maxInventorySlots) {
-        slot.setVisible(true);
-        // 位置を再計算
-        const row = Math.floor(i / gridSize);
-        const col = i % gridSize;
-        const x = startX + col * (slotSize + padding);
-        const y = startY + row * (slotSize + padding);
-        slot.setPosition(x, y);
+        slot.style.display = 'block';
       } else {
-        slot.setVisible(false);
+        slot.style.display = 'none';
       }
     }
   }
 
   createDetailModal() {
-    this.detailModalContainer = this.add.container(400, 300).setDepth(400).setVisible(false);
+    // HTML/CSSで詳細モーダルを作成
+    const detailHTML = `
+      <div id="detail-modal" class="modal" style="display: none;">
+        <div class="modal-content detail-modal">
+          <button class="modal-close" onclick="window.gameScene?.closeDetailModal()">✕</button>
+          <div class="detail-content">
+            <canvas id="detail-fish-image" class="detail-image" width="80" height="80" style="display: none;"></canvas>
+            <div id="detail-emoji" class="detail-emoji" style="display: none;"></div>
+            <div id="detail-name" class="detail-name"></div>
+            <div id="detail-rarity" class="detail-rarity"></div>
+            <div id="detail-desc" class="detail-desc"></div>
+            <div id="detail-info" class="detail-info"></div>
+          </div>
+        </div>
+      </div>
+    `;
 
-    // 背景（25%大きく: 280→350, 220→275）
-    const bg = this.add.rectangle(0, 0, 350, 275, 0x1a1a2e, 0.98)
-        .setStrokeStyle(4, 0xffffff);
-    this.detailModalContainer.add(bg);
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = detailHTML;
+    this.detailModalElement = tempDiv.firstElementChild as HTMLElement;
+    document.body.appendChild(this.detailModalElement);
 
-    // 閉じるボタン
-    const closeBtn = this.add.text(160, -120, '✕', {
-        fontSize: '25px',  // 20 * 1.25
-        color: '#ffffff'
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    closeBtn.on('pointerdown', () => this.closeDetailModal());
-    closeBtn.on('pointerover', () => closeBtn.setColor('#ff6666'));
-    closeBtn.on('pointerout', () => closeBtn.setColor('#ffffff'));
-    this.detailModalContainer.add(closeBtn);
+    // 閉じるボタンのイベント
+    const closeBtn = this.detailModalElement.querySelector('.modal-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => this.closeDetailModal());
+    }
 
-    // 魚の画像
-    const fishImage = this.add.image(0, -75, '').setDisplaySize(80, 80).setVisible(false).setName('fishImage');
-    this.detailModalContainer.add(fishImage);
-
-    // 魚の絵文字
-    const emoji = this.add.text(0, -88, '', {
-        fontSize: '60px'  // 48 * 1.25
-    }).setOrigin(0.5).setName('emoji');
-    this.detailModalContainer.add(emoji);
-
-    // 魚の名前
-    const nameText = this.add.text(0, -18, '', {
-        fontSize: '28px',  // 22 * 1.25 ≈ 28
-        color: '#ffffff',
-        fontStyle: 'bold'
-    }).setOrigin(0.5).setName('name');
-    this.detailModalContainer.add(nameText);
-
-    // レア度
-    const rarityText = this.add.text(0, 10, '', {
-        fontSize: '20px',  // 16 * 1.25
-        color: '#ffaa00'
-    }).setOrigin(0.5).setName('rarity');
-    this.detailModalContainer.add(rarityText);
-
-    // 説明
-    const descText = this.add.text(0, 50, '', {
-        fontSize: '16px',  // 13 * 1.25 ≈ 16
-        color: '#cccccc',
-        wordWrap: { width: 310, useAdvancedWrap: true },  // モーダル幅350px - パディング40px
-        align: 'center'
-    }).setOrigin(0.5, 0).setName('desc');
-    this.detailModalContainer.add(descText);
-
-    // 価格と所持数
-    const infoText = this.add.text(0, 105, '', {
-        fontSize: '18px',  // 14 * 1.25 ≈ 18
-        color: '#ffffff'
-    }).setOrigin(0.5).setName('info');
-    this.detailModalContainer.add(infoText);
+    // グローバルに参照を保存（HTMLから呼び出せるように）
+    (window as any).gameScene = this;
   }
 
   toggleInventory() {
@@ -1407,19 +1333,27 @@ export default class GameScene extends Phaser.Scene {
     this.selectedSlotIndex = 0;
     this.updateInventoryLayout();  // レイアウトを更新
     this.updateInventorySlots();
-    this.updateSelectionCursor();
-    this.inventoryContainer.setVisible(true);
+    this.updateInventorySelection();
+    if (this.inventoryUIElement) {
+      this.inventoryUIElement.style.display = 'flex';
+      this.inventoryUIElement.style.pointerEvents = 'auto';
+    }
   }
 
   closeInventory() {
     this.inventoryOpen = false;
-    this.inventoryContainer.setVisible(false);
+    if (this.inventoryUIElement) {
+      this.inventoryUIElement.style.display = 'none';
+      this.inventoryUIElement.style.pointerEvents = 'none';
+    }
     if (this.detailModalOpen) {
         this.closeDetailModal();
     }
   }
 
   updateInventorySlots() {
+    if (!this.inventoryUIElement) return;
+    
     // インベントリをフラット化（スタックを展開して個別表示）
     const flatInventory: string[] = [];
     for (const item of this.playerData.inventory) {
@@ -1431,11 +1365,13 @@ export default class GameScene extends Phaser.Scene {
     // maxInventorySlotsに基づいてスロットを更新
     for (let i = 0; i < this.playerData.maxInventorySlots; i++) {
         const slot = this.inventorySlots[i];
-        const fishImage = slot.getData('fishImage') as Phaser.GameObjects.Image;
-        const fishEmoji = slot.getData('fishEmoji') as Phaser.GameObjects.Text;
-        const nameText = slot.getData('nameText') as Phaser.GameObjects.Text;
-        const priceText = slot.getData('priceText') as Phaser.GameObjects.Text;
-        const slotBg = slot.getData('slotBg') as Phaser.GameObjects.Rectangle;
+        if (!slot) continue;
+        
+        const slotBg = slot.querySelector('.slot-bg') as HTMLElement;
+        const slotImage = slot.querySelector('.slot-image') as HTMLCanvasElement;
+        const slotEmoji = slot.querySelector('.slot-emoji') as HTMLElement;
+        const slotName = slot.querySelector('.slot-name') as HTMLElement;
+        const slotPrice = slot.querySelector('.slot-price') as HTMLElement;
 
         if (i < flatInventory.length) {
             const fishId = flatInventory[i];
@@ -1443,50 +1379,75 @@ export default class GameScene extends Phaser.Scene {
             if (fish) {
                 // 画像があるかチェック
                 if (this.textures.exists(fishId)) {
-                    fishImage.setTexture(fishId);
-                    // スロットに収まるようにスケーリング（最大45x45）
-                    const maxSize = 70;  // スロット内で大きく表示
-                    const frame = this.textures.getFrame(fishId);
-                    const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
-                    fishImage.setScale(scale).setVisible(true);
-                    fishEmoji.setVisible(false);
+                    // Canvasに画像を描画
+                    const ctx = slotImage.getContext('2d');
+                    if (ctx) {
+                        const frame = this.textures.getFrame(fishId);
+                        const maxSize = 70;
+                        const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+                        const width = frame.width * scale;
+                        const height = frame.height * scale;
+                        
+                        ctx.clearRect(0, 0, 70, 70);
+                        const sourceImage = frame.source.image as HTMLImageElement;
+                        if (sourceImage) {
+                            ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 
+                                         (70 - width) / 2, (70 - height) / 2, width, height);
+                        }
+                    }
+                    slotImage.style.display = 'block';
+                    slotEmoji.style.display = 'none';
                 } else {
-                    fishImage.setVisible(false);
-                    fishEmoji.setText(fish.emoji).setVisible(true);
+                    slotImage.style.display = 'none';
+                    slotEmoji.textContent = fish.emoji;
+                    slotEmoji.style.display = 'block';
                 }
                 
-                nameText.setText(fish.name);
-                priceText.setText(`${fish.price}G`);
+                slotName.textContent = fish.name;
+                slotPrice.textContent = `${fish.price}G`;
                 
                 // レア度に応じた背景色
                 const rarityColor = rarityColors[fish.rarity];
-                slotBg.setFillStyle(rarityColor, 0.4);
-                slotBg.setStrokeStyle(2, rarityColor);
+                const colorHex = `#${rarityColor.toString(16).padStart(6, '0')}`;
+                slotBg.style.backgroundColor = colorHex;
+                slotBg.style.opacity = '0.4';
+                slotBg.style.borderColor = colorHex;
             }
         } else {
-            fishImage.setVisible(false);
-            fishEmoji.setText('').setVisible(false);
-            nameText.setText('');
-            priceText.setText('');
-            slotBg.setFillStyle(0x333333, 1);
-            slotBg.setStrokeStyle(2, 0x555555);
+            slotImage.style.display = 'none';
+            slotEmoji.textContent = '';
+            slotEmoji.style.display = 'none';
+            slotName.textContent = '';
+            slotPrice.textContent = '';
+            slotBg.style.backgroundColor = '#333333';
+            slotBg.style.opacity = '1';
+            slotBg.style.borderColor = '#555555';
         }
     }
   }
 
-  updateSelectionCursor() {
-    if (this.inventorySlots.length === 0) return;
+  updateInventorySelection() {
+    if (!this.inventoryUIElement || this.inventorySlots.length === 0) return;
     
     // selectedSlotIndexがmaxInventorySlotsを超えないようにする
     if (this.selectedSlotIndex >= this.playerData.maxInventorySlots) {
       this.selectedSlotIndex = Math.max(0, this.playerData.maxInventorySlots - 1);
     }
     
-    const slot = this.inventorySlots[this.selectedSlotIndex];
-    this.selectionCursor.setPosition(slot.x, slot.y);
+    // すべてのスロットから選択クラスを削除
+    this.inventorySlots.forEach(slot => {
+      slot.classList.remove('selected');
+    });
+    
+    // 選択されたスロットにクラスを追加
+    if (this.inventorySlots[this.selectedSlotIndex]) {
+      this.inventorySlots[this.selectedSlotIndex].classList.add('selected');
+    }
   }
 
   openDetailModal() {
+    if (!this.detailModalElement) return;
+    
     // フラット化したインベントリから取得
     const flatInventory: string[] = [];
     for (const item of this.playerData.inventory) {
@@ -1504,42 +1465,57 @@ export default class GameScene extends Phaser.Scene {
     this.detailModalOpen = true;
 
     // モーダルの内容を更新
-    const fishImage = this.detailModalContainer.getByName('fishImage') as Phaser.GameObjects.Image;
-    const emoji = this.detailModalContainer.getByName('emoji') as Phaser.GameObjects.Text;
-    const nameText = this.detailModalContainer.getByName('name') as Phaser.GameObjects.Text;
-    const rarityText = this.detailModalContainer.getByName('rarity') as Phaser.GameObjects.Text;
-    const descText = this.detailModalContainer.getByName('desc') as Phaser.GameObjects.Text;
-    const infoText = this.detailModalContainer.getByName('info') as Phaser.GameObjects.Text;
+    const fishImage = this.detailModalElement.querySelector('#detail-fish-image') as HTMLCanvasElement;
+    const emoji = this.detailModalElement.querySelector('#detail-emoji') as HTMLElement;
+    const nameText = this.detailModalElement.querySelector('#detail-name') as HTMLElement;
+    const rarityText = this.detailModalElement.querySelector('#detail-rarity') as HTMLElement;
+    const descText = this.detailModalElement.querySelector('#detail-desc') as HTMLElement;
+    const infoText = this.detailModalElement.querySelector('#detail-info') as HTMLElement;
 
     // 画像があれば画像、なければ絵文字
     if (this.textures.exists(fish.id)) {
-        fishImage.setTexture(fish.id);
-        // モーダル用にスケーリング（最大64x64）
-        const maxSize = 80;  // 64 * 1.25
-        const frame = this.textures.getFrame(fish.id);
-        const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
-        fishImage.setScale(scale).setVisible(true);
-        emoji.setVisible(false);
+        const ctx = fishImage.getContext('2d');
+        if (ctx) {
+            const frame = this.textures.getFrame(fish.id);
+            const maxSize = 80;
+            const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+            const width = frame.width * scale;
+            const height = frame.height * scale;
+            
+            ctx.clearRect(0, 0, 80, 80);
+            const sourceImage = frame.source.image as HTMLImageElement;
+            if (sourceImage) {
+                ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
+                             (80 - width) / 2, (80 - height) / 2, width, height);
+            }
+        }
+        fishImage.style.display = 'block';
+        emoji.style.display = 'none';
     } else {
-        fishImage.setVisible(false);
-        emoji.setText(fish.emoji).setVisible(true);
+        fishImage.style.display = 'none';
+        emoji.textContent = fish.emoji;
+        emoji.style.display = 'block';
     }
     
-    nameText.setText(fish.name);
-    rarityText.setText(rarityStars[fish.rarity]);
-    descText.setText(fish.description);
-    infoText.setText(`💰 ${fish.price}G`);
+    nameText.textContent = fish.name;
+    rarityText.textContent = rarityStars[fish.rarity];
+    descText.textContent = fish.description;
+    infoText.textContent = `💰 ${fish.price}G`;
 
     // レア度に応じた色
     const color = rarityColors[fish.rarity];
-    rarityText.setColor(`#${color.toString(16).padStart(6, '0')}`);
+    rarityText.style.color = `#${color.toString(16).padStart(6, '0')}`;
 
-    this.detailModalContainer.setVisible(true);
+    this.detailModalElement.style.display = 'flex';
+    this.detailModalElement.style.pointerEvents = 'auto';
   }
 
   closeDetailModal() {
     this.detailModalOpen = false;
-    this.detailModalContainer.setVisible(false);
+    if (this.detailModalElement) {
+      this.detailModalElement.style.display = 'none';
+      this.detailModalElement.style.pointerEvents = 'none';
+    }
   }
 
   handleInventoryNavigation() {
@@ -1569,7 +1545,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (newIndex !== this.selectedSlotIndex && newIndex >= 0) {
         this.selectedSlotIndex = newIndex;
-        this.updateSelectionCursor();
+        this.updateInventorySelection();
     }
   }
 
@@ -1578,183 +1554,93 @@ export default class GameScene extends Phaser.Scene {
   // ============================================
 
   createBookUI() {
-    const slotSize = 100;  // 80 * 1.25
-    const padding = 10;    // 8 * 1.25
-    const gridCols = 4;
-    const gridRows = 3;
-    const slotsPerPage = gridCols * gridRows;
-    const containerWidth = gridCols * slotSize + (gridCols + 1) * padding;
-    const containerHeight = gridRows * slotSize + (gridRows + 1) * padding + 112;  // 90 * 1.25
-
-    this.bookContainer = this.add.container(400, 300).setDepth(300).setVisible(false);
-
-    // 背景
-    const bg = this.add.rectangle(0, 0, containerWidth, containerHeight, 0x2a1a0a, 0.95)
-        .setStrokeStyle(5, 0x8b4513);
-    this.bookContainer.add(bg);
-
-    // タイトル
-    const title = this.add.text(0, -containerHeight / 2 + 30, '📖 魚図鑑', {
-        fontSize: '28px',  // 22 * 1.25 ≈ 28
-        color: '#ffe4b5',
-        fontStyle: 'bold'
-    }).setOrigin(0.5);
-    this.bookContainer.add(title);
-
-    // コンプリート率
-    const progressText = this.add.text(0, -containerHeight / 2 + 62, '', {
-        fontSize: '18px',  // 14 * 1.25 ≈ 18
-        color: '#aaaaaa'
-    }).setOrigin(0.5).setName('progressText');
-    this.bookContainer.add(progressText);
-
-    // 選択カーソル
-    this.bookSelectionCursor = this.add.rectangle(0, 0, slotSize + 5, slotSize + 5)
-        .setStrokeStyle(4, 0xffff00)
-        .setFillStyle(0xffff00, 0.2);
-    this.bookContainer.add(this.bookSelectionCursor);
-
-    // スロット作成
-    const startX = -((gridCols - 1) * (slotSize + padding)) / 2;
-    const startY = -((gridRows - 1) * (slotSize + padding)) / 2 + 38;
-
+    // HTML/CSSで図鑑UIを作成
+    const slotsPerPage = 12;  // 4列×3行
+    let slotsHTML = '';
     for (let i = 0; i < slotsPerPage; i++) {
-        const row = Math.floor(i / gridCols);
-        const col = i % gridCols;
-        const x = startX + col * (slotSize + padding);
-        const y = startY + row * (slotSize + padding);
-
-        const slotContainer = this.add.container(x, y);
-
-        // スロット背景
-        const slotBg = this.add.rectangle(0, 0, slotSize, slotSize, 0x333333)
-            .setStrokeStyle(3, 0x555555)
-            .setInteractive({ useHandCursor: true });
-
-        // 魚の画像（スロット100px内に収める）
-        const fishImage = this.add.image(0, -6, '').setVisible(false);
-
-        // 魚の絵文字（またはシルエット）
-        const fishEmoji = this.add.text(0, -6, '', {
-            fontSize: '30px'  // 24 * 1.25
-        }).setOrigin(0.5);
-
-        // 魚の名前
-        const nameText = this.add.text(0, 28, '', {
-            fontSize: '11px',  // 9 * 1.25 ≈ 11
-            color: '#ffffff',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-
-        // レア度
-        const rarityText = this.add.text(0, 42, '', {
-            fontSize: '10px',  // 8 * 1.25
-            color: '#ffaa00'
-        }).setOrigin(0.5);
-
-        slotContainer.add([slotBg, fishImage, fishEmoji, nameText, rarityText]);
-        slotContainer.setData('index', i);
-        slotContainer.setData('slotBg', slotBg);
-        slotContainer.setData('fishImage', fishImage);
-        slotContainer.setData('fishEmoji', fishEmoji);
-        slotContainer.setData('nameText', nameText);
-        slotContainer.setData('rarityText', rarityText);
-
-        // クリックイベント
-        slotBg.on('pointerdown', () => {
-            this.bookSelectedIndex = i;
-            this.updateBookSelectionCursor();
-            this.openBookDetail();
-        });
-
-        // ホバーイベント
-        slotBg.on('pointerover', () => {
-            this.bookSelectedIndex = i;
-            this.updateBookSelectionCursor();
-        });
-
-        this.bookSlots.push(slotContainer);
-        this.bookContainer.add(slotContainer);
+      slotsHTML += `
+        <div class="book-slot" data-index="${i}">
+          <div class="slot-bg"></div>
+          <canvas class="slot-image" width="70" height="70" style="display: none;"></canvas>
+          <div class="slot-emoji"></div>
+          <div class="slot-name"></div>
+          <div class="slot-rarity"></div>
+        </div>
+      `;
     }
 
-    // ページ表示
-    this.bookPageText = this.add.text(0, containerHeight / 2 - 56, '', {
-        fontSize: '18px',  // 14 * 1.25 ≈ 18
-        color: '#ffffff'
-    }).setOrigin(0.5);
-    this.bookContainer.add(this.bookPageText);
+    const bookHTML = `
+      <div id="book-modal" class="modal" style="display: none;">
+        <div class="modal-content book-modal">
+          <div class="modal-header">
+            <h2>📖 魚図鑑</h2>
+            <div id="book-progress" class="book-progress"></div>
+          </div>
+          <div id="book-slots-grid" class="book-grid">
+            ${slotsHTML}
+          </div>
+          <div class="modal-footer">
+            <div id="book-page-text" class="book-page-text"></div>
+            <div class="hint-text">Q/W: ページ | 矢印: 選択 | Enter: 詳細 | B/ESC: 閉じる</div>
+          </div>
+        </div>
+      </div>
+    `;
 
-    // 操作ヒント
-    const hint = this.add.text(0, containerHeight / 2 - 25, 'Q/W: ページ | 矢印: 選択 | Enter: 詳細 | B/ESC: 閉じる', {
-        fontSize: '14px',  // 11 * 1.25 ≈ 14
-        color: '#aaaaaa'
-    }).setOrigin(0.5);
-    this.bookContainer.add(hint);
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = bookHTML;
+    this.bookUIElement = tempDiv.firstElementChild as HTMLElement;
+    document.body.appendChild(this.bookUIElement);
+
+    // スロット要素を取得
+    this.bookSlots = Array.from(this.bookUIElement.querySelectorAll('.book-slot')) as HTMLElement[];
+
+    // スロットにイベントリスナーを追加
+    this.bookSlots.forEach((slot, index) => {
+      slot.addEventListener('click', () => {
+        this.bookSelectedIndex = index;
+        this.updateBookSelection();
+        this.openBookDetail();
+      });
+      slot.addEventListener('mouseenter', () => {
+        this.bookSelectedIndex = index;
+        this.updateBookSelection();
+      });
+    });
 
     // 図鑑詳細モーダル
     this.createBookDetailModal();
-
-    this.updateBookSelectionCursor();
+    this.updateBookSelection();
   }
 
   createBookDetailModal() {
-    this.bookDetailContainer = this.add.container(400, 300).setDepth(400).setVisible(false);
+    // HTML/CSSで図鑑詳細モーダルを作成
+    const bookDetailHTML = `
+      <div id="book-detail-modal" class="modal" style="display: none;">
+        <div class="modal-content detail-modal">
+          <button class="modal-close" onclick="window.gameScene?.closeBookDetail()">✕</button>
+          <div class="detail-content">
+            <canvas id="book-detail-fish-image" class="detail-image" width="80" height="80" style="display: none;"></canvas>
+            <div id="book-detail-emoji" class="detail-emoji" style="display: none;"></div>
+            <div id="book-detail-name" class="detail-name"></div>
+            <div id="book-detail-rarity" class="detail-rarity"></div>
+            <div id="book-detail-desc" class="detail-desc"></div>
+            <div id="book-detail-price" class="detail-info"></div>
+          </div>
+        </div>
+      </div>
+    `;
 
-    // 背景（25%大きく: 300→375, 250→312）
-    const bg = this.add.rectangle(0, 0, 375, 312, 0x1a1a2e, 0.98)
-        .setStrokeStyle(4, 0xffffff);
-    this.bookDetailContainer.add(bg);
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = bookDetailHTML;
+    this.bookDetailElement = tempDiv.firstElementChild as HTMLElement;
+    document.body.appendChild(this.bookDetailElement);
 
-    // 閉じるボタン
-    const closeBtn = this.add.text(170, -138, '✕', {
-        fontSize: '25px',  // 20 * 1.25
-        color: '#ffffff'
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    closeBtn.on('pointerdown', () => this.closeBookDetail());
-    closeBtn.on('pointerover', () => closeBtn.setColor('#ff6666'));
-    closeBtn.on('pointerout', () => closeBtn.setColor('#ffffff'));
-    this.bookDetailContainer.add(closeBtn);
-
-    // 魚の画像
-    const fishImage = this.add.image(0, -88, '').setDisplaySize(80, 80).setVisible(false).setName('fishImage');
-    this.bookDetailContainer.add(fishImage);
-
-    // 魚の絵文字
-    const emoji = this.add.text(0, -100, '', {
-        fontSize: '60px'  // 48 * 1.25
-    }).setOrigin(0.5).setName('emoji');
-    this.bookDetailContainer.add(emoji);
-
-    // 魚の名前
-    const nameText = this.add.text(0, -25, '', {
-        fontSize: '28px',  // 22 * 1.25 ≈ 28
-        color: '#ffffff',
-        fontStyle: 'bold'
-    }).setOrigin(0.5).setName('name');
-    this.bookDetailContainer.add(nameText);
-
-    // レア度
-    const rarityText = this.add.text(0, 5, '', {
-        fontSize: '20px',  // 16 * 1.25
-        color: '#ffaa00'
-    }).setOrigin(0.5).setName('rarity');
-    this.bookDetailContainer.add(rarityText);
-
-    // 説明
-    const descText = this.add.text(0, 50, '', {
-        fontSize: '15px',  // 12 * 1.25
-        color: '#cccccc',
-        wordWrap: { width: 335, useAdvancedWrap: true },  // モーダル幅375px - パディング40px
-        align: 'center'
-    }).setOrigin(0.5, 0).setName('desc');
-    this.bookDetailContainer.add(descText);
-
-    // 価格
-    const priceText = this.add.text(0, 120, '', {
-        fontSize: '18px',  // 14 * 1.25 ≈ 18
-        color: '#ffdd44'
-    }).setOrigin(0.5).setName('price');
-    this.bookDetailContainer.add(priceText);
+    // 閉じるボタンのイベント
+    const closeBtn = this.bookDetailElement.querySelector('.modal-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => this.closeBookDetail());
+    }
   }
 
   toggleBook() {
@@ -1773,13 +1659,19 @@ export default class GameScene extends Phaser.Scene {
     this.bookPage = 0;
     this.bookSelectedIndex = 0;
     this.updateBookSlots();
-    this.updateBookSelectionCursor();
-    this.bookContainer.setVisible(true);
+    this.updateBookSelection();
+    if (this.bookUIElement) {
+      this.bookUIElement.style.display = 'flex';
+      this.bookUIElement.style.pointerEvents = 'auto';
+    }
   }
 
   closeBook() {
     this.bookOpen = false;
-    this.bookContainer.setVisible(false);
+    if (this.bookUIElement) {
+      this.bookUIElement.style.display = 'none';
+      this.bookUIElement.style.pointerEvents = 'none';
+    }
     if (this.bookDetailOpen) {
         this.closeBookDetail();
     }
@@ -1791,28 +1683,33 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateBookSlots() {
+    if (!this.bookUIElement) return;
+    
     const fishList = this.getRealFishList();
     const slotsPerPage = 12;
     const totalPages = Math.ceil(fishList.length / slotsPerPage);
     const startIndex = this.bookPage * slotsPerPage;
     
     // コンプリート率更新
-    const progressText = this.bookContainer.getByName('progressText') as Phaser.GameObjects.Text;
+    const progressEl = this.bookUIElement.querySelector('#book-progress') as HTMLElement;
     const caughtCount = Array.from(this.playerData.caughtFishIds).filter(id => !id.startsWith('junk')).length;
     const totalFish = fishList.length;
     const percentage = Math.floor((caughtCount / totalFish) * 100);
-    progressText.setText(`発見: ${caughtCount}/${totalFish} (${percentage}%)`);
+    if (progressEl) progressEl.textContent = `発見: ${caughtCount}/${totalFish} (${percentage}%)`;
 
     // ページ表示更新
-    this.bookPageText.setText(`ページ ${this.bookPage + 1}/${totalPages}`);
+    const pageTextEl = this.bookUIElement.querySelector('#book-page-text') as HTMLElement;
+    if (pageTextEl) pageTextEl.textContent = `ページ ${this.bookPage + 1}/${totalPages}`;
 
     for (let i = 0; i < slotsPerPage; i++) {
         const slot = this.bookSlots[i];
-        const fishImage = slot.getData('fishImage') as Phaser.GameObjects.Image;
-        const fishEmoji = slot.getData('fishEmoji') as Phaser.GameObjects.Text;
-        const nameText = slot.getData('nameText') as Phaser.GameObjects.Text;
-        const rarityText = slot.getData('rarityText') as Phaser.GameObjects.Text;
-        const slotBg = slot.getData('slotBg') as Phaser.GameObjects.Rectangle;
+        if (!slot) continue;
+        
+        const slotBg = slot.querySelector('.slot-bg') as HTMLElement;
+        const slotImage = slot.querySelector('.slot-image') as HTMLCanvasElement;
+        const slotEmoji = slot.querySelector('.slot-emoji') as HTMLElement;
+        const slotName = slot.querySelector('.slot-name') as HTMLElement;
+        const slotRarity = slot.querySelector('.slot-rarity') as HTMLElement;
 
         const fishIndex = startIndex + i;
         
@@ -1823,47 +1720,70 @@ export default class GameScene extends Phaser.Scene {
             if (isCaught) {
                 // 発見済み - 画像があれば画像、なければ絵文字
                 if (this.textures.exists(fish.id)) {
-                    fishImage.setTexture(fish.id);
-                    // スロットに収まるようにスケーリング（最大45x45）
-                    const maxSize = 70;  // スロット内で大きく表示
-                    const frame = this.textures.getFrame(fish.id);
-                    const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
-                    fishImage.setScale(scale).setVisible(true);
-                    fishEmoji.setVisible(false);
+                    const ctx = slotImage.getContext('2d');
+                    if (ctx) {
+                        const frame = this.textures.getFrame(fish.id);
+                        const maxSize = 70;
+                        const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+                        const width = frame.width * scale;
+                        const height = frame.height * scale;
+                        
+                        ctx.clearRect(0, 0, 70, 70);
+                        const sourceImage = frame.source.image as HTMLImageElement;
+                        if (sourceImage) {
+                            ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
+                                         (70 - width) / 2, (70 - height) / 2, width, height);
+                        }
+                    }
+                    slotImage.style.display = 'block';
+                    slotEmoji.style.display = 'none';
                 } else {
-                    fishImage.setVisible(false);
-                    fishEmoji.setText(fish.emoji).setVisible(true);
+                    slotImage.style.display = 'none';
+                    slotEmoji.textContent = fish.emoji;
+                    slotEmoji.style.display = 'block';
                 }
                 
-                nameText.setText(fish.name);
-                rarityText.setText(rarityStars[fish.rarity]);
+                slotName.textContent = fish.name;
+                slotRarity.textContent = rarityStars[fish.rarity];
                 
                 const color = rarityColors[fish.rarity];
-                slotBg.setFillStyle(color, 0.3);
-                slotBg.setStrokeStyle(2, color);
-                rarityText.setColor(`#${color.toString(16).padStart(6, '0')}`);
+                const colorHex = `#${color.toString(16).padStart(6, '0')}`;
+                slotBg.style.backgroundColor = colorHex;
+                slotBg.style.opacity = '0.3';
+                slotBg.style.borderColor = colorHex;
+                slotRarity.style.color = colorHex;
             } else {
                 // 未発見（シルエット）
-                fishImage.setVisible(false);
-                fishEmoji.setText('❓').setVisible(true);
-                nameText.setText('？？？');
-                rarityText.setText(rarityStars[fish.rarity]);
+                slotImage.style.display = 'none';
+                slotEmoji.textContent = '❓';
+                slotEmoji.style.display = 'block';
+                slotName.textContent = '？？？';
+                slotRarity.textContent = rarityStars[fish.rarity];
                 
-                slotBg.setFillStyle(0x222222, 1);
-                slotBg.setStrokeStyle(2, 0x444444);
-                rarityText.setColor('#666666');
+                slotBg.style.backgroundColor = '#222222';
+                slotBg.style.opacity = '1';
+                slotBg.style.borderColor = '#444444';
+                slotRarity.style.color = '#666666';
             }
             
-            slot.setVisible(true);
+            slot.style.display = 'block';
         } else {
             // 空きスロット
-            slot.setVisible(false);
+            slotImage.style.display = 'none';
+            slotEmoji.textContent = '';
+            slotEmoji.style.display = 'none';
+            slotName.textContent = '';
+            slotRarity.textContent = '';
+            slotBg.style.backgroundColor = '#111111';
+            slotBg.style.opacity = '1';
+            slotBg.style.borderColor = '#333333';
+            slot.style.display = 'none';
         }
     }
   }
 
-  updateBookSelectionCursor() {
-    if (this.bookSlots.length === 0) return;
+  updateBookSelection() {
+    if (!this.bookUIElement || this.bookSlots.length === 0) return;
     
     const fishList = this.getRealFishList();
     const slotsPerPage = 12;
@@ -1875,12 +1795,14 @@ export default class GameScene extends Phaser.Scene {
         this.bookSelectedIndex = Math.max(0, visibleCount - 1);
     }
     
-    const slot = this.bookSlots[this.bookSelectedIndex];
-    if (slot && slot.visible) {
-        this.bookSelectionCursor.setPosition(slot.x, slot.y);
-        this.bookSelectionCursor.setVisible(true);
-    } else {
-        this.bookSelectionCursor.setVisible(false);
+    // すべてのスロットから選択クラスを削除
+    this.bookSlots.forEach(slot => {
+      slot.classList.remove('selected');
+    });
+    
+    // 選択されたスロットにクラスを追加
+    if (this.bookSlots[this.bookSelectedIndex]) {
+      this.bookSlots[this.bookSelectedIndex].classList.add('selected');
     }
   }
 
@@ -1889,7 +1811,7 @@ export default class GameScene extends Phaser.Scene {
         this.bookPage--;
         this.bookSelectedIndex = 0;
         this.updateBookSlots();
-        this.updateBookSelectionCursor();
+        this.updateBookSelection();
     }
   }
 
@@ -1902,11 +1824,13 @@ export default class GameScene extends Phaser.Scene {
         this.bookPage++;
         this.bookSelectedIndex = 0;
         this.updateBookSlots();
-        this.updateBookSelectionCursor();
+        this.updateBookSelection();
     }
   }
 
   openBookDetail() {
+    if (!this.bookDetailElement) return;
+    
     const fishList = this.getRealFishList();
     const slotsPerPage = 12;
     const fishIndex = this.bookPage * slotsPerPage + this.bookSelectedIndex;
@@ -1918,52 +1842,68 @@ export default class GameScene extends Phaser.Scene {
 
     this.bookDetailOpen = true;
 
-    const fishImage = this.bookDetailContainer.getByName('fishImage') as Phaser.GameObjects.Image;
-    const emoji = this.bookDetailContainer.getByName('emoji') as Phaser.GameObjects.Text;
-    const nameText = this.bookDetailContainer.getByName('name') as Phaser.GameObjects.Text;
-    const rarityText = this.bookDetailContainer.getByName('rarity') as Phaser.GameObjects.Text;
-    const descText = this.bookDetailContainer.getByName('desc') as Phaser.GameObjects.Text;
-    const priceText = this.bookDetailContainer.getByName('price') as Phaser.GameObjects.Text;
+    const fishImage = this.bookDetailElement.querySelector('#book-detail-fish-image') as HTMLCanvasElement;
+    const emoji = this.bookDetailElement.querySelector('#book-detail-emoji') as HTMLElement;
+    const nameText = this.bookDetailElement.querySelector('#book-detail-name') as HTMLElement;
+    const rarityText = this.bookDetailElement.querySelector('#book-detail-rarity') as HTMLElement;
+    const descText = this.bookDetailElement.querySelector('#book-detail-desc') as HTMLElement;
+    const priceText = this.bookDetailElement.querySelector('#book-detail-price') as HTMLElement;
 
     if (isCaught) {
         // 画像があれば画像、なければ絵文字
         if (this.textures.exists(fish.id)) {
-            fishImage.setTexture(fish.id);
-            // モーダル用にスケーリング（最大64x64）
-            const maxSize = 80;  // 64 * 1.25
-            const frame = this.textures.getFrame(fish.id);
-            const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
-            fishImage.setScale(scale).setVisible(true);
-            emoji.setVisible(false);
+            const ctx = fishImage.getContext('2d');
+            if (ctx) {
+                const frame = this.textures.getFrame(fish.id);
+                const maxSize = 80;
+                const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+                const width = frame.width * scale;
+                const height = frame.height * scale;
+                
+                ctx.clearRect(0, 0, 80, 80);
+                const sourceImage = frame.source.image as HTMLImageElement;
+                if (sourceImage) {
+                    ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
+                                 (80 - width) / 2, (80 - height) / 2, width, height);
+                }
+            }
+            fishImage.style.display = 'block';
+            emoji.style.display = 'none';
         } else {
-            fishImage.setVisible(false);
-            emoji.setText(fish.emoji).setVisible(true);
+            fishImage.style.display = 'none';
+            emoji.textContent = fish.emoji;
+            emoji.style.display = 'block';
         }
         
-        nameText.setText(fish.name);
-        rarityText.setText(rarityStars[fish.rarity]);
-        descText.setText(fish.description);
-        priceText.setText(`💰 売値: ${fish.price}G`);
+        nameText.textContent = fish.name;
+        rarityText.textContent = rarityStars[fish.rarity];
+        descText.textContent = fish.description;
+        priceText.textContent = `💰 売値: ${fish.price}G`;
         
         const color = rarityColors[fish.rarity];
-        rarityText.setColor(`#${color.toString(16).padStart(6, '0')}`);
+        rarityText.style.color = `#${color.toString(16).padStart(6, '0')}`;
     } else {
-        fishImage.setVisible(false);
-        emoji.setText('❓').setVisible(true);
-        nameText.setText('？？？');
-        rarityText.setText(rarityStars[fish.rarity]);
-        descText.setText('まだ発見されていません...\nこの魚を釣って図鑑を完成させよう！');
-        priceText.setText('');
+        fishImage.style.display = 'none';
+        emoji.textContent = '❓';
+        emoji.style.display = 'block';
+        nameText.textContent = '？？？';
+        rarityText.textContent = rarityStars[fish.rarity];
+        descText.textContent = 'まだ発見されていません...\nこの魚を釣って図鑑を完成させよう！';
+        priceText.textContent = '';
         
-        rarityText.setColor('#666666');
+        rarityText.style.color = '#666666';
     }
 
-    this.bookDetailContainer.setVisible(true);
+    this.bookDetailElement.style.display = 'flex';
+    this.bookDetailElement.style.pointerEvents = 'auto';
   }
 
   closeBookDetail() {
     this.bookDetailOpen = false;
-    this.bookDetailContainer.setVisible(false);
+    if (this.bookDetailElement) {
+      this.bookDetailElement.style.display = 'none';
+      this.bookDetailElement.style.pointerEvents = 'none';
+    }
   }
 
   handleBookNavigation() {
@@ -1991,7 +1931,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (newIndex !== this.bookSelectedIndex && newIndex < visibleCount) {
         this.bookSelectedIndex = newIndex;
-        this.updateBookSelectionCursor();
+        this.updateBookSelection();
     }
   }
 
@@ -2000,74 +1940,44 @@ export default class GameScene extends Phaser.Scene {
   // ============================================
 
   createShopUI() {
-    const containerWidth = 500;
-    const containerHeight = 450;
+    // HTML/CSSでショップUIを作成
+    const shopHTML = `
+      <div id="shop-modal" class="modal" style="display: none;">
+        <div class="modal-content shop-modal">
+          <div class="modal-header">
+            <h2>🏪 ショップ</h2>
+          </div>
+          <div class="shop-tabs">
+            <button class="shop-tab" data-tab="rod">🎣 竿</button>
+            <button class="shop-tab" data-tab="bait">🪱 エサ</button>
+            <button class="shop-tab" data-tab="lure">🎯 ルアー</button>
+            <button class="shop-tab" data-tab="inventory">🎒 バッグ</button>
+          </div>
+          <div id="shop-items-list" class="shop-items-list"></div>
+          <div class="modal-footer">
+            <div id="shop-money" class="shop-money"></div>
+            <div class="hint-text">↑↓: 選択 | ENTER: 購入/装備 | S/ESC: 閉じる</div>
+          </div>
+        </div>
+      </div>
+    `;
 
-    this.shopContainer = this.add.container(400, 300).setDepth(300).setVisible(false);
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = shopHTML;
+    this.shopUIElement = tempDiv.firstElementChild as HTMLElement;
+    document.body.appendChild(this.shopUIElement);
 
-    // 背景
-    const bg = this.add.rectangle(0, 0, containerWidth, containerHeight, 0x1a3a1a, 0.95)
-        .setStrokeStyle(4, 0x4a7a4a);
-    this.shopContainer.add(bg);
-
-    // タイトル
-    const title = this.add.text(0, -containerHeight / 2 + 30, '🏪 ショップ', {
-        fontSize: '28px',
-        color: '#ffffff',
-        fontStyle: 'bold'
-    }).setOrigin(0.5);
-    this.shopContainer.add(title);
-
-    // タブボタン
-    const tabY = -containerHeight / 2 + 70;
-    const tabs = [
-      { id: 'rod', text: '🎣 竿', x: -180 },
-      { id: 'bait', text: '🪱 エサ', x: -60 },
-      { id: 'lure', text: '🎯 ルアー', x: 60 },
-      { id: 'inventory', text: '🎒 バッグ', x: 180 },
-    ];
-
-    tabs.forEach(tab => {
-      const tabBtn = this.add.text(tab.x, tabY, tab.text, {
-          fontSize: '18px',
-          color: '#ffffff',
-          backgroundColor: '#2a5a2a',
-          padding: { x: 15, y: 8 }
-      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-      
-      tabBtn.on('pointerdown', () => {
-          this.shopTab = tab.id as 'rod' | 'bait' | 'lure' | 'inventory';
-          this.shopSelectedIndex = 0;
-          this.updateShopContent();
+    // タブボタンのイベント
+    const tabButtons = this.shopUIElement.querySelectorAll('.shop-tab');
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-tab') as 'rod' | 'bait' | 'lure' | 'inventory';
+        this.shopTab = tab;
+        this.shopSelectedIndex = 0;
+        this.updateShopContent();
+        this.updateShopTabs();
       });
-      tabBtn.on('pointerover', () => tabBtn.setBackgroundColor('#3a7a3a'));
-      tabBtn.on('pointerout', () => tabBtn.setBackgroundColor('#2a5a2a'));
-      tabBtn.setName(`tab_${tab.id}`);
-      this.shopContainer.add(tabBtn);
     });
-
-    // 選択カーソル
-    this.shopSelectionCursor = this.add.rectangle(0, 0, 460, 60)
-        .setStrokeStyle(3, 0xffff00)
-        .setFillStyle(0xffff00, 0.1);
-    this.shopContainer.add(this.shopSelectionCursor);
-
-    // アイテムリスト領域（動的に更新）
-    // 初期表示は updateShopContent() で行う
-
-    // 所持金表示
-    const moneyDisplay = this.add.text(0, containerHeight / 2 - 70, '', {
-        fontSize: '20px',
-        color: '#ffff00'
-    }).setOrigin(0.5).setName('shopMoney');
-    this.shopContainer.add(moneyDisplay);
-
-    // 操作ヒント
-    const hint = this.add.text(0, containerHeight / 2 - 30, '↑↓: 選択 | ENTER: 購入/装備 | S/ESC: 閉じる', {
-        fontSize: '14px',
-        color: '#aaaaaa'
-    }).setOrigin(0.5);
-    this.shopContainer.add(hint);
   }
 
   toggleShop() {
@@ -2087,24 +1997,43 @@ export default class GameScene extends Phaser.Scene {
     this.shopSelectedIndex = 0;
     this.shopTab = 'rod';
     this.updateShopContent();
-    this.shopContainer.setVisible(true);
+    this.updateShopTabs();
+    if (this.shopUIElement) {
+      this.shopUIElement.style.display = 'flex';
+      this.shopUIElement.style.pointerEvents = 'auto';
+    }
   }
 
   closeShop() {
     this.shopOpen = false;
-    this.shopContainer.setVisible(false);
+    if (this.shopUIElement) {
+      this.shopUIElement.style.display = 'none';
+      this.shopUIElement.style.pointerEvents = 'none';
+    }
+  }
+
+  updateShopTabs() {
+    if (!this.shopUIElement) return;
+    const tabButtons = this.shopUIElement.querySelectorAll('.shop-tab');
+    tabButtons.forEach(btn => {
+      const tab = btn.getAttribute('data-tab');
+      if (tab === this.shopTab) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
   }
 
   updateShopContent() {
+    if (!this.shopUIElement) return;
+    
+    const itemsListEl = this.shopUIElement.querySelector('#shop-items-list') as HTMLElement;
+    if (!itemsListEl) return;
+    
     // 古いアイテム表示を削除
-    this.shopContainer.getAll().forEach(child => {
-      if ((child as Phaser.GameObjects.GameObject).name?.startsWith('shopItem_')) {
-        child.destroy();
-      }
-    });
-
-    const startY = -80;
-    const itemHeight = 65;
+    itemsListEl.innerHTML = '';
+    
     let items: { id: string; name: string; icon: string; price: number; info: string; owned: boolean; equipped: boolean }[] = [];
 
     if (this.shopTab === 'rod') {
@@ -2150,58 +2079,17 @@ export default class GameScene extends Phaser.Scene {
     }
 
     items.forEach((item, index) => {
-      const y = startY + index * itemHeight;
-      
-      // 背景
-      const itemBg = this.add.rectangle(0, y, 460, 55, 0x2a4a2a, 0.8)
-          .setStrokeStyle(1, 0x4a7a4a)
-          .setInteractive({ useHandCursor: true })
-          .setName(`shopItem_bg_${index}`);
-      
-      itemBg.on('pointerdown', () => {
-          this.shopSelectedIndex = index;
-          this.updateShopSelectionCursor();
-          this.purchaseOrEquipItem();
-      });
-      itemBg.on('pointerover', () => {
-          this.shopSelectedIndex = index;
-          this.updateShopSelectionCursor();
-      });
-      this.shopContainer.add(itemBg);
-
-      // アイコン（画像がある場合は画像、ない場合は絵文字）
-      let iconElement: Phaser.GameObjects.GameObject;
+      // アイコンHTML（画像がある場合は画像、ない場合は絵文字）
+      let iconHTML = '';
       if (this.textures.exists(item.id)) {
-        // 画像がある場合
-        const iconImage = this.add.image(-200, y, item.id);
-        iconImage.setDisplaySize(40, 40);  // アイコンサイズを40x40に設定
-        iconImage.setOrigin(0.5);
-        iconImage.setName(`shopItem_icon_${index}`);
-        iconElement = iconImage;
+        iconHTML = `<canvas class="shop-item-icon-image" width="40" height="40" data-item-id="${item.id}"></canvas>`;
       } else {
-        // 画像がない場合は絵文字を使用
-        const iconText = this.add.text(-200, y, item.icon, {
-          fontSize: '28px'
-        }).setOrigin(0.5).setName(`shopItem_icon_${index}`);
-        iconElement = iconText;
+        iconHTML = `<span class="shop-item-icon-emoji">${item.icon}</span>`;
       }
-      this.shopContainer.add(iconElement);
 
-      // 名前
+      // 名前の色
       const nameColor = item.equipped ? '#00ff00' : (item.owned ? '#aaaaaa' : '#ffffff');
-      const name = this.add.text(-140, y - 10, item.name, {
-          fontSize: '16px',
-          color: nameColor,
-          fontStyle: item.equipped ? 'bold' : 'normal'
-      }).setOrigin(0, 0.5).setName(`shopItem_name_${index}`);
-      this.shopContainer.add(name);
-
-      // 情報
-      const info = this.add.text(-140, y + 12, item.info, {
-          fontSize: '12px',
-          color: '#888888'
-      }).setOrigin(0, 0.5).setName(`shopItem_info_${index}`);
-      this.shopContainer.add(info);
+      const nameStyle = item.equipped ? 'font-weight: bold;' : '';
 
       // 価格または状態
       let priceText = '';
@@ -2219,29 +2107,79 @@ export default class GameScene extends Phaser.Scene {
         priceText = `${item.price.toLocaleString()} G`;
         priceColor = this.playerData.money >= item.price ? '#ffff00' : '#ff4444';
       }
+
+      const itemHTML = `
+        <div class="shop-item" data-index="${index}">
+          <div class="shop-item-icon">${iconHTML}</div>
+          <div class="shop-item-info">
+            <div class="shop-item-name" style="color: ${nameColor}; ${nameStyle}">${item.name}</div>
+            <div class="shop-item-desc">${item.info}</div>
+          </div>
+          <div class="shop-item-price" style="color: ${priceColor}">${priceText}</div>
+        </div>
+      `;
       
-      const price = this.add.text(180, y, priceText, {
-          fontSize: '16px',
-          color: priceColor,
-          fontStyle: 'bold'
-      }).setOrigin(0.5).setName(`shopItem_price_${index}`);
-      this.shopContainer.add(price);
+      itemsListEl.insertAdjacentHTML('beforeend', itemHTML);
+    });
+
+    // アイテムにイベントリスナーを追加
+    const itemElements = itemsListEl.querySelectorAll('.shop-item');
+    itemElements.forEach((itemEl, index) => {
+      itemEl.addEventListener('click', () => {
+        this.shopSelectedIndex = index;
+        this.updateShopSelection();
+        this.purchaseOrEquipItem();
+      });
+      itemEl.addEventListener('mouseenter', () => {
+        this.shopSelectedIndex = index;
+        this.updateShopSelection();
+      });
+    });
+
+    // 画像を描画
+    items.forEach((item, index) => {
+      if (this.textures.exists(item.id)) {
+        const canvas = itemsListEl.querySelector(`.shop-item[data-index="${index}"] .shop-item-icon-image`) as HTMLCanvasElement;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const frame = this.textures.getFrame(item.id);
+            ctx.clearRect(0, 0, 40, 40);
+            const sourceImage = frame.source.image as HTMLImageElement;
+            if (sourceImage) {
+                ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, 40, 40);
+            }
+          }
+        }
+      }
     });
 
     // 所持金を更新
-    const moneyDisplay = this.shopContainer.getByName('shopMoney') as Phaser.GameObjects.Text;
-    if (moneyDisplay) {
-      moneyDisplay.setText(`💰 所持金: ${this.playerData.money.toLocaleString()} G`);
+    const moneyEl = this.shopUIElement.querySelector('#shop-money') as HTMLElement;
+    if (moneyEl) {
+      moneyEl.textContent = `💰 所持金: ${this.playerData.money.toLocaleString()} G`;
     }
 
-    this.updateShopSelectionCursor();
+    this.updateShopSelection();
   }
 
-  updateShopSelectionCursor() {
-    const startY = -80;
-    const itemHeight = 65;
-    const y = startY + this.shopSelectedIndex * itemHeight;
-    this.shopSelectionCursor.setPosition(0, y);
+  updateShopSelection() {
+    if (!this.shopUIElement) return;
+    
+    const itemsListEl = this.shopUIElement.querySelector('#shop-items-list') as HTMLElement;
+    if (!itemsListEl) return;
+    
+    // すべてのアイテムから選択クラスを削除
+    const items = itemsListEl.querySelectorAll('.shop-item');
+    items.forEach(item => {
+      item.classList.remove('selected');
+    });
+    
+    // 選択されたアイテムにクラスを追加
+    const selectedItem = itemsListEl.querySelector(`.shop-item[data-index="${this.shopSelectedIndex}"]`);
+    if (selectedItem) {
+      selectedItem.classList.add('selected');
+    }
   }
 
   hasRod(rodId: string): boolean {
@@ -2389,7 +2327,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (newIndex !== this.shopSelectedIndex) {
         this.shopSelectedIndex = newIndex;
-        this.updateShopSelectionCursor();
+        this.updateShopSelection();
     }
   }
 }
