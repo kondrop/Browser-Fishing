@@ -57,13 +57,39 @@ canvas {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.85);
   display: none;
   justify-content: center;
   align-items: center;
   z-index: 2000;
   pointer-events: none;
-  backdrop-filter: blur(2px);
+}
+
+/* 最上位モーダル：アクティブ */
+.modal.is-open.is-topmost {
+  pointer-events: auto;
+}
+
+/* 背面モーダル：非アクティブ */
+.modal.is-open.is-behind {
+  pointer-events: none;
+}
+
+/* グローバルoverlay（1枚だけ） */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1999;
+  display: none;
+  pointer-events: none;
+}
+
+.modal-overlay.is-active {
+  display: block;
+  pointer-events: auto;
 }
 
 .modal-content {
@@ -127,13 +153,13 @@ canvas {
   width: 110px;
   height: 110px;
   cursor: pointer;
-  transition: all 0.2s;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .inventory-slot:hover {
   transform: scale(1.08) translateY(-2px);
-  filter: drop-shadow(0 4px 8px rgba(255, 255, 0, 0.3));
+  box-shadow: 0 4px 8px rgba(255, 255, 0, 0.3);
 }
 
 .inventory-slot.selected {
@@ -292,13 +318,13 @@ canvas {
   width: 100px;
   height: 100px;
   cursor: pointer;
-  transition: all 0.2s;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .book-slot:hover {
   transform: scale(1.08) translateY(-2px);
-  filter: drop-shadow(0 4px 8px rgba(255, 255, 0, 0.3));
+  box-shadow: 0 4px 8px rgba(255, 255, 0, 0.3);
 }
 
 .book-slot.selected {

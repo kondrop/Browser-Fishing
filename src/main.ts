@@ -6,6 +6,11 @@ const config: Phaser.Types.Core.GameConfig = {
   width: window.innerWidth,
   height: window.innerHeight,
   pixelArt: true,  // ドット絵をシャープに表示
+  fps: {
+    target: 60,  // ターゲットFPSを明示的に設定
+    forceSetTimeOut: false,
+    smoothStep: false
+  },
   physics: {
     default: 'arcade',
     arcade: {

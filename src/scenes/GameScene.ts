@@ -67,6 +67,14 @@ export default class GameScene extends Phaser.Scene {
   // インベントリUI（HTML/CSS）
   private inventoryUIElement!: HTMLElement;
   private inventorySlots: HTMLElement[] = [];
+  private inventorySlotElements: Array<{
+    slot: HTMLElement;
+    bg: HTMLElement;
+    image: HTMLCanvasElement;
+    emoji: HTMLElement;
+    name: HTMLElement;
+    price: HTMLElement;
+  }> = [];
   private inventoryOpen: boolean = false;
   private selectedSlotIndex: number = 0;
 
@@ -77,6 +85,16 @@ export default class GameScene extends Phaser.Scene {
   // 図鑑UI（HTML/CSS）
   private bookUIElement!: HTMLElement;
   private bookSlots: HTMLElement[] = [];
+  private bookSlotElements: Array<{
+    slot: HTMLElement;
+    bg: HTMLElement;
+    image: HTMLCanvasElement;
+    emoji: HTMLElement;
+    name: HTMLElement;
+    rarity: HTMLElement;
+  }> = [];
+  private bookProgressElement!: HTMLElement;
+  private bookPageTextElement!: HTMLElement;
   private bookOpen: boolean = false;
   private bookPage: number = 0;
   private bookSelectedIndex: number = 0;
@@ -85,12 +103,41 @@ export default class GameScene extends Phaser.Scene {
 
   // ショップUI（HTML/CSS）
   private shopUIElement!: HTMLElement;
+  private shopItemsListElement!: HTMLElement;
+  private shopMoneyElement!: HTMLElement;
   private shopOpen: boolean = false;
   private shopSelectedIndex: number = 0;
   private shopTab: 'rod' | 'bait' | 'lure' | 'inventory' = 'rod';
 
   // 操作説明テキスト（HTML/CSS）
   private controlsTextElement!: HTMLElement;
+
+  // デバッグ用FPS表示（HTML/CSS）
+  private debugFpsElement!: HTMLElement;
+
+  // パフォーマンス最適化用
+  private lastCameraX: number = 0;
+  private lastCameraY: number = 0;
+  private lastCameraWidth: number = 0;
+  private lastCameraHeight: number = 0;
+  private lastCanvasRect: DOMRect | null = null;
+  
+  // Canvas描画キャッシュ（画像のスケール済みデータを保持）
+  private canvasImageCache: Map<string, { canvas: HTMLCanvasElement; width: number; height: number }> = new Map();
+
+  // モーダルスタック管理
+  private modalStack: string[] = [];
+  private modalOverlayElement!: HTMLElement;
+  private scrollLockCount: number = 0;
+  
+  // モーダルID定義
+  private readonly MODAL_IDS = {
+    INVENTORY: 'inventory-modal',
+    DETAIL: 'detail-modal',
+    BOOK: 'book-modal',
+    BOOK_DETAIL: 'book-detail-modal',
+    SHOP: 'shop-modal',
+  } as const;
 
   constructor() {
     super('GameScene');
@@ -352,6 +399,9 @@ export default class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.fightContainer.add(fightHint);
 
+    // グローバルoverlayを作成（1枚だけ）
+    this.createModalOverlay();
+
     // ステータスUI
     this.createStatusUI();
 
@@ -387,17 +437,21 @@ export default class GameScene extends Phaser.Scene {
             }
         });
 
-        // ESCキーで閉じる
+        // ESCキーで閉じる（最上位モーダルのみ）
         this.input.keyboard.on('keydown-ESC', () => {
-            if (this.detailModalOpen) {
+            const topModalId = this.modalStack[this.modalStack.length - 1];
+            if (!topModalId) return;
+
+            // 最上位モーダルを閉じる
+            if (topModalId === this.MODAL_IDS.DETAIL) {
                 this.closeDetailModal();
-            } else if (this.inventoryOpen) {
+            } else if (topModalId === this.MODAL_IDS.INVENTORY) {
                 this.closeInventory();
-            } else if (this.bookDetailOpen) {
+            } else if (topModalId === this.MODAL_IDS.BOOK_DETAIL) {
                 this.closeBookDetail();
-            } else if (this.bookOpen) {
+            } else if (topModalId === this.MODAL_IDS.BOOK) {
                 this.closeBook();
-            } else if (this.shopOpen) {
+            } else if (topModalId === this.MODAL_IDS.SHOP) {
                 this.closeShop();
             }
         });
@@ -477,6 +531,17 @@ export default class GameScene extends Phaser.Scene {
     this.controlsTextElement = tempDiv2.firstElementChild as HTMLElement;
     document.body.appendChild(this.controlsTextElement);
 
+    // HTML/CSSでFPS表示を作成（画面左下、最前面に表示）
+    const debugFpsHTML = `
+      <div id="debug-fps" style="position: fixed; bottom: 10px; left: 10px; color: #00ff00; font-family: monospace; font-size: 14px; background: rgba(0, 0, 0, 0.7); padding: 5px 10px; border-radius: 4px; z-index: 3000; user-select: none; pointer-events: none;">
+        FPS: <span id="fps-value">0</span> | Delta: <span id="delta-value">0</span>ms
+      </div>
+    `;
+    const tempDiv3 = document.createElement('div');
+    tempDiv3.innerHTML = debugFpsHTML;
+    this.debugFpsElement = tempDiv3.firstElementChild as HTMLElement;
+    document.body.appendChild(this.debugFpsElement);
+
     // UI位置を画面サイズに合わせて初期化
     this.updateUIPositions();
 
@@ -484,22 +549,173 @@ export default class GameScene extends Phaser.Scene {
     this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
         // カメラサイズを更新
         this.cameras.main.setSize(gameSize.width, gameSize.height);
-        // UI位置を更新
+        // UI位置を更新（カメラサイズが変わったので強制更新）
+        this.lastCameraWidth = gameSize.width;
+        this.lastCameraHeight = gameSize.height;
+        this.lastCanvasRect = null; // キャッシュをクリアして強制更新
         this.updateUIPositions();
+        // モーダル位置も更新（リサイズ時のみ）
+        this.updateModalPositionsIfNeeded();
     });
 
-    // 定期的にモーダルの位置を更新（Canvasの位置が変わる可能性があるため）
-    this.time.addEvent({
-      delay: 100,
-      callback: () => {
-        const canvas = this.game.canvas;
-        if (canvas) {
-          const canvasRect = canvas.getBoundingClientRect();
-          this.updateModalPositions(canvasRect);
+    // モーダル位置の更新は必要時のみ（リサイズ時とモーダル表示時）
+  }
+
+  createModalOverlay() {
+    // グローバルoverlayを1つだけ作成
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'global-modal-overlay';
+    document.body.appendChild(overlay);
+    this.modalOverlayElement = overlay;
+  }
+
+  // モーダルスタック管理
+  private openModal(modalId: string) {
+    // スタックに追加
+    if (!this.modalStack.includes(modalId)) {
+      this.modalStack.push(modalId);
+    }
+
+    // スクロールロック（0→1の時だけ）
+    if (this.scrollLockCount === 0) {
+      document.body.style.overflow = 'hidden';
+    }
+    this.scrollLockCount++;
+
+    // すべてのモーダルの状態を更新
+    this.updateModalStates();
+  }
+
+  private closeModal(modalId: string) {
+    // スタックから削除
+    const index = this.modalStack.indexOf(modalId);
+    if (index !== -1) {
+      this.modalStack.splice(index, 1);
+    }
+
+    // スクロールロック解除（1→0の時だけ）
+    this.scrollLockCount--;
+    if (this.scrollLockCount === 0) {
+      document.body.style.overflow = '';
+    } else if (this.scrollLockCount < 0) {
+      this.scrollLockCount = 0; // 安全のため
+    }
+
+    // すべてのモーダルの状態を更新
+    this.updateModalStates();
+  }
+
+  private updateModalStates() {
+    const topModalId = this.modalStack.length > 0 ? this.modalStack[this.modalStack.length - 1] : undefined;
+    
+    // すべてのモーダル要素を取得
+    const allModals = [
+      { id: this.MODAL_IDS.INVENTORY, element: this.inventoryUIElement },
+      { id: this.MODAL_IDS.DETAIL, element: this.detailModalElement },
+      { id: this.MODAL_IDS.BOOK, element: this.bookUIElement },
+      { id: this.MODAL_IDS.BOOK_DETAIL, element: this.bookDetailElement },
+      { id: this.MODAL_IDS.SHOP, element: this.shopUIElement },
+    ];
+
+    allModals.forEach(({ id, element }) => {
+      if (!element) return;
+
+      const isOpen = this.modalStack.includes(id);
+      const isTopmost = topModalId !== undefined && id === topModalId;
+
+      // クラスを更新（毎回全適用で確実にリセット）
+      element.classList.remove('is-open', 'is-topmost', 'is-behind');
+      
+      if (isOpen) {
+        element.classList.add('is-open');
+        if (isTopmost) {
+          // 最上位モーダル：アクティブ状態
+          element.classList.add('is-topmost');
+          element.style.display = 'flex';
+          element.style.pointerEvents = 'auto'; // 明示的に設定
+          element.setAttribute('aria-hidden', 'false');
+          
+          // inert属性を確実に解除（両方の方法で）
+          if ('inert' in element) {
+            (element as any).inert = false;
+          }
+          element.removeAttribute('inert');
+          
+          // 背面から復帰した場合は更新を再開
+          this.resumeModalUpdates(id);
+        } else {
+          // 背面モーダル：非アクティブ状態
+          element.classList.add('is-behind');
+          element.style.pointerEvents = 'none'; // 明示的に設定
+          element.setAttribute('aria-hidden', 'true');
+          
+          // inert属性を付与（両方の方法で）
+          if ('inert' in element) {
+            (element as any).inert = true;
+          }
+          element.setAttribute('inert', '');
+          
+          // 背面モーダルの更新を停止
+          this.pauseModalUpdates(id);
         }
-      },
-      loop: true
+      } else {
+        // 閉じたモーダル：完全に非表示
+        element.style.display = 'none';
+        element.style.pointerEvents = 'none';
+        element.setAttribute('aria-hidden', 'true');
+        
+        // inert属性を確実に解除
+        if ('inert' in element) {
+          (element as any).inert = false;
+        }
+        element.removeAttribute('inert');
+      }
     });
+
+    // overlayの表示/非表示（モーダルが1枚でも開いていれば表示）
+    // 毎回確実に状態を更新（差分更新ではなく全適用）
+    if (this.modalOverlayElement) {
+      // クラスを一旦削除してから追加（確実に状態をリセット）
+      this.modalOverlayElement.classList.remove('is-active');
+      if (this.modalStack.length > 0) {
+        this.modalOverlayElement.classList.add('is-active');
+      }
+      // スタイルも明示的に設定（念のため）
+      if (this.modalStack.length > 0) {
+        this.modalOverlayElement.style.display = 'block';
+      } else {
+        this.modalOverlayElement.style.display = 'none';
+      }
+    }
+
+    // Phaser側の入力制御
+    this.updatePhaserInputState();
+  }
+
+
+  private pauseModalUpdates(_modalId: string) {
+    // 背面モーダルの更新処理を停止
+    // 必要に応じてタイマーやObserverを停止
+    // 現在は特にタイマーやObserverは使用していないため、将来の拡張用
+  }
+
+  private resumeModalUpdates(_modalId: string) {
+    // 背面から復帰した場合の更新処理を再開
+    // 必要に応じてタイマーやObserverを再開
+  }
+
+  private updatePhaserInputState() {
+    // モーダルが1枚でも開いている間はPhaserの入力を無効化
+    const hasOpenModal = this.modalStack.length > 0;
+    if (this.input && this.input.keyboard) {
+      // 入力は無効化しない（ESCキーなどは必要）
+      // 代わりにゲーム操作のみを無効化
+      if (hasOpenModal) {
+        // モーダル中はプレイヤー移動などのゲーム操作を無効化
+        // これは既にupdate()内で処理されている
+      }
+    }
   }
 
   createStatusUI() {
@@ -532,31 +748,58 @@ export default class GameScene extends Phaser.Scene {
     this.updateStatusUI();
   }
 
+  private lastMoney: number = -1;
+  private lastInventoryCount: number = -1;
+  private lastMaxInventorySlots: number = -1;
+  private lastCaughtCount: number = -1;
+  private lastLevel: number = -1;
+  private lastExpProgress: number = -1;
+
   updateStatusUI() {
     if (!this.statusUIElement) return;
     
-    // 所持金
-    const moneyEl = this.statusUIElement.querySelector('#money-text');
-    if (moneyEl) moneyEl.textContent = `💰 ${this.playerData.money.toLocaleString()} G`;
+    // 所持金（変更時のみ更新）
+    const money = this.playerData.money;
+    if (money !== this.lastMoney) {
+      const moneyEl = this.statusUIElement.querySelector('#money-text');
+      if (moneyEl) moneyEl.textContent = `💰 ${money.toLocaleString()} G`;
+      this.lastMoney = money;
+    }
     
-    // インベントリ
-    const inventoryEl = this.statusUIElement.querySelector('#inventory-text');
-    if (inventoryEl) inventoryEl.textContent = `🎒 ${getInventoryCount(this.playerData)}/${this.playerData.maxInventorySlots}`;
+    // インベントリ（変更時のみ更新）
+    const inventoryCount = getInventoryCount(this.playerData);
+    const maxSlots = this.playerData.maxInventorySlots;
+    if (inventoryCount !== this.lastInventoryCount || maxSlots !== this.lastMaxInventorySlots) {
+      const inventoryEl = this.statusUIElement.querySelector('#inventory-text');
+      if (inventoryEl) inventoryEl.textContent = `🎒 ${inventoryCount}/${maxSlots}`;
+      this.lastInventoryCount = inventoryCount;
+      this.lastMaxInventorySlots = maxSlots;
+    }
     
-    // 図鑑
+    // 図鑑（変更時のみ更新）
     const totalFish = getRealFishCount();
     const caught = Array.from(this.playerData.caughtFishIds).filter(id => !id.startsWith('junk')).length;
-    const collectionEl = this.statusUIElement.querySelector('#collection-text');
-    if (collectionEl) collectionEl.textContent = `📖 図鑑 ${caught}/${totalFish}`;
+    if (caught !== this.lastCaughtCount) {
+      const collectionEl = this.statusUIElement.querySelector('#collection-text');
+      if (collectionEl) collectionEl.textContent = `📖 図鑑 ${caught}/${totalFish}`;
+      this.lastCaughtCount = caught;
+    }
     
-    // レベル
-    const levelEl = this.statusUIElement.querySelector('#level-text');
-    if (levelEl) levelEl.textContent = `⭐ Lv.${this.playerData.level}`;
+    // レベル（変更時のみ更新）
+    const level = this.playerData.level;
+    if (level !== this.lastLevel) {
+      const levelEl = this.statusUIElement.querySelector('#level-text');
+      if (levelEl) levelEl.textContent = `⭐ Lv.${level}`;
+      this.lastLevel = level;
+    }
     
-    // 経験値バー
+    // 経験値バー（変更時のみ更新）
     const expProgress = getExpProgress(this.playerData);
-    const expBarFill = this.statusUIElement.querySelector('#exp-bar-fill') as HTMLElement;
-    if (expBarFill) expBarFill.style.width = `${expProgress * 100}%`;
+    if (Math.abs(expProgress - this.lastExpProgress) > 0.001) {
+      const expBarFill = this.statusUIElement.querySelector('#exp-bar-fill') as HTMLElement;
+      if (expBarFill) expBarFill.style.width = `${expProgress * 100}%`;
+      this.lastExpProgress = expProgress;
+    }
   }
 
   updateUIPositions() {
@@ -571,7 +814,6 @@ export default class GameScene extends Phaser.Scene {
     // 画面上の相対位置をワールド座標に変換
     const screenCenterX = scrollX + width / 2;
     const screenCenterY = scrollY + height / 2;
-    const screenLeft = scrollX;
     const screenTop = scrollY;
     const screenRight = scrollX + width;
     const screenBottom = scrollY + height;
@@ -586,34 +828,42 @@ export default class GameScene extends Phaser.Scene {
     // ファイトUI（画面右側）
     this.fightContainer.setPosition(screenRight - 80, screenCenterY);
 
-    // PhaserのCanvas要素を取得
-    const canvas = this.game.canvas;
-    if (canvas) {
-      const canvasRect = canvas.getBoundingClientRect();
-      
-      // モーダルの位置をCanvasに合わせて更新
-      this.updateModalPositions(canvasRect);
-    }
+    // モーダル位置の更新はリサイズ時のみ（カメラ位置変更時は不要）
+    // モーダルは固定位置なので、カメラが動いても位置を更新する必要はない
   }
 
-  updateModalPositions(canvasRect: DOMRect) {
-    // すべてのモーダルをCanvasの位置に合わせて配置
-    const modals = [
-      this.inventoryUIElement,
-      this.detailModalElement,
-      this.bookUIElement,
-      this.bookDetailElement,
-      this.shopUIElement,
-    ];
+  updateModalPositionsIfNeeded() {
+    // Canvas要素を取得（必要時のみ）
+    const canvas = this.game.canvas;
+    if (!canvas) return;
+    
+    // キャッシュされた位置と比較して、変更がない場合はスキップ
+    const canvasRect = canvas.getBoundingClientRect();
+    if (this.lastCanvasRect && 
+        this.lastCanvasRect.left === canvasRect.left &&
+        this.lastCanvasRect.top === canvasRect.top &&
+        this.lastCanvasRect.width === canvasRect.width &&
+        this.lastCanvasRect.height === canvasRect.height) {
+      return;
+    }
+    
+    // キャッシュを更新
+    this.lastCanvasRect = canvasRect;
+    
+    // 開いているモーダルのみ更新
+    const modals: HTMLElement[] = [];
+    if (this.inventoryOpen && this.inventoryUIElement) modals.push(this.inventoryUIElement);
+    if (this.detailModalOpen && this.detailModalElement) modals.push(this.detailModalElement);
+    if (this.bookOpen && this.bookUIElement) modals.push(this.bookUIElement);
+    if (this.bookDetailOpen && this.bookDetailElement) modals.push(this.bookDetailElement);
+    if (this.shopOpen && this.shopUIElement) modals.push(this.shopUIElement);
 
     modals.forEach(modal => {
-      if (modal) {
-        modal.style.position = 'fixed';
-        modal.style.left = `${canvasRect.left}px`;
-        modal.style.top = `${canvasRect.top}px`;
-        modal.style.width = `${canvasRect.width}px`;
-        modal.style.height = `${canvasRect.height}px`;
-      }
+      modal.style.position = 'fixed';
+      modal.style.left = `${canvasRect.left}px`;
+      modal.style.top = `${canvasRect.top}px`;
+      modal.style.width = `${canvasRect.width}px`;
+      modal.style.height = `${canvasRect.height}px`;
     });
   }
 
@@ -631,25 +881,52 @@ export default class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
-    // UIをカメラ位置に追従させる（毎フレーム更新）
-    this.updateUIPositions();
+    // FPS表示を更新
+    if (this.debugFpsElement) {
+      const fpsValue = this.debugFpsElement.querySelector('#fps-value');
+      const deltaValue = this.debugFpsElement.querySelector('#delta-value');
+      if (fpsValue) fpsValue.textContent = Math.round(this.game.loop.actualFps).toString();
+      if (deltaValue) deltaValue.textContent = Math.round(delta).toString();
+    }
 
-    // インベントリが開いている場合は専用の操作
-    if (this.inventoryOpen) {
+    // モーダルが開いている場合はゲーム更新をスキップ（パフォーマンス最適化）
+    // ただし、オンラインマルチ対応のため完全停止はしない
+    const hasOpenModal = this.modalStack.length > 0;
+    const topModalId = this.modalStack[this.modalStack.length - 1];
+    
+    if (hasOpenModal) {
+      // 最上位モーダルの操作のみ処理
+      if (topModalId === this.MODAL_IDS.INVENTORY && !this.detailModalOpen) {
         this.handleInventoryNavigation();
         return;
-    }
+      }
 
-    // 図鑑が開いている場合は専用の操作
-    if (this.bookOpen) {
+      if (topModalId === this.MODAL_IDS.BOOK && !this.bookDetailOpen) {
         this.handleBookNavigation();
         return;
-    }
+      }
 
-    // ショップが開いている場合は専用の操作
-    if (this.shopOpen) {
+      if (topModalId === this.MODAL_IDS.SHOP) {
         this.handleShopNavigation();
         return;
+      }
+
+      // その他のモーダル（詳細モーダルなど）が最上位の場合は何もしない
+      // ただし、ネットワーク処理などは継続（将来のマルチ対応）
+      return;
+    }
+
+    // UIをカメラ位置に追従させる（カメラ位置が変わった時のみ更新）
+    const cam = this.cameras.main;
+    if (cam.scrollX !== this.lastCameraX || 
+        cam.scrollY !== this.lastCameraY ||
+        cam.width !== this.lastCameraWidth ||
+        cam.height !== this.lastCameraHeight) {
+      this.lastCameraX = cam.scrollX;
+      this.lastCameraY = cam.scrollY;
+      this.lastCameraWidth = cam.width;
+      this.lastCameraHeight = cam.height;
+      this.updateUIPositions();
     }
 
     // 水辺に入れないよう制限
@@ -1230,7 +1507,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     const inventoryHTML = `
-      <div id="inventory-modal" class="modal" style="display: none;">
+      <div id="inventory-modal" class="modal" style="display: none;" aria-hidden="true">
         <div class="modal-content inventory-modal">
           <div class="modal-header">
             <h2>🎒 インベントリ</h2>
@@ -1253,6 +1530,16 @@ export default class GameScene extends Phaser.Scene {
 
     // スロット要素を取得
     this.inventorySlots = Array.from(this.inventoryUIElement.querySelectorAll('.inventory-slot')) as HTMLElement[];
+
+    // スロットの子要素をキャッシュ
+    this.inventorySlotElements = this.inventorySlots.map(slot => ({
+      slot,
+      bg: slot.querySelector('.slot-bg') as HTMLElement,
+      image: slot.querySelector('.slot-image') as HTMLCanvasElement,
+      emoji: slot.querySelector('.slot-emoji') as HTMLElement,
+      name: slot.querySelector('.slot-name') as HTMLElement,
+      price: slot.querySelector('.slot-price') as HTMLElement,
+    }));
 
     // スロットにイベントリスナーを追加
     this.inventorySlots.forEach((slot, index) => {
@@ -1288,7 +1575,7 @@ export default class GameScene extends Phaser.Scene {
   createDetailModal() {
     // HTML/CSSで詳細モーダルを作成
     const detailHTML = `
-      <div id="detail-modal" class="modal" style="display: none;">
+      <div id="detail-modal" class="modal" style="display: none;" aria-hidden="true">
         <div class="modal-content detail-modal">
           <button class="modal-close" onclick="window.gameScene?.closeDetailModal()">✕</button>
           <div class="detail-content">
@@ -1331,20 +1618,21 @@ export default class GameScene extends Phaser.Scene {
     
     this.inventoryOpen = true;
     this.selectedSlotIndex = 0;
+    this.lastSelectedInventoryIndex = -1; // リセット
     this.updateInventoryLayout();  // レイアウトを更新
     this.updateInventorySlots();
     this.updateInventorySelection();
     if (this.inventoryUIElement) {
-      this.inventoryUIElement.style.display = 'flex';
-      this.inventoryUIElement.style.pointerEvents = 'auto';
+      this.openModal(this.MODAL_IDS.INVENTORY);
+      // モーダル位置を更新
+      this.updateModalPositionsIfNeeded();
     }
   }
 
   closeInventory() {
     this.inventoryOpen = false;
     if (this.inventoryUIElement) {
-      this.inventoryUIElement.style.display = 'none';
-      this.inventoryUIElement.style.pointerEvents = 'none';
+      this.closeModal(this.MODAL_IDS.INVENTORY);
     }
     if (this.detailModalOpen) {
         this.closeDetailModal();
@@ -1364,35 +1652,57 @@ export default class GameScene extends Phaser.Scene {
     
     // maxInventorySlotsに基づいてスロットを更新
     for (let i = 0; i < this.playerData.maxInventorySlots; i++) {
-        const slot = this.inventorySlots[i];
-        if (!slot) continue;
+        const slotData = this.inventorySlotElements[i];
+        if (!slotData) continue;
         
-        const slotBg = slot.querySelector('.slot-bg') as HTMLElement;
-        const slotImage = slot.querySelector('.slot-image') as HTMLCanvasElement;
-        const slotEmoji = slot.querySelector('.slot-emoji') as HTMLElement;
-        const slotName = slot.querySelector('.slot-name') as HTMLElement;
-        const slotPrice = slot.querySelector('.slot-price') as HTMLElement;
+        const { bg: slotBg, image: slotImage, emoji: slotEmoji, name: slotName, price: slotPrice } = slotData;
 
         if (i < flatInventory.length) {
             const fishId = flatInventory[i];
             const fish = getFishById(fishId);
             if (fish) {
                 // 画像があるかチェック
-                if (this.textures.exists(fishId)) {
-                    // Canvasに画像を描画
+                const hasTexture = this.textures.exists(fishId);
+                if (hasTexture) {
+                    // Canvasに画像を描画（画像が変わった時のみ）
                     const ctx = slotImage.getContext('2d');
                     if (ctx) {
-                        const frame = this.textures.getFrame(fishId);
-                        const maxSize = 70;
-                        const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
-                        const width = frame.width * scale;
-                        const height = frame.height * scale;
-                        
-                        ctx.clearRect(0, 0, 70, 70);
-                        const sourceImage = frame.source.image as HTMLImageElement;
-                        if (sourceImage) {
-                            ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 
-                                         (70 - width) / 2, (70 - height) / 2, width, height);
+                        // データ属性で前回のfishIdをチェック（最適化）
+                        const lastFishId = slotImage.getAttribute('data-fish-id');
+                        if (lastFishId !== fishId) {
+                            ctx.clearRect(0, 0, 70, 70);
+                            
+                            // キャッシュから取得または作成
+                            const cacheKey = `${fishId}_70`;
+                            let cached = this.canvasImageCache.get(cacheKey);
+                            
+                            if (!cached) {
+                                const frame = this.textures.getFrame(fishId);
+                                const maxSize = 70;
+                                const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+                                const width = frame.width * scale;
+                                const height = frame.height * scale;
+                                
+                                // キャッシュ用のCanvasを作成
+                                const cacheCanvas = document.createElement('canvas');
+                                cacheCanvas.width = width;
+                                cacheCanvas.height = height;
+                                const cacheCtx = cacheCanvas.getContext('2d');
+                                
+                                if (cacheCtx) {
+                                    const sourceImage = frame.source.image as HTMLImageElement;
+                                    if (sourceImage) {
+                                        cacheCtx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, width, height);
+                                    }
+                                }
+                                
+                                cached = { canvas: cacheCanvas, width, height };
+                                this.canvasImageCache.set(cacheKey, cached);
+                            }
+                            
+                            // キャッシュから描画
+                            ctx.drawImage(cached.canvas, (70 - cached.width) / 2, (70 - cached.height) / 2);
+                            slotImage.setAttribute('data-fish-id', fishId);
                         }
                     }
                     slotImage.style.display = 'block';
@@ -1415,6 +1725,7 @@ export default class GameScene extends Phaser.Scene {
             }
         } else {
             slotImage.style.display = 'none';
+            slotImage.removeAttribute('data-fish-id'); // クリア
             slotEmoji.textContent = '';
             slotEmoji.style.display = 'none';
             slotName.textContent = '';
@@ -1426,6 +1737,8 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  private lastSelectedInventoryIndex: number = -1;
+
   updateInventorySelection() {
     if (!this.inventoryUIElement || this.inventorySlots.length === 0) return;
     
@@ -1434,15 +1747,22 @@ export default class GameScene extends Phaser.Scene {
       this.selectedSlotIndex = Math.max(0, this.playerData.maxInventorySlots - 1);
     }
     
-    // すべてのスロットから選択クラスを削除
-    this.inventorySlots.forEach(slot => {
-      slot.classList.remove('selected');
-    });
+    // 前回と同じインデックスの場合はスキップ（最適化）
+    if (this.selectedSlotIndex === this.lastSelectedInventoryIndex) {
+      return;
+    }
+    
+    // 前回選択されていたスロットからクラスを削除
+    if (this.lastSelectedInventoryIndex >= 0 && this.inventorySlots[this.lastSelectedInventoryIndex]) {
+      this.inventorySlots[this.lastSelectedInventoryIndex].classList.remove('selected');
+    }
     
     // 選択されたスロットにクラスを追加
     if (this.inventorySlots[this.selectedSlotIndex]) {
       this.inventorySlots[this.selectedSlotIndex].classList.add('selected');
     }
+    
+    this.lastSelectedInventoryIndex = this.selectedSlotIndex;
   }
 
   openDetailModal() {
@@ -1506,15 +1826,15 @@ export default class GameScene extends Phaser.Scene {
     const color = rarityColors[fish.rarity];
     rarityText.style.color = `#${color.toString(16).padStart(6, '0')}`;
 
-    this.detailModalElement.style.display = 'flex';
-    this.detailModalElement.style.pointerEvents = 'auto';
+    this.openModal(this.MODAL_IDS.DETAIL);
+    // モーダル位置を更新
+    this.updateModalPositionsIfNeeded();
   }
 
   closeDetailModal() {
     this.detailModalOpen = false;
     if (this.detailModalElement) {
-      this.detailModalElement.style.display = 'none';
-      this.detailModalElement.style.pointerEvents = 'none';
+      this.closeModal(this.MODAL_IDS.DETAIL);
     }
   }
 
@@ -1595,6 +1915,20 @@ export default class GameScene extends Phaser.Scene {
     // スロット要素を取得
     this.bookSlots = Array.from(this.bookUIElement.querySelectorAll('.book-slot')) as HTMLElement[];
 
+    // スロットの子要素をキャッシュ
+    this.bookSlotElements = this.bookSlots.map(slot => ({
+      slot,
+      bg: slot.querySelector('.slot-bg') as HTMLElement,
+      image: slot.querySelector('.slot-image') as HTMLCanvasElement,
+      emoji: slot.querySelector('.slot-emoji') as HTMLElement,
+      name: slot.querySelector('.slot-name') as HTMLElement,
+      rarity: slot.querySelector('.slot-rarity') as HTMLElement,
+    }));
+
+    // 図鑑の進捗表示要素をキャッシュ
+    this.bookProgressElement = this.bookUIElement.querySelector('#book-progress') as HTMLElement;
+    this.bookPageTextElement = this.bookUIElement.querySelector('#book-page-text') as HTMLElement;
+
     // スロットにイベントリスナーを追加
     this.bookSlots.forEach((slot, index) => {
       slot.addEventListener('click', () => {
@@ -1616,7 +1950,7 @@ export default class GameScene extends Phaser.Scene {
   createBookDetailModal() {
     // HTML/CSSで図鑑詳細モーダルを作成
     const bookDetailHTML = `
-      <div id="book-detail-modal" class="modal" style="display: none;">
+      <div id="book-detail-modal" class="modal" style="display: none;" aria-hidden="true">
         <div class="modal-content detail-modal">
           <button class="modal-close" onclick="window.gameScene?.closeBookDetail()">✕</button>
           <div class="detail-content">
@@ -1658,22 +1992,25 @@ export default class GameScene extends Phaser.Scene {
     this.bookOpen = true;
     this.bookPage = 0;
     this.bookSelectedIndex = 0;
+    this.lastSelectedBookIndex = -1; // リセット
     this.updateBookSlots();
     this.updateBookSelection();
     if (this.bookUIElement) {
-      this.bookUIElement.style.display = 'flex';
-      this.bookUIElement.style.pointerEvents = 'auto';
+      this.openModal(this.MODAL_IDS.BOOK);
+      // モーダル位置を更新
+      this.updateModalPositionsIfNeeded();
     }
   }
 
   closeBook() {
-    this.bookOpen = false;
-    if (this.bookUIElement) {
-      this.bookUIElement.style.display = 'none';
-      this.bookUIElement.style.pointerEvents = 'none';
-    }
+    // 図鑑詳細が開いている場合は先に閉じる（スタックの順序を正しく保つため）
     if (this.bookDetailOpen) {
         this.closeBookDetail();
+    }
+    
+    this.bookOpen = false;
+    if (this.bookUIElement) {
+      this.closeModal(this.MODAL_IDS.BOOK);
     }
   }
 
@@ -1691,25 +2028,23 @@ export default class GameScene extends Phaser.Scene {
     const startIndex = this.bookPage * slotsPerPage;
     
     // コンプリート率更新
-    const progressEl = this.bookUIElement.querySelector('#book-progress') as HTMLElement;
     const caughtCount = Array.from(this.playerData.caughtFishIds).filter(id => !id.startsWith('junk')).length;
     const totalFish = fishList.length;
     const percentage = Math.floor((caughtCount / totalFish) * 100);
-    if (progressEl) progressEl.textContent = `発見: ${caughtCount}/${totalFish} (${percentage}%)`;
+    if (this.bookProgressElement) {
+      this.bookProgressElement.textContent = `発見: ${caughtCount}/${totalFish} (${percentage}%)`;
+    }
 
     // ページ表示更新
-    const pageTextEl = this.bookUIElement.querySelector('#book-page-text') as HTMLElement;
-    if (pageTextEl) pageTextEl.textContent = `ページ ${this.bookPage + 1}/${totalPages}`;
+    if (this.bookPageTextElement) {
+      this.bookPageTextElement.textContent = `ページ ${this.bookPage + 1}/${totalPages}`;
+    }
 
     for (let i = 0; i < slotsPerPage; i++) {
-        const slot = this.bookSlots[i];
-        if (!slot) continue;
+        const slotData = this.bookSlotElements[i];
+        if (!slotData) continue;
         
-        const slotBg = slot.querySelector('.slot-bg') as HTMLElement;
-        const slotImage = slot.querySelector('.slot-image') as HTMLCanvasElement;
-        const slotEmoji = slot.querySelector('.slot-emoji') as HTMLElement;
-        const slotName = slot.querySelector('.slot-name') as HTMLElement;
-        const slotRarity = slot.querySelector('.slot-rarity') as HTMLElement;
+        const { slot, bg: slotBg, image: slotImage, emoji: slotEmoji, name: slotName, rarity: slotRarity } = slotData;
 
         const fishIndex = startIndex + i;
         
@@ -1719,20 +2054,46 @@ export default class GameScene extends Phaser.Scene {
             
             if (isCaught) {
                 // 発見済み - 画像があれば画像、なければ絵文字
-                if (this.textures.exists(fish.id)) {
+                const hasTexture = this.textures.exists(fish.id);
+                if (hasTexture) {
                     const ctx = slotImage.getContext('2d');
                     if (ctx) {
-                        const frame = this.textures.getFrame(fish.id);
-                        const maxSize = 70;
-                        const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
-                        const width = frame.width * scale;
-                        const height = frame.height * scale;
-                        
-                        ctx.clearRect(0, 0, 70, 70);
-                        const sourceImage = frame.source.image as HTMLImageElement;
-                        if (sourceImage) {
-                            ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
-                                         (70 - width) / 2, (70 - height) / 2, width, height);
+                        // データ属性で前回のfishIdをチェック（最適化）
+                        const lastFishId = slotImage.getAttribute('data-fish-id');
+                        if (lastFishId !== fish.id) {
+                            ctx.clearRect(0, 0, 70, 70);
+                            
+                            // キャッシュから取得または作成
+                            const cacheKey = `${fish.id}_70`;
+                            let cached = this.canvasImageCache.get(cacheKey);
+                            
+                            if (!cached) {
+                                const frame = this.textures.getFrame(fish.id);
+                                const maxSize = 70;
+                                const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+                                const width = frame.width * scale;
+                                const height = frame.height * scale;
+                                
+                                // キャッシュ用のCanvasを作成
+                                const cacheCanvas = document.createElement('canvas');
+                                cacheCanvas.width = width;
+                                cacheCanvas.height = height;
+                                const cacheCtx = cacheCanvas.getContext('2d');
+                                
+                                if (cacheCtx) {
+                                    const sourceImage = frame.source.image as HTMLImageElement;
+                                    if (sourceImage) {
+                                        cacheCtx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, width, height);
+                                    }
+                                }
+                                
+                                cached = { canvas: cacheCanvas, width, height };
+                                this.canvasImageCache.set(cacheKey, cached);
+                            }
+                            
+                            // キャッシュから描画
+                            ctx.drawImage(cached.canvas, (70 - cached.width) / 2, (70 - cached.height) / 2);
+                            slotImage.setAttribute('data-fish-id', fish.id);
                         }
                     }
                     slotImage.style.display = 'block';
@@ -1770,6 +2131,7 @@ export default class GameScene extends Phaser.Scene {
         } else {
             // 空きスロット
             slotImage.style.display = 'none';
+            slotImage.removeAttribute('data-fish-id'); // クリア
             slotEmoji.textContent = '';
             slotEmoji.style.display = 'none';
             slotName.textContent = '';
@@ -1781,6 +2143,8 @@ export default class GameScene extends Phaser.Scene {
         }
     }
   }
+
+  private lastSelectedBookIndex: number = -1;
 
   updateBookSelection() {
     if (!this.bookUIElement || this.bookSlots.length === 0) return;
@@ -1795,21 +2159,29 @@ export default class GameScene extends Phaser.Scene {
         this.bookSelectedIndex = Math.max(0, visibleCount - 1);
     }
     
-    // すべてのスロットから選択クラスを削除
-    this.bookSlots.forEach(slot => {
-      slot.classList.remove('selected');
-    });
+    // 前回と同じインデックスの場合はスキップ（最適化）
+    if (this.bookSelectedIndex === this.lastSelectedBookIndex) {
+      return;
+    }
+    
+    // 前回選択されていたスロットからクラスを削除
+    if (this.lastSelectedBookIndex >= 0 && this.bookSlots[this.lastSelectedBookIndex]) {
+      this.bookSlots[this.lastSelectedBookIndex].classList.remove('selected');
+    }
     
     // 選択されたスロットにクラスを追加
     if (this.bookSlots[this.bookSelectedIndex]) {
       this.bookSlots[this.bookSelectedIndex].classList.add('selected');
     }
+    
+    this.lastSelectedBookIndex = this.bookSelectedIndex;
   }
 
   bookPrevPage() {
     if (this.bookPage > 0) {
         this.bookPage--;
         this.bookSelectedIndex = 0;
+        this.lastSelectedBookIndex = -1; // リセット
         this.updateBookSlots();
         this.updateBookSelection();
     }
@@ -1823,6 +2195,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.bookPage < totalPages - 1) {
         this.bookPage++;
         this.bookSelectedIndex = 0;
+        this.lastSelectedBookIndex = -1; // リセット
         this.updateBookSlots();
         this.updateBookSelection();
     }
@@ -1894,15 +2267,15 @@ export default class GameScene extends Phaser.Scene {
         rarityText.style.color = '#666666';
     }
 
-    this.bookDetailElement.style.display = 'flex';
-    this.bookDetailElement.style.pointerEvents = 'auto';
+    this.openModal(this.MODAL_IDS.BOOK_DETAIL);
+    // モーダル位置を更新
+    this.updateModalPositionsIfNeeded();
   }
 
   closeBookDetail() {
     this.bookDetailOpen = false;
     if (this.bookDetailElement) {
-      this.bookDetailElement.style.display = 'none';
-      this.bookDetailElement.style.pointerEvents = 'none';
+      this.closeModal(this.MODAL_IDS.BOOK_DETAIL);
     }
   }
 
@@ -1942,7 +2315,7 @@ export default class GameScene extends Phaser.Scene {
   createShopUI() {
     // HTML/CSSでショップUIを作成
     const shopHTML = `
-      <div id="shop-modal" class="modal" style="display: none;">
+      <div id="shop-modal" class="modal" style="display: none;" aria-hidden="true">
         <div class="modal-content shop-modal">
           <div class="modal-header">
             <h2>🏪 ショップ</h2>
@@ -1966,6 +2339,10 @@ export default class GameScene extends Phaser.Scene {
     tempDiv.innerHTML = shopHTML;
     this.shopUIElement = tempDiv.firstElementChild as HTMLElement;
     document.body.appendChild(this.shopUIElement);
+
+    // ショップの要素をキャッシュ
+    this.shopItemsListElement = this.shopUIElement.querySelector('#shop-items-list') as HTMLElement;
+    this.shopMoneyElement = this.shopUIElement.querySelector('#shop-money') as HTMLElement;
 
     // タブボタンのイベント
     const tabButtons = this.shopUIElement.querySelectorAll('.shop-tab');
@@ -1999,16 +2376,16 @@ export default class GameScene extends Phaser.Scene {
     this.updateShopContent();
     this.updateShopTabs();
     if (this.shopUIElement) {
-      this.shopUIElement.style.display = 'flex';
-      this.shopUIElement.style.pointerEvents = 'auto';
+      this.openModal(this.MODAL_IDS.SHOP);
+      // モーダル位置を更新
+      this.updateModalPositionsIfNeeded();
     }
   }
 
   closeShop() {
     this.shopOpen = false;
     if (this.shopUIElement) {
-      this.shopUIElement.style.display = 'none';
-      this.shopUIElement.style.pointerEvents = 'none';
+      this.closeModal(this.MODAL_IDS.SHOP);
     }
   }
 
@@ -2026,13 +2403,16 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateShopContent() {
-    if (!this.shopUIElement) return;
+    if (!this.shopUIElement || !this.shopItemsListElement) return;
     
-    const itemsListEl = this.shopUIElement.querySelector('#shop-items-list') as HTMLElement;
-    if (!itemsListEl) return;
+    // 既存のアイテム要素を削除（innerHTMLを使わずに）
+    while (this.shopItemsListElement.firstChild) {
+      this.shopItemsListElement.removeChild(this.shopItemsListElement.firstChild);
+    }
     
-    // 古いアイテム表示を削除
-    itemsListEl.innerHTML = '';
+    // アイテム要素のキャッシュをクリア
+    this.shopItemElements = [];
+    this.lastSelectedShopIndex = -1;
     
     let items: { id: string; name: string; icon: string; price: number; info: string; owned: boolean; equipped: boolean }[] = [];
 
@@ -2079,17 +2459,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     items.forEach((item, index) => {
-      // アイコンHTML（画像がある場合は画像、ない場合は絵文字）
-      let iconHTML = '';
-      if (this.textures.exists(item.id)) {
-        iconHTML = `<canvas class="shop-item-icon-image" width="40" height="40" data-item-id="${item.id}"></canvas>`;
-      } else {
-        iconHTML = `<span class="shop-item-icon-emoji">${item.icon}</span>`;
-      }
-
       // 名前の色
       const nameColor = item.equipped ? '#00ff00' : (item.owned ? '#aaaaaa' : '#ffffff');
-      const nameStyle = item.equipped ? 'font-weight: bold;' : '';
 
       // 価格または状態
       let priceText = '';
@@ -2108,22 +2479,59 @@ export default class GameScene extends Phaser.Scene {
         priceColor = this.playerData.money >= item.price ? '#ffff00' : '#ff4444';
       }
 
-      const itemHTML = `
-        <div class="shop-item" data-index="${index}">
-          <div class="shop-item-icon">${iconHTML}</div>
-          <div class="shop-item-info">
-            <div class="shop-item-name" style="color: ${nameColor}; ${nameStyle}">${item.name}</div>
-            <div class="shop-item-desc">${item.info}</div>
-          </div>
-          <div class="shop-item-price" style="color: ${priceColor}">${priceText}</div>
-        </div>
-      `;
+      // DOM要素を直接作成（innerHTMLを使わない）
+      const itemEl = document.createElement('div');
+      itemEl.className = 'shop-item';
+      itemEl.setAttribute('data-index', index.toString());
       
-      itemsListEl.insertAdjacentHTML('beforeend', itemHTML);
+      const iconContainer = document.createElement('div');
+      iconContainer.className = 'shop-item-icon';
+      if (this.textures.exists(item.id)) {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'shop-item-icon-image';
+        canvas.width = 40;
+        canvas.height = 40;
+        canvas.setAttribute('data-item-id', item.id);
+        iconContainer.appendChild(canvas);
+      } else {
+        const emojiSpan = document.createElement('span');
+        emojiSpan.className = 'shop-item-icon-emoji';
+        emojiSpan.textContent = item.icon;
+        iconContainer.appendChild(emojiSpan);
+      }
+      
+      const infoContainer = document.createElement('div');
+      infoContainer.className = 'shop-item-info';
+      
+      const nameEl = document.createElement('div');
+      nameEl.className = 'shop-item-name';
+      nameEl.textContent = item.name;
+      nameEl.style.color = nameColor;
+      if (item.equipped) nameEl.style.fontWeight = 'bold';
+      
+      const descEl = document.createElement('div');
+      descEl.className = 'shop-item-desc';
+      descEl.textContent = item.info;
+      
+      infoContainer.appendChild(nameEl);
+      infoContainer.appendChild(descEl);
+      
+      const priceEl = document.createElement('div');
+      priceEl.className = 'shop-item-price';
+      priceEl.textContent = priceText;
+      priceEl.style.color = priceColor;
+      
+      itemEl.appendChild(iconContainer);
+      itemEl.appendChild(infoContainer);
+      itemEl.appendChild(priceEl);
+      
+      this.shopItemsListElement.appendChild(itemEl);
     });
 
-    // アイテムにイベントリスナーを追加
-    const itemElements = itemsListEl.querySelectorAll('.shop-item');
+    // アイテム要素をキャッシュしてイベントリスナーを追加
+    const itemElements = Array.from(this.shopItemsListElement.querySelectorAll('.shop-item')) as HTMLElement[];
+    this.shopItemElements = itemElements;
+    
     itemElements.forEach((itemEl, index) => {
       itemEl.addEventListener('click', () => {
         this.shopSelectedIndex = index;
@@ -2134,12 +2542,11 @@ export default class GameScene extends Phaser.Scene {
         this.shopSelectedIndex = index;
         this.updateShopSelection();
       });
-    });
-
-    // 画像を描画
-    items.forEach((item, index) => {
-      if (this.textures.exists(item.id)) {
-        const canvas = itemsListEl.querySelector(`.shop-item[data-index="${index}"] .shop-item-icon-image`) as HTMLCanvasElement;
+      
+      // 画像を描画（画像がある場合）
+      const item = items[index];
+      if (item && this.textures.exists(item.id)) {
+        const canvas = itemEl.querySelector('.shop-item-icon-image') as HTMLCanvasElement;
         if (canvas) {
           const ctx = canvas.getContext('2d');
           if (ctx) {
@@ -2147,7 +2554,7 @@ export default class GameScene extends Phaser.Scene {
             ctx.clearRect(0, 0, 40, 40);
             const sourceImage = frame.source.image as HTMLImageElement;
             if (sourceImage) {
-                ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, 40, 40);
+              ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, 40, 40);
             }
           }
         }
@@ -2155,31 +2562,35 @@ export default class GameScene extends Phaser.Scene {
     });
 
     // 所持金を更新
-    const moneyEl = this.shopUIElement.querySelector('#shop-money') as HTMLElement;
-    if (moneyEl) {
-      moneyEl.textContent = `💰 所持金: ${this.playerData.money.toLocaleString()} G`;
+    if (this.shopMoneyElement) {
+      this.shopMoneyElement.textContent = `💰 所持金: ${this.playerData.money.toLocaleString()} G`;
     }
 
     this.updateShopSelection();
   }
 
+  private lastSelectedShopIndex: number = -1;
+  private shopItemElements: HTMLElement[] = [];
+
   updateShopSelection() {
     if (!this.shopUIElement) return;
     
-    const itemsListEl = this.shopUIElement.querySelector('#shop-items-list') as HTMLElement;
-    if (!itemsListEl) return;
+    // 前回と同じインデックスの場合はスキップ（最適化）
+    if (this.shopSelectedIndex === this.lastSelectedShopIndex) {
+      return;
+    }
     
-    // すべてのアイテムから選択クラスを削除
-    const items = itemsListEl.querySelectorAll('.shop-item');
-    items.forEach(item => {
-      item.classList.remove('selected');
-    });
+    // 前回選択されていたアイテムからクラスを削除
+    if (this.lastSelectedShopIndex >= 0 && this.shopItemElements[this.lastSelectedShopIndex]) {
+      this.shopItemElements[this.lastSelectedShopIndex].classList.remove('selected');
+    }
     
     // 選択されたアイテムにクラスを追加
-    const selectedItem = itemsListEl.querySelector(`.shop-item[data-index="${this.shopSelectedIndex}"]`);
-    if (selectedItem) {
-      selectedItem.classList.add('selected');
+    if (this.shopItemElements[this.shopSelectedIndex]) {
+      this.shopItemElements[this.shopSelectedIndex].classList.add('selected');
     }
+    
+    this.lastSelectedShopIndex = this.shopSelectedIndex;
   }
 
   hasRod(rodId: string): boolean {
