@@ -21,6 +21,15 @@ export const rarityStars: Record<Rarity, string> = {
   [Rarity.LEGENDARY]: raritySettings[Rarity.LEGENDARY].stars,
 };
 
+// レア度による星の数（1-5）
+export const rarityStarCount: Record<Rarity, number> = {
+  [Rarity.COMMON]: 1,
+  [Rarity.UNCOMMON]: 2,
+  [Rarity.RARE]: 3,
+  [Rarity.EPIC]: 4,
+  [Rarity.LEGENDARY]: 5,
+};
+
 // レア度による色
 export const rarityColors: Record<Rarity, number> = {
   [Rarity.COMMON]: raritySettings[Rarity.COMMON].color,

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
-import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, type RarityBonuses } from '../data/fish';
+import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, type RarityBonuses } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
 import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus } from '../data/inventory';
 import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, getRodById, getBaitById, getLureById, getNextRod, getNextInventoryUpgrade } from '../data/shopConfig';
@@ -101,11 +101,24 @@ export default class GameScene extends Phaser.Scene {
   private bookDetailElement!: HTMLElement;
   private bookDetailOpen: boolean = false;
 
+  // 統合BookUI（2ペイン）
+  private unifiedBookUIElement!: HTMLElement;
+  private unifiedBookOpen: boolean = false;
+  private unifiedBookTab: 'inventory' | 'pedia' = 'inventory';
+  private unifiedBookSelectedId: string | null = null;
+  private unifiedBookListItems: HTMLElement[] = [];
+  private unifiedBookListScrollElement!: HTMLElement;
+  private unifiedBookDetailElement!: HTMLElement;
+  private unifiedBookDetailPlaceholderElement!: HTMLElement;
+
   // ショップUI（HTML/CSS）
   private shopUIElement!: HTMLElement;
   private shopItemsListElement!: HTMLElement;
   private shopMoneyElement!: HTMLElement;
   private shopOpen: boolean = false;
+
+  // 魚の画像マッピング（ID → ファイル名）
+  private fishImageMap: { [id: string]: string } = {};
   private shopSelectedIndex: number = 0;
   private shopTab: 'rod' | 'bait' | 'lure' | 'inventory' = 'rod';
 
@@ -185,6 +198,9 @@ export default class GameScene extends Phaser.Scene {
       'junk_can': '空き缶',
       'junk_tire': 'タイヤ',
     };
+    
+    // マッピングをクラスプロパティに保存
+    this.fishImageMap = fishImages;
     
     for (const [fishId, fileName] of Object.entries(fishImages)) {
       this.load.image(fishId, `/images/fish/${fileName}.png`);
@@ -417,6 +433,9 @@ export default class GameScene extends Phaser.Scene {
     // 図鑑UI
     this.createBookUI();
 
+    // 統合BookUI（2ペイン）
+    this.createUnifiedBookUI();
+
     // ショップUI
     this.createShopUI();
 
@@ -431,17 +450,27 @@ export default class GameScene extends Phaser.Scene {
             }
         });
 
-        // Iキーでインベントリ表示
+        // Iキーでインベントリ表示（統合BookUI）
         this.input.keyboard.on('keydown-I', () => {
-            if (this.detailModalOpen) {
-                this.closeDetailModal();
+            if (this.unifiedBookOpen) {
+                if (this.unifiedBookTab === 'inventory') {
+                    this.closeUnifiedBook();
+                } else {
+                    this.switchUnifiedBookTab('inventory');
+                }
             } else {
-                this.toggleInventory();
+                this.openUnifiedBook('inventory');
             }
         });
 
         // ESCキーで閉じる（最上位モーダルのみ）
         this.input.keyboard.on('keydown-ESC', () => {
+            // 統合BookUIが開いている場合は閉じる
+            if (this.unifiedBookOpen) {
+                this.closeUnifiedBook();
+                return;
+            }
+
             const topModalId = this.modalStack[this.modalStack.length - 1];
             if (!topModalId) return;
 
@@ -461,7 +490,10 @@ export default class GameScene extends Phaser.Scene {
 
         // エンターキーで詳細を開く/購入
         this.input.keyboard.on('keydown-ENTER', () => {
-            if (this.inventoryOpen && !this.detailModalOpen) {
+            if (this.unifiedBookOpen) {
+                // 統合BookUIでは既に詳細が表示されているので何もしない
+                // （選択アイテムの詳細は自動で表示される）
+            } else if (this.inventoryOpen && !this.detailModalOpen) {
                 this.openDetailModal();
             } else if (this.bookOpen && !this.bookDetailOpen) {
                 this.openBookDetail();
@@ -470,12 +502,16 @@ export default class GameScene extends Phaser.Scene {
             }
         });
 
-        // Bキーで図鑑表示
+        // Bキーで図鑑表示（統合BookUI）
         this.input.keyboard.on('keydown-B', () => {
-            if (this.bookDetailOpen) {
-                this.closeBookDetail();
+            if (this.unifiedBookOpen) {
+                if (this.unifiedBookTab === 'pedia') {
+                    this.closeUnifiedBook();
+                } else {
+                    this.switchUnifiedBookTab('pedia');
+                }
             } else {
-                this.toggleBook();
+                this.openUnifiedBook('pedia');
             }
         });
 
@@ -486,16 +522,20 @@ export default class GameScene extends Phaser.Scene {
             }
         });
 
-        // Qキーで前のページ
+        // Qキーで前のページ（統合BookUIが開いていない時のみ）
         this.input.keyboard.on('keydown-Q', () => {
-            if (this.bookOpen && !this.bookDetailOpen) {
+            if (this.unifiedBookOpen) {
+                this.switchUnifiedBookTab('inventory');
+            } else if (this.bookOpen && !this.bookDetailOpen) {
                 this.bookPrevPage();
             }
         });
 
-        // Eキーで次のページ（インベントリが閉じている時のみ）
+        // Eキーで次のページ（統合BookUIが開いていない時のみ）
         this.input.keyboard.on('keydown-W', () => {
-            if (this.bookOpen && !this.bookDetailOpen) {
+            if (this.unifiedBookOpen) {
+                this.switchUnifiedBookTab('pedia');
+            } else if (this.bookOpen && !this.bookDetailOpen) {
                 this.bookNextPage();
             }
         });
@@ -527,7 +567,7 @@ export default class GameScene extends Phaser.Scene {
     
     // HTML/CSSで操作説明を作成
     const controlsHTML = `
-      <div id="controls-text" class="controls-text">移動: 矢印 | 釣り: SPACE | 売却: E | 持ち物: I | 図鑑: B | ショップ: S</div>
+      <div id="controls-text" class="controls-text">移動: 矢印 | 釣り: SPACE | 売却: E | 持ち物/図鑑: I/B | ショップ: S</div>
     `;
     const tempDiv2 = document.createElement('div');
     tempDiv2.innerHTML = controlsHTML;
@@ -880,6 +920,14 @@ export default class GameScene extends Phaser.Scene {
     const earnings = sellAllFish(this.playerData);
     savePlayerData(this.playerData);
     this.updateStatusUI();
+    
+    // 統合BookUIが開いている場合はリストを更新
+    if (this.unifiedBookOpen) {
+      this.updateUnifiedBookList();
+      this.unifiedBookSelectedId = null;
+      this.updateUnifiedBookDetail();
+    }
+    
     this.showResult(`${count}匹を売却！ +${earnings.toLocaleString()} G`, 2000);
   }
 
@@ -890,6 +938,12 @@ export default class GameScene extends Phaser.Scene {
       const deltaValue = this.debugFpsElement.querySelector('#delta-value');
       if (fpsValue) fpsValue.textContent = Math.round(this.game.loop.actualFps).toString();
       if (deltaValue) deltaValue.textContent = Math.round(delta).toString();
+    }
+
+    // 統合BookUIが開いている場合はキーボード操作を処理
+    if (this.unifiedBookOpen) {
+      this.handleUnifiedBookNavigation();
+      return;
     }
 
     // モーダルが開いている場合はゲーム更新をスキップ（パフォーマンス最適化）
@@ -1406,6 +1460,11 @@ export default class GameScene extends Phaser.Scene {
             const leveledUp = addExp(this.playerData, getExpByRarity(this.currentFish.rarity));
             savePlayerData(this.playerData);
             this.updateStatusUI();
+            
+            // 統合BookUIが開いている場合はリストを更新
+            if (this.unifiedBookOpen) {
+              this.updateUnifiedBookList();
+            }
 
             const stars = rarityStars[this.currentFish.rarity];
             const duration = config.result['6-2_成功表示時間'] * 1000;
@@ -1419,6 +1478,11 @@ export default class GameScene extends Phaser.Scene {
 
         // インベントリに追加
         const leveledUp = addFishToInventory(this.playerData, this.currentFish);
+        
+        // 統合BookUIが開いている場合はリストを更新
+        if (this.unifiedBookOpen) {
+          this.updateUnifiedBookList();
+        }
         savePlayerData(this.playerData);
         this.updateStatusUI();
 
@@ -1609,27 +1673,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   toggleInventory() {
-    if (this.inventoryOpen) {
-        this.closeInventory();
-    } else {
-        this.openInventory();
-    }
+    // 統合BookUIを使用
+    this.toggleUnifiedBook('inventory');
   }
 
   openInventory() {
-    if (this.state !== FishingState.IDLE) return;
-    
-    this.inventoryOpen = true;
-    this.selectedSlotIndex = 0;
-    this.lastSelectedInventoryIndex = -1; // リセット
-    this.updateInventoryLayout();  // レイアウトを更新
-    this.updateInventorySlots();
-    this.updateInventorySelection();
-    if (this.inventoryUIElement) {
-      this.openModal(this.MODAL_IDS.INVENTORY);
-      // モーダル位置を更新
-      this.updateModalPositionsIfNeeded();
-    }
+    // 統合BookUIを使用（既存コードとの互換性のため残す）
+    this.openUnifiedBook('inventory');
   }
 
   closeInventory() {
@@ -1822,7 +1872,7 @@ export default class GameScene extends Phaser.Scene {
     
     nameText.textContent = fish.name;
     rarityText.textContent = rarityStars[fish.rarity];
-    descText.textContent = fish.description;
+    descText.innerHTML = fish.description.replace(/\n/g, '<br>');
     infoText.textContent = `💰 ${fish.price}G`;
 
     // レア度に応じた色
@@ -1950,6 +2000,434 @@ export default class GameScene extends Phaser.Scene {
     this.updateBookSelection();
   }
 
+  // ============================================
+  // 統合BookUI（2ペイン）
+  // ============================================
+
+  createUnifiedBookUI() {
+    const bookHTML = `
+      <div id="book-ui" class="book-ui">
+        <div class="book-container">
+          <button class="book-close" onclick="window.gameScene?.closeUnifiedBook()">✕</button>
+          <div class="book-header">
+            <h2 class="book-title"></h2>
+            <div class="book-tabs">
+              <button class="book-tab-button active" data-tab="inventory">バッグ</button>
+              <button class="book-tab-button" data-tab="pedia">図鑑</button>
+            </div>
+          </div>
+          <div class="book-content">
+            <div class="book-left-pane">
+              <div class="book-list-header" id="book-list-header">所持品一覧</div>
+              <div class="book-list-scroll" id="book-list-scroll"></div>
+            </div>
+            <div class="book-right-pane">
+              <div class="book-detail-placeholder" id="book-detail-placeholder">
+                左のリストから選択してください
+              </div>
+              <div class="book-detail-content" id="book-detail-content">
+                <div class="book-detail-top">
+                  <div class="book-detail-image-container">
+                    <canvas id="book-detail-image" class="book-detail-image" width="120" height="120" style="display: none;"></canvas>
+                    <div id="book-detail-emoji" class="book-detail-emoji" style="display: none;"></div>
+                  </div>
+                  <div class="book-detail-header">
+                    <div id="book-detail-name" class="book-detail-name"></div>
+                    <div id="book-detail-rarity" class="book-detail-rarity"></div>
+                  </div>
+                </div>
+                <div id="book-detail-info" class="book-detail-info"></div>
+                <div id="book-detail-desc" class="book-detail-desc"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = bookHTML;
+    this.unifiedBookUIElement = tempDiv.firstElementChild as HTMLElement;
+    document.body.appendChild(this.unifiedBookUIElement);
+
+    // 要素をキャッシュ
+    this.unifiedBookListScrollElement = this.unifiedBookUIElement.querySelector('#book-list-scroll') as HTMLElement;
+    this.unifiedBookDetailElement = this.unifiedBookUIElement.querySelector('#book-detail-content') as HTMLElement;
+    this.unifiedBookDetailPlaceholderElement = this.unifiedBookUIElement.querySelector('#book-detail-placeholder') as HTMLElement;
+
+    // タブボタンのイベント
+    const tabButtons = this.unifiedBookUIElement.querySelectorAll('.book-tab-button');
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = (btn as HTMLElement).getAttribute('data-tab') as 'inventory' | 'pedia';
+        this.switchUnifiedBookTab(tab);
+      });
+    });
+
+    // グローバルに参照を保存
+    (window as any).gameScene = this;
+  }
+
+  switchUnifiedBookTab(tab: 'inventory' | 'pedia') {
+    this.unifiedBookTab = tab;
+    this.unifiedBookSelectedId = null;
+
+    // タブボタンのアクティブ状態を更新
+    const tabButtons = this.unifiedBookUIElement.querySelectorAll('.book-tab-button');
+    tabButtons.forEach(btn => {
+      const btnTab = (btn as HTMLElement).getAttribute('data-tab');
+      if (btnTab === tab) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // リストヘッダーを更新（ヘッダーは非表示にするか、空にする）
+    const header = this.unifiedBookUIElement.querySelector('#book-list-header') as HTMLElement;
+    if (header) {
+      header.textContent = '';
+    }
+
+    // リストと詳細を更新
+    this.updateUnifiedBookList();
+    this.updateUnifiedBookDetail();
+  }
+
+  updateUnifiedBookList() {
+    if (!this.unifiedBookListScrollElement) return;
+
+    // 既存のアイテムをクリア
+    this.unifiedBookListScrollElement.innerHTML = '';
+    this.unifiedBookListItems = [];
+
+    if (this.unifiedBookTab === 'inventory') {
+      // インベントリタブ
+      const flatInventory: string[] = [];
+      for (const item of this.playerData.inventory) {
+        for (let j = 0; j < item.count; j++) {
+          flatInventory.push(item.fishId);
+        }
+      }
+
+      flatInventory.forEach((fishId, index) => {
+        const fish = getFishById(fishId);
+        if (!fish) return;
+
+        const item = this.createUnifiedBookListItem(fish, index, true);
+        this.unifiedBookListScrollElement.appendChild(item);
+        this.unifiedBookListItems.push(item);
+      });
+    } else {
+      // 図鑑タブ
+      const fishList = this.getRealFishList();
+      fishList.forEach((fish, index) => {
+        const isCaught = this.playerData.caughtFishIds.has(fish.id);
+        const item = this.createUnifiedBookListItem(fish, index, isCaught);
+        this.unifiedBookListScrollElement.appendChild(item);
+        this.unifiedBookListItems.push(item);
+      });
+    }
+  }
+
+  createUnifiedBookListItem(fish: any, index: number, isCaught: boolean): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'book-list-item';
+    if (!isCaught && this.unifiedBookTab === 'pedia') {
+      item.classList.add('book-list-item-unknown');
+    }
+    item.setAttribute('data-fish-id', fish.id);
+    item.setAttribute('data-index', index.toString());
+
+    // アイコン
+    const icon = document.createElement('div');
+    icon.className = 'book-list-item-icon';
+
+    const hasTexture = this.textures.exists(fish.id);
+    if (hasTexture && isCaught) {
+      const img = document.createElement('img');
+      const fileName = this.fishImageMap[fish.id];
+      if (fileName) {
+        img.src = `/images/fish/${fileName}.png`;
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'contain';
+        icon.appendChild(img);
+      } else {
+        // マッピングが見つからない場合はcanvasにフォールバック
+        const canvas = document.createElement('canvas');
+        canvas.width = 60;
+        canvas.height = 60;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const frame = this.textures.getFrame(fish.id);
+          const maxSize = 60;
+          const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+          const width = frame.width * scale;
+          const height = frame.height * scale;
+
+          const sourceImage = frame.source.image as HTMLImageElement;
+          if (sourceImage) {
+            ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
+                         (60 - width) / 2, (60 - height) / 2, width, height);
+          }
+        }
+        icon.appendChild(canvas);
+      }
+    } else {
+      const emoji = document.createElement('div');
+      emoji.className = 'book-list-item-emoji';
+      if (isCaught || this.unifiedBookTab === 'inventory') {
+        emoji.textContent = fish.emoji;
+      } else {
+        emoji.textContent = '?';
+      }
+      icon.appendChild(emoji);
+    }
+
+    // 情報
+    const info = document.createElement('div');
+    info.className = 'book-list-item-info';
+
+    const name = document.createElement('div');
+    name.className = 'book-list-item-name';
+    if (isCaught || this.unifiedBookTab === 'inventory') {
+      name.textContent = fish.name;
+    } else {
+      name.textContent = '？？？';
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'book-list-item-meta';
+    if (this.unifiedBookTab === 'inventory') {
+      meta.textContent = `💰 ${fish.price}G`;
+    } else {
+      if (isCaught) {
+        meta.textContent = `💰 ${fish.price}G | ${rarityStars[fish.rarity]}`;
+      } else {
+        meta.textContent = '未発見';
+      }
+    }
+
+    info.appendChild(name);
+    info.appendChild(meta);
+
+    item.appendChild(icon);
+    item.appendChild(info);
+
+    // クリックイベント
+    item.addEventListener('click', () => {
+      this.selectUnifiedBookItem(fish.id, index);
+    });
+
+    item.addEventListener('mouseenter', () => {
+      this.selectUnifiedBookItem(fish.id, index);
+    });
+
+    return item;
+  }
+
+  selectUnifiedBookItem(fishId: string, index: number) {
+    this.unifiedBookSelectedId = fishId;
+
+    // 選択状態を更新
+    this.unifiedBookListItems.forEach((item, i) => {
+      if (i === index) {
+        item.classList.add('selected');
+        // スクロールして表示範囲内に
+        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        item.classList.remove('selected');
+      }
+    });
+
+    // 詳細を更新
+    this.updateUnifiedBookDetail();
+  }
+
+  updateUnifiedBookDetail() {
+    if (!this.unifiedBookDetailElement || !this.unifiedBookDetailPlaceholderElement) return;
+
+    if (!this.unifiedBookSelectedId) {
+      // 未選択時はプレースホルダーを表示
+      this.unifiedBookDetailPlaceholderElement.style.display = 'flex';
+      this.unifiedBookDetailElement.classList.remove('active');
+      return;
+    }
+
+    const fish = getFishById(this.unifiedBookSelectedId);
+    if (!fish) return;
+
+    const isCaught = this.unifiedBookTab === 'inventory' || this.playerData.caughtFishIds.has(fish.id);
+
+    // プレースホルダーを非表示
+    this.unifiedBookDetailPlaceholderElement.style.display = 'none';
+    this.unifiedBookDetailElement.classList.add('active');
+
+    // 要素を取得
+    const imageCanvas = this.unifiedBookDetailElement.querySelector('#book-detail-image') as HTMLCanvasElement;
+    const emoji = this.unifiedBookDetailElement.querySelector('#book-detail-emoji') as HTMLElement;
+    const name = this.unifiedBookDetailElement.querySelector('#book-detail-name') as HTMLElement;
+    const rarity = this.unifiedBookDetailElement.querySelector('#book-detail-rarity') as HTMLElement;
+    const info = this.unifiedBookDetailElement.querySelector('#book-detail-info') as HTMLElement;
+    const desc = this.unifiedBookDetailElement.querySelector('#book-detail-desc') as HTMLElement;
+
+    if (isCaught) {
+      // 発見済み/所持品
+      const hasTexture = this.textures.exists(fish.id);
+      if (hasTexture) {
+        const ctx = imageCanvas.getContext('2d');
+        if (ctx) {
+          const frame = this.textures.getFrame(fish.id);
+          const maxSize = 120;
+          const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+          const width = frame.width * scale;
+          const height = frame.height * scale;
+
+          ctx.clearRect(0, 0, 120, 120);
+          const sourceImage = frame.source.image as HTMLImageElement;
+          if (sourceImage) {
+            ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
+                         (120 - width) / 2, (120 - height) / 2, width, height);
+          }
+        }
+        imageCanvas.style.display = 'block';
+        emoji.style.display = 'none';
+      } else {
+        imageCanvas.style.display = 'none';
+        emoji.textContent = fish.emoji;
+        emoji.style.display = 'block';
+      }
+
+      name.textContent = fish.name;
+      const starCount = rarityStarCount[fish.rarity];
+      const color = rarityColors[fish.rarity];
+      const colorHex = `#${color.toString(16).padStart(6, '0')}`;
+      rarity.innerHTML = '';
+      rarity.style.color = colorHex;
+      for (let i = 0; i < 5; i++) {
+        const star = document.createElement('span');
+        star.className = 'star';
+        star.textContent = '★';
+        if (i >= starCount) {
+          star.classList.add('star-inactive');
+        }
+        rarity.appendChild(star);
+      }
+
+      info.innerHTML = `
+        最大サイズ: ${fish.maxSize}cm<br>
+        売値: ${fish.price}G
+      `;
+
+      desc.innerHTML = (fish.description || '説明').replace(/\n/g, '<br>');
+    } else {
+      // 未発見（図鑑のみ）
+      imageCanvas.style.display = 'none';
+      emoji.textContent = '?';
+      emoji.style.display = 'block';
+
+      name.textContent = '？？？';
+      const starCount = rarityStarCount[fish.rarity];
+      rarity.innerHTML = '';
+      rarity.style.color = '#666666';
+      for (let i = 0; i < 5; i++) {
+        const star = document.createElement('span');
+        star.className = 'star';
+        star.textContent = '★';
+        if (i >= starCount) {
+          star.classList.add('star-inactive');
+        }
+        rarity.appendChild(star);
+      }
+
+      info.innerHTML = `
+        状態: 未発見
+      `;
+
+      desc.innerHTML = 'まだ発見されていません...<br>この魚を釣って図鑑を完成させよう！';
+    }
+  }
+
+  openUnifiedBook(tab: 'inventory' | 'pedia' = 'inventory') {
+    if (this.state !== FishingState.IDLE) return;
+
+    this.unifiedBookOpen = true;
+    this.unifiedBookTab = tab;
+    this.unifiedBookSelectedId = null;
+
+    if (this.unifiedBookUIElement) {
+      this.unifiedBookUIElement.classList.add('is-open');
+      this.switchUnifiedBookTab(tab);
+    }
+  }
+
+  closeUnifiedBook() {
+    this.unifiedBookOpen = false;
+    if (this.unifiedBookUIElement) {
+      this.unifiedBookUIElement.classList.remove('is-open');
+    }
+    this.unifiedBookSelectedId = null;
+  }
+
+  toggleUnifiedBook(tab: 'inventory' | 'pedia' = 'inventory') {
+    if (this.unifiedBookOpen) {
+      this.closeUnifiedBook();
+    } else {
+      this.openUnifiedBook(tab);
+    }
+  }
+
+  handleUnifiedBookNavigation() {
+    if (!this.unifiedBookOpen) return;
+
+    // タブ切替（Q, E）
+    const qKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    const eKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    
+    if (Phaser.Input.Keyboard.JustDown(qKey)) {
+      this.switchUnifiedBookTab('inventory');
+      return;
+    }
+    if (Phaser.Input.Keyboard.JustDown(eKey)) {
+      this.switchUnifiedBookTab('pedia');
+      return;
+    }
+
+    // リストが空の場合は何もしない
+    if (this.unifiedBookListItems.length === 0) return;
+
+    // 現在の選択インデックスを取得
+    let currentIndex = -1;
+    if (this.unifiedBookSelectedId) {
+      currentIndex = this.unifiedBookListItems.findIndex(item => 
+        item.getAttribute('data-fish-id') === this.unifiedBookSelectedId
+      );
+    }
+    if (currentIndex === -1) {
+      currentIndex = 0;
+    }
+
+    let newIndex = currentIndex;
+
+    // 矢印キーで選択移動
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
+      newIndex = Math.max(0, currentIndex - 1);
+    } else if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
+      newIndex = Math.min(this.unifiedBookListItems.length - 1, currentIndex + 1);
+    }
+
+    if (newIndex !== currentIndex && newIndex >= 0 && newIndex < this.unifiedBookListItems.length) {
+      const item = this.unifiedBookListItems[newIndex];
+      const fishId = item.getAttribute('data-fish-id');
+      if (fishId) {
+        this.selectUnifiedBookItem(fishId, newIndex);
+        // スクロールして表示範囲内に
+        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }
+
   createBookDetailModal() {
     // HTML/CSSで図鑑詳細モーダルを作成
     const bookDetailHTML = `
@@ -1981,28 +2459,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   toggleBook() {
-    if (this.bookOpen) {
-        this.closeBook();
-    } else {
-        this.openBook();
-    }
+    // 統合BookUIを使用
+    this.toggleUnifiedBook('pedia');
   }
 
   openBook() {
-    if (this.state !== FishingState.IDLE) return;
-    if (this.inventoryOpen) return;  // インベントリが開いている時は開かない
-    
-    this.bookOpen = true;
-    this.bookPage = 0;
-    this.bookSelectedIndex = 0;
-    this.lastSelectedBookIndex = -1; // リセット
-    this.updateBookSlots();
-    this.updateBookSelection();
-    if (this.bookUIElement) {
-      this.openModal(this.MODAL_IDS.BOOK);
-      // モーダル位置を更新
-      this.updateModalPositionsIfNeeded();
-    }
+    // 統合BookUIを使用（既存コードとの互換性のため残す）
+    this.openUnifiedBook('pedia');
   }
 
   closeBook() {
@@ -2119,7 +2582,7 @@ export default class GameScene extends Phaser.Scene {
             } else {
                 // 未発見（シルエット）
                 slotImage.style.display = 'none';
-                slotEmoji.textContent = '❓';
+                slotEmoji.textContent = '?';
                 slotEmoji.style.display = 'block';
                 slotName.textContent = '？？？';
                 slotRarity.textContent = rarityStars[fish.rarity];
@@ -2252,22 +2715,41 @@ export default class GameScene extends Phaser.Scene {
         }
         
         nameText.textContent = fish.name;
-        rarityText.textContent = rarityStars[fish.rarity];
-        descText.textContent = fish.description;
-        priceText.textContent = `💰 売値: ${fish.price}G`;
-        
+        const starCount = rarityStarCount[fish.rarity];
         const color = rarityColors[fish.rarity];
-        rarityText.style.color = `#${color.toString(16).padStart(6, '0')}`;
+        const colorHex = `#${color.toString(16).padStart(6, '0')}`;
+        rarityText.innerHTML = '';
+        rarityText.style.color = colorHex;
+        for (let i = 0; i < 5; i++) {
+          const star = document.createElement('span');
+          star.className = 'star';
+          star.textContent = '★';
+          if (i >= starCount) {
+            star.classList.add('star-inactive');
+          }
+          rarityText.appendChild(star);
+        }
+        descText.innerHTML = fish.description.replace(/\n/g, '<br>');
+        priceText.textContent = `💰 売値: ${fish.price}G`;
     } else {
         fishImage.style.display = 'none';
-        emoji.textContent = '❓';
+        emoji.textContent = '?';
         emoji.style.display = 'block';
         nameText.textContent = '？？？';
-        rarityText.textContent = rarityStars[fish.rarity];
-        descText.textContent = 'まだ発見されていません...\nこの魚を釣って図鑑を完成させよう！';
-        priceText.textContent = '';
-        
+        const starCount = rarityStarCount[fish.rarity];
+        rarityText.innerHTML = '';
         rarityText.style.color = '#666666';
+        for (let i = 0; i < 5; i++) {
+          const star = document.createElement('span');
+          star.className = 'star';
+          star.textContent = '★';
+          if (i >= starCount) {
+            star.classList.add('star-inactive');
+          }
+          rarityText.appendChild(star);
+        }
+        descText.innerHTML = 'まだ発見されていません...<br>この魚を釣って図鑑を完成させよう！';
+        priceText.textContent = '';
     }
 
     this.openModal(this.MODAL_IDS.BOOK_DETAIL);
@@ -2370,8 +2852,10 @@ export default class GameScene extends Phaser.Scene {
 
   openShop() {
     // 他のUIを閉じる
-    if (this.inventoryOpen) this.closeInventory();
-    if (this.bookOpen) this.closeBook();
+    if (this.unifiedBookOpen) this.closeUnifiedBook();
+    // 既存のモーダルは統合BookUIに置き換えられたため、ここでは閉じない
+    // if (this.inventoryOpen) this.closeInventory();
+    // if (this.bookOpen) this.closeBook();
     
     this.shopOpen = true;
     this.shopSelectedIndex = 0;
