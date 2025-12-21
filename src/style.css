@@ -2,7 +2,12 @@ html, body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-family: 'DotGothic16', sans-serif !important;
+  background-color: #212529;
+}
+
+* {
+  font-family: 'DotGothic16', sans-serif !important;
 }
 
 /* #app の width/height は削除（これが原因でした） */
@@ -19,13 +24,30 @@ canvas {
 }
 
 #status-ui .stat-item {
-  background: rgba(0, 0, 0, 0.7);
-  padding: 5px 10px;
-  border-radius: 4px;
-  margin-bottom: 5px;
-  color: #fff;
-  font-size: 16px;
-  font-weight: bold;
+  background: #fff;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  color: #212529;
+  font-size: 20px;
+  font-weight: normal;
+  font-family: 'DotGothic16', sans-serif !important;
+  box-shadow: 
+    4px 0 rgba(33, 37, 41, 1),
+    -4px 0 rgba(33, 37, 41, 1),
+    0 4px rgba(33, 37, 41, 1),
+    0 -4px rgba(33, 37, 41, 1),
+    inset -4px 0 rgba(163, 163, 163, 1),
+    inset 0 -4px rgba(163, 163, 163, 1);
+}
+
+#stats-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#stats-section .stat-item {
+  margin-bottom: 0;
 }
 
 #level-section {
@@ -36,18 +58,32 @@ canvas {
 
 #exp-bar-bg {
   width: 150px;
-  height: 8px;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid #555;
-  border-radius: 4px;
+  height: 16px;
+  background: #212529;
+  border: 4px solid #212529;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #000,
+    inset 0 -4px #000;
   overflow: hidden;
+  position: relative;
 }
 
 #exp-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #4a9eff, #0066ff);
+  background: #209cee;
   width: 0%;
   transition: width 0.3s;
+  box-shadow: 
+    2px 0 #006bb3,
+    -2px 0 #006bb3,
+    0 2px #006bb3,
+    0 -2px #006bb3,
+    inset -2px 0 #006bb3,
+    inset 0 -2px #006bb3;
 }
 
 /* モーダル共通スタイル */
@@ -93,15 +129,21 @@ canvas {
 }
 
 .modal-content {
-  background: linear-gradient(to bottom, #2a1a0a, #1a0a00); /* 木目調のグラデーション */
-  border: 5px solid #8b4513; /* 木目風の茶色ボーダー */
-  border-radius: 8px;
+  background: #fff;
+  border: 4px solid #212529;
   padding: 20px;
   max-width: 90%;
   max-height: 90%;
   overflow-y: auto;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.7), inset 0 0 15px rgba(255, 255, 255, 0.1); /* 影と内側のグロー */
-  position: relative; /* 閉じるボタンの基準 */
+  font-family: 'DotGothic16', sans-serif !important;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #000,
+    inset 0 -4px #000;
+  position: relative;
 }
 
 .modal-header {
@@ -110,14 +152,12 @@ canvas {
 }
 
 .modal-header h2 {
-  color: #ffe4b5;
+  color: #212529;
   font-size: 28px;
-  font-weight: bold;
+  font-weight: normal;
   margin: 0;
-  text-shadow: 
-    2px 2px 0px #8b4513,
-    0 0 10px rgba(255, 228, 181, 0.5);
-  letter-spacing: 1px;
+  text-shadow: none;
+  letter-spacing: 0;
 }
 
 .modal-footer {
@@ -126,15 +166,14 @@ canvas {
 }
 
 .hint-text {
-  color: #aaaaaa;
-  font-size: 15px;
+  color: #212529;
+  font-size: 18px;
+  margin-top: 10px;
 }
 
 /* インベントリモーダル */
 .modal-content.inventory-modal {
   min-width: 400px;
-  background: linear-gradient(135deg, #2a1a0a 0%, #1a0a0a 100%) !important;
-  border-color: #8b4513 !important;
 }
 
 .inventory-grid {
@@ -144,7 +183,6 @@ canvas {
   justify-content: center;
   padding: 25px 0;
   background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
   margin: 15px 0;
 }
 
@@ -153,37 +191,39 @@ canvas {
   width: 110px;
   height: 110px;
   cursor: pointer;
-  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s ease-out;
 }
 
 .inventory-slot:hover {
-  transform: scale(1.08) translateY(-2px);
-  box-shadow: 0 4px 8px rgba(255, 255, 0, 0.3);
+  transform: scale(1.05);
 }
 
-.inventory-slot.selected {
-  outline: 4px solid #ffd700;
-  outline-offset: 3px;
-  background: rgba(255, 215, 0, 0.15);
-  border-radius: 6px;
+.inventory-slot.selected .slot-bg {
+  background: #f7d51d;
+  border-color: #212529;
   box-shadow: 
-    0 0 15px rgba(255, 215, 0, 0.5),
-    inset 0 0 15px rgba(255, 215, 0, 0.2);
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #f2c409,
+    inset 0 -4px #f2c409;
 }
 
 .slot-bg {
   position: absolute;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #3a3a3a 0%, #2a2a2a 100%);
-  border: 4px solid #555555;
-  border-radius: 8px;
+  background: #fff;
+  border: 4px solid #212529;
   z-index: 1;
   box-shadow: 
-    inset 0 2px 4px rgba(255, 255, 255, 0.1),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.3),
-    0 2px 4px rgba(0, 0, 0, 0.5);
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #000,
+    inset 0 -4px #000;
 }
 
 .slot-image {
@@ -201,7 +241,7 @@ canvas {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 30px;
+  font-size: 38px;
   z-index: 2;
   display: none;
 }
@@ -211,26 +251,40 @@ canvas {
   bottom: 5px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 12px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 2px 6px;
-  border-radius: 3px;
+  font-size: 24px;
+  color: #212529;
+  background: #fff;
+  padding: 2px 4px;
+  border: 2px solid #212529;
   z-index: 3;
   white-space: nowrap;
   text-align: center;
+  box-shadow: 
+    2px 0 #212529,
+    -2px 0 #212529,
+    0 2px #212529,
+    0 -2px #212529,
+    inset -2px 0 #000,
+    inset 0 -2px #000;
 }
 
 .slot-price {
   position: absolute;
   top: 5px;
   right: 5px;
-  font-size: 11px;
-  color: #ffd700;
-  background: rgba(0, 0, 0, 0.8);
-  padding: 2px 5px;
-  border-radius: 3px;
+  font-size: 24px;
+  color: #212529;
+  background: #f7d51d;
+  padding: 2px 4px;
+  border: 2px solid #212529;
   z-index: 3;
+  box-shadow: 
+    2px 0 #212529,
+    -2px 0 #212529,
+    0 2px #212529,
+    0 -2px #212529,
+    inset -2px 0 #f2c409,
+    inset 0 -2px #f2c409;
 }
 
 /* 詳細モーダル */
@@ -252,26 +306,26 @@ canvas {
 }
 
 .detail-emoji {
-  font-size: 60px;
+  font-size: 68px;
   margin-bottom: 15px;
 }
 
 .detail-name {
   font-size: 24px;
-  font-weight: bold;
-  color: #ffe4b5;
+  font-weight: normal;
+  color: #212529;
   margin-bottom: 10px;
-  text-shadow: 2px 2px 0px #8b4513;
+  text-shadow: none;
 }
 
 .detail-rarity {
-  font-size: 18px;
+  font-size: 26px;
   margin-bottom: 15px;
 }
 
 .detail-desc {
-  font-size: 16px;
-  color: #dddddd;
+  font-size: 18px;
+  color: #212529;
   line-height: 1.6;
   margin-bottom: 15px;
   text-align: left;
@@ -279,27 +333,32 @@ canvas {
 }
 
 .detail-price {
-  font-size: 20px;
-  color: #ffd700;
-  font-weight: bold;
+  font-size: 28px;
+  color: #212529;
+  font-weight: normal;
 }
 
 /* 図鑑モーダル */
 .modal-content.book-modal {
   min-width: 550px;
-  background: linear-gradient(135deg, #2a1a0a 0%, #1a0a0a 100%) !important;
-  border-color: #8b4513 !important;
 }
 
 .book-progress {
-  color: #d4af37;
+  color: #212529;
   font-size: 18px;
   margin-top: 10px;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-  background: rgba(0, 0, 0, 0.3);
+  text-shadow: none;
+  background: #fff;
   padding: 8px 15px;
-  border-radius: 5px;
+  border: 4px solid #212529;
   text-align: center;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #000,
+    inset 0 -4px #000;
 }
 
 .book-grid {
@@ -309,7 +368,6 @@ canvas {
   justify-content: center;
   padding: 25px 0;
   background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
   margin: 15px 0;
 }
 
@@ -318,23 +376,23 @@ canvas {
   width: 100px;
   height: 100px;
   cursor: pointer;
-  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s ease-out;
 }
 
 .book-slot:hover {
-  transform: scale(1.08) translateY(-2px);
-  box-shadow: 0 4px 8px rgba(255, 255, 0, 0.3);
+  transform: scale(1.05);
 }
 
-.book-slot.selected {
-  outline: 4px solid #ffd700;
-  outline-offset: 3px;
-  background: rgba(255, 215, 0, 0.15);
-  border-radius: 6px;
+.book-slot.selected .slot-bg {
+  background: #f7d51d;
+  border-color: #212529;
   box-shadow: 
-    0 0 15px rgba(255, 215, 0, 0.5),
-    inset 0 0 15px rgba(255, 215, 0, 0.2);
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #f2c409,
+    inset 0 -4px #f2c409;
 }
 
 .book-slot.caught {
@@ -342,8 +400,8 @@ canvas {
 }
 
 .book-page-text {
-  color: #d4af37;
-  font-size: 16px;
+  color: #212529;
+  font-size: 18px;
   margin-bottom: 10px;
   text-align: center;
 }
@@ -357,8 +415,6 @@ canvas {
 .modal-content.shop-modal {
   min-width: 600px;
   max-width: 650px;
-  background: linear-gradient(135deg, #1a3a1a 0%, #0a2a0a 100%) !important;
-  border-color: #4a7a4a !important;
 }
 
 .shop-tabs {
@@ -369,27 +425,36 @@ canvas {
 }
 
 .shop-tab-button {
-  background: linear-gradient(to bottom, #2a5a2a, #1a3a1a); /* グラデーション */
-  border: 2px solid #4a7a4a;
-  border-radius: 5px;
+  background: #fff;
+  border: 4px solid #212529;
   padding: 10px 20px;
-  color: #fff;
-  font-size: 16px;
-  font-weight: bold;
+  color: #212529;
+  font-size: 28px;
+  font-weight: normal;
   cursor: pointer;
-  transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #000,
+    inset 0 -4px #000;
+  font-family: 'DotGothic16', sans-serif;
 }
 
 .shop-tab-button:hover {
-  background: linear-gradient(to bottom, #3a7a3a, #2a5a2a);
-  transform: translateY(-2px);
+  background: #e7e7e7;
 }
 
 .shop-tab-button.active {
-  background: linear-gradient(to bottom, #4a9a4a, #3a7a3a);
-  border-color: #00ff00;
-  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+  background: #f7d51d;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #f2c409,
+    inset 0 -4px #f2c409;
 }
 
 .shop-items-list {
@@ -402,32 +467,40 @@ canvas {
 .shop-item {
   position: relative;
   cursor: pointer;
-  transition: transform 0.1s, box-shadow 0.1s;
-  border-radius: 4px;
+  transition: transform 0.1s;
   box-sizing: border-box;
 }
 
 .shop-item:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+  transform: translateY(-2px);
 }
 
-.shop-item.selected {
-  outline: 4px solid #ffff00;
-  outline-offset: 2px;
-  box-shadow: 0 0 15px rgba(255, 255, 0, 0.8), inset 0 0 8px rgba(255, 255, 0, 0.5);
-  background: rgba(255, 255, 0, 0.1);
+.shop-item.selected .shop-item-content {
+  background: #f7d51d;
+  border-color: #212529;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #f2c409,
+    inset 0 -4px #f2c409;
 }
 
 .shop-item-content {
-  background: linear-gradient(to right, #2a4a2a, #1a3a1a); /* カードの背景 */
-  border: 1px solid #4a7a4a;
-  border-radius: 5px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  background: #fff;
+  border: 4px solid #212529;
   padding: 10px;
   display: flex;
   align-items: center;
   gap: 15px;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #000,
+    inset 0 -4px #000;
 }
 
 .shop-item-icon-container {
@@ -437,7 +510,6 @@ canvas {
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.3);
-  border-radius: 5px;
   flex-shrink: 0;
 }
 
@@ -449,7 +521,7 @@ canvas {
 }
 
 .shop-item-icon-emoji {
-  font-size: 40px;
+  font-size: 48px;
 }
 
 .shop-item-details {
@@ -457,39 +529,46 @@ canvas {
 }
 
 .shop-item-name {
-  font-size: 18px;
-  font-weight: bold;
-  color: #ffe4b5;
+  font-size: 28px;
+  font-weight: normal;
+  color: #212529;
   margin-bottom: 5px;
 }
 
 .shop-item-info {
-  font-size: 14px;
-  color: #cccccc;
+  font-size: 18px;
+  color: #212529;
   margin-bottom: 5px;
 }
 
 .shop-item-price {
-  font-size: 16px;
-  color: #ff6666;
-  font-weight: bold;
+  font-size: 28px;
+  color: #212529;
+  font-weight: normal;
 }
 
 .shop-money {
   text-align: center;
-  font-size: 20px;
-  color: #ffd700;
-  font-weight: bold;
+  font-size: 28px;
+  color: #212529;
+  font-weight: normal;
   margin: 20px 0;
   padding: 10px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 5px;
+  background: #fff;
+  border: 4px solid #212529;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #000,
+    inset 0 -4px #000;
 }
 
 .shop-hint {
   text-align: center;
-  color: #aaaaaa;
-  font-size: 14px;
+  color: #212529;
+  font-size: 18px;
   margin-top: 10px;
 }
 
@@ -498,26 +577,41 @@ canvas {
   position: absolute;
   top: 10px;
   right: 10px;
-  width: 30px;
-  height: 30px;
-  background: linear-gradient(to bottom, #ff6666, #cc0000);
-  border: 2px solid #ff0000;
-  border-radius: 50%; /* 丸いボタン */
-  color: #ffffff;
-  font-size: 20px;
-  font-weight: bold;
+  width: 40px;
+  height: 40px;
+  background: #fff;
+  border: 4px solid #212529;
+  color: #212529;
+  font-size: 24px;
+  font-weight: normal;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-  transition: background 0.2s, transform 0.2s;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #000,
+    inset 0 -4px #000;
+  transition: background 0.1s;
   z-index: 10;
+  font-family: 'DotGothic16', sans-serif;
 }
 
 .modal-close:hover {
-  background: linear-gradient(to bottom, #ff8888, #ff3333);
-  transform: scale(1.1);
+  background: #e7e7e7;
+}
+
+.modal-close:active {
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset 4px 0 #000,
+    inset 0 4px #000;
 }
 
 /* 操作説明テキスト */
@@ -525,14 +619,21 @@ canvas {
   position: fixed;
   top: 55px;
   left: 10px;
-  color: #fff;
+  color: #212529;
   font-size: 18px;
-  background: rgba(0, 0, 0, 0.67);
-  padding: 6px;
-  border-radius: 4px;
+  background: #fff;
+  padding: 8px;
+  border: 4px solid #212529;
   z-index: 100;
   user-select: none;
   pointer-events: none;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #000,
+    inset 0 -4px #000;
 }
 
 /* 結果表示テキスト */
@@ -541,13 +642,89 @@ canvas {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: #ffffff;
-  font-size: 24px;
-  background: rgba(0, 0, 0, 0.67);
-  padding: 12px 6px;
-  border-radius: 4px;
+  color: #212529;
+  font-size: 22px;
+  background: #fff;
+  padding: 16px;
+  border: 4px solid #212529;
   z-index: 500;
   user-select: none;
   pointer-events: none;
   text-align: center;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 #000,
+    inset 0 -4px #000;
+  white-space: pre-line;
+}
+
+/* 8bit風スクロールバー - ゲーム画面風 */
+/* Webkit系ブラウザー（Chrome, Safari, Edge） */
+::-webkit-scrollbar {
+  width: 24px;
+  height: 24px;
+}
+
+::-webkit-scrollbar-track {
+  background: #fff;
+  border: 4px solid #212529;
+  border-radius: 0;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 rgba(163, 163, 163, 1),
+    inset 0 -4px rgba(163, 163, 163, 1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #212529;
+  border: 4px solid #212529;
+  border-radius: 0;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 rgba(163, 163, 163, 1),
+    inset 0 -4px rgba(163, 163, 163, 1);
+  min-height: 40px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #000;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: #000;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset 4px 0 rgba(163, 163, 163, 1),
+    inset 0 4px rgba(163, 163, 163, 1);
+}
+
+::-webkit-scrollbar-corner {
+  background: #fff;
+  border: 4px solid #212529;
+  border-radius: 0;
+  box-shadow: 
+    4px 0 #212529,
+    -4px 0 #212529,
+    0 4px #212529,
+    0 -4px #212529,
+    inset -4px 0 rgba(163, 163, 163, 1),
+    inset 0 -4px rgba(163, 163, 163, 1);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: #212529 #fff;
 }

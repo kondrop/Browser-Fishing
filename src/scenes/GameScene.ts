@@ -330,6 +330,7 @@ export default class GameScene extends Phaser.Scene {
     // 合わせヒント用テキスト
     this.hintText = this.add.text(0, 0, '', { 
         fontSize: '35px',  // 28 * 1.25
+        fontFamily: 'DotGothic16',
         color: '#ffffff',
         fontStyle: 'bold',
         stroke: '#000000',
@@ -338,6 +339,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.exclamation = this.add.text(0, 0, '!', { 
         fontSize: `${Math.round(config.bite['4-1_ビックリマークサイズ'] * 1.25)}px`,
+        fontFamily: 'DotGothic16',
         color: '#ffff00', 
         fontStyle: 'bold',
         stroke: '#ff0000',
@@ -394,6 +396,7 @@ export default class GameScene extends Phaser.Scene {
     // ファイト説明テキスト
     const fightHint = this.add.text(-60, -120, 'SPACEで上昇\n魚をバーに収めろ！', {
         fontSize: '15px',  // 12 * 1.25
+        fontFamily: 'DotGothic16',
         color: '#ffffff',
         align: 'center'
     }).setOrigin(0.5);
@@ -533,7 +536,7 @@ export default class GameScene extends Phaser.Scene {
 
     // HTML/CSSでFPS表示を作成（画面左下、最前面に表示）
     const debugFpsHTML = `
-      <div id="debug-fps" style="position: fixed; bottom: 10px; left: 10px; color: #00ff00; font-family: monospace; font-size: 14px; background: rgba(0, 0, 0, 0.7); padding: 5px 10px; border-radius: 4px; z-index: 3000; user-select: none; pointer-events: none;">
+      <div id="debug-fps" style="position: fixed; bottom: 10px; left: 10px; color: #00ff00; font-family: 'DotGothic16', sans-serif; font-size: 22px; background: rgba(0, 0, 0, 0.7); padding: 5px 10px; border-radius: 4px; z-index: 3000; user-select: none; pointer-events: none;">
         FPS: <span id="fps-value">0</span> | Delta: <span id="delta-value">0</span>ms
       </div>
     `;
@@ -1508,7 +1511,7 @@ export default class GameScene extends Phaser.Scene {
 
     const inventoryHTML = `
       <div id="inventory-modal" class="modal" style="display: none;" aria-hidden="true">
-        <div class="modal-content inventory-modal">
+        <div class="modal-content inventory-modal nes-container with-rounded">
           <div class="modal-header">
             <h2>🎒 インベントリ</h2>
           </div>
@@ -1576,8 +1579,8 @@ export default class GameScene extends Phaser.Scene {
     // HTML/CSSで詳細モーダルを作成
     const detailHTML = `
       <div id="detail-modal" class="modal" style="display: none;" aria-hidden="true">
-        <div class="modal-content detail-modal">
-          <button class="modal-close" onclick="window.gameScene?.closeDetailModal()">✕</button>
+        <div class="modal-content detail-modal nes-container with-rounded">
+          <button class="modal-close nes-btn" onclick="window.gameScene?.closeDetailModal()">✕</button>
           <div class="detail-content">
             <canvas id="detail-fish-image" class="detail-image" width="80" height="80" style="display: none;"></canvas>
             <div id="detail-emoji" class="detail-emoji" style="display: none;"></div>
@@ -1730,9 +1733,9 @@ export default class GameScene extends Phaser.Scene {
             slotEmoji.style.display = 'none';
             slotName.textContent = '';
             slotPrice.textContent = '';
-            slotBg.style.backgroundColor = '#333333';
+            slotBg.style.backgroundColor = '#fff';
             slotBg.style.opacity = '1';
-            slotBg.style.borderColor = '#555555';
+            slotBg.style.borderColor = '#212529';
         }
     }
   }
@@ -1891,7 +1894,7 @@ export default class GameScene extends Phaser.Scene {
 
     const bookHTML = `
       <div id="book-modal" class="modal" style="display: none;">
-        <div class="modal-content book-modal">
+        <div class="modal-content book-modal nes-container with-rounded">
           <div class="modal-header">
             <h2>📖 魚図鑑</h2>
             <div id="book-progress" class="book-progress"></div>
@@ -1951,8 +1954,8 @@ export default class GameScene extends Phaser.Scene {
     // HTML/CSSで図鑑詳細モーダルを作成
     const bookDetailHTML = `
       <div id="book-detail-modal" class="modal" style="display: none;" aria-hidden="true">
-        <div class="modal-content detail-modal">
-          <button class="modal-close" onclick="window.gameScene?.closeBookDetail()">✕</button>
+        <div class="modal-content detail-modal nes-container with-rounded">
+          <button class="modal-close nes-btn" onclick="window.gameScene?.closeBookDetail()">✕</button>
           <div class="detail-content">
             <canvas id="book-detail-fish-image" class="detail-image" width="80" height="80" style="display: none;"></canvas>
             <div id="book-detail-emoji" class="detail-emoji" style="display: none;"></div>
@@ -2121,9 +2124,9 @@ export default class GameScene extends Phaser.Scene {
                 slotName.textContent = '？？？';
                 slotRarity.textContent = rarityStars[fish.rarity];
                 
-                slotBg.style.backgroundColor = '#222222';
+                slotBg.style.backgroundColor = '#e7e7e7';
                 slotBg.style.opacity = '1';
-                slotBg.style.borderColor = '#444444';
+                slotBg.style.borderColor = '#212529';
                 slotRarity.style.color = '#666666';
             }
             
@@ -2136,9 +2139,9 @@ export default class GameScene extends Phaser.Scene {
             slotEmoji.style.display = 'none';
             slotName.textContent = '';
             slotRarity.textContent = '';
-            slotBg.style.backgroundColor = '#111111';
+            slotBg.style.backgroundColor = '#fff';
             slotBg.style.opacity = '1';
-            slotBg.style.borderColor = '#333333';
+            slotBg.style.borderColor = '#212529';
             slot.style.display = 'none';
         }
     }
@@ -2316,15 +2319,15 @@ export default class GameScene extends Phaser.Scene {
     // HTML/CSSでショップUIを作成
     const shopHTML = `
       <div id="shop-modal" class="modal" style="display: none;" aria-hidden="true">
-        <div class="modal-content shop-modal">
+        <div class="modal-content shop-modal nes-container with-rounded">
           <div class="modal-header">
             <h2>🏪 ショップ</h2>
           </div>
           <div class="shop-tabs">
-            <button class="shop-tab" data-tab="rod">🎣 竿</button>
-            <button class="shop-tab" data-tab="bait">🪱 エサ</button>
-            <button class="shop-tab" data-tab="lure">🎯 ルアー</button>
-            <button class="shop-tab" data-tab="inventory">🎒 バッグ</button>
+            <button class="shop-tab shop-tab-button nes-btn" data-tab="rod">🎣 竿</button>
+            <button class="shop-tab shop-tab-button nes-btn" data-tab="bait">🪱 エサ</button>
+            <button class="shop-tab shop-tab-button nes-btn" data-tab="lure">🎯 ルアー</button>
+            <button class="shop-tab shop-tab-button nes-btn" data-tab="inventory">🎒 バッグ</button>
           </div>
           <div id="shop-items-list" class="shop-items-list"></div>
           <div class="modal-footer">

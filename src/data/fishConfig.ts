@@ -59,7 +59,7 @@ export const fishConfigs: FishConfig[] = [
     escapeRate: 0.5,      // 逃げにくい
     fishSpeed: 0.2,       // ゆっくり
     fishErratic: 0.1,     // おとなしい
-    moveInterval: [2.0, 4.0],
+    moveInterval: [2.0, 4.0], // 方向転換の間隔：[最短2.0秒, 最長4.0秒]（動きはゆっくり）
   },
   {
     id: 'fish_crucian_carp',
