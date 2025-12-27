@@ -8,3 +8,8 @@ export enum Rarity {
   LEGENDARY = 'legendary', // ★★★★★ 伝説
 }
 
+export enum Habitat {
+  FRESHWATER = 'freshwater', // 淡水
+  SALTWATER = 'saltwater',   // 海水
+}
+

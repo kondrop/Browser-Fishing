@@ -1,13 +1,13 @@
 // 🐟 魚データ管理
 // 設定は fishConfig.ts で編集してください
 
-import { Rarity } from './fishTypes';
+import { Rarity, Habitat } from './fishTypes';
 import type { FishConfig } from './fishConfig';
 import { fishConfigs, raritySettings } from './fishConfig';
 
 // 型のエクスポート
 export type { FishConfig as Fish };
-export { Rarity };
+export { Rarity, Habitat };
 
 // 魚データベース（設定ファイルから読み込み）
 export const fishDatabase = fishConfigs;
