@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
-import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, type RarityBonuses } from '../data/fish';
+import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, type RarityBonuses, Habitat } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
-import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus } from '../data/inventory';
+import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize } from '../data/inventory';
 import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, getRodById, getBaitById, getLureById, getNextRod, getNextInventoryUpgrade } from '../data/shopConfig';
 
 enum FishingState {
@@ -57,6 +57,7 @@ export default class GameScene extends Phaser.Scene {
 
   // 現在釣っている魚
   private currentFish: FishConfig | null = null;
+  private currentFishSize: number | undefined = undefined; // 現在釣っている魚のサイズ（ファイト開始時に生成）
 
   // プレイヤーデータ
   private playerData!: PlayerData;
@@ -1307,6 +1308,16 @@ export default class GameScene extends Phaser.Scene {
       savePlayerData(this.playerData);
     }
     
+    // ファイト開始時にサイズを生成（ゴミの場合は生成しない）
+    if (this.currentFish) {
+      const isJunk = this.currentFish.id.startsWith('junk_');
+      if (!isJunk) {
+        this.currentFishSize = generateRandomSize(this.currentFish.maxSize);
+      } else {
+        this.currentFishSize = undefined;
+      }
+    }
+    
     this.state = FishingState.FIGHTING;
     this.fightContainer.setVisible(true);
 
@@ -1402,12 +1413,19 @@ export default class GameScene extends Phaser.Scene {
     const equippedRod = getRodById(this.playerData.equippedRodId);
     const rodCatchBonus = equippedRod?.catchRateBonus || 1.0;
 
+    // サイズによるcatchRate調整（粘り強さ）
+    let adjustedCatchRate = catchRate;
+    if (this.currentFish && this.currentFishSize !== undefined) {
+      const sizeRatio = this.currentFishSize / this.currentFish.maxSize; // 0.5〜1.0
+      adjustedCatchRate = calculateCatchRateWithSize(catchRate, sizeRatio, 0.3); // 難易度係数0.3
+    }
+
     if (isCatching) {
-        // 全体設定 × 魚ごとの捕まえやすさ × 竿のボーナス × レベルボーナス
+        // 全体設定 × 魚ごとの捕まえやすさ（サイズ調整済み） × 竿のボーナス × レベルボーナス
         const baseGaugeSpeed = cfg['5-10_ゲージ増加速度'];
         const levelGaugeBonus = getLevelGaugeSpeedBonus(this.playerData.level);
         const gaugeSpeed = baseGaugeSpeed + levelGaugeBonus;
-        this.catchProgress += gaugeSpeed * catchRate * rodCatchBonus * dt;
+        this.catchProgress += gaugeSpeed * adjustedCatchRate * rodCatchBonus * dt;
         this.uiPlayerBar.setFillStyle(0x00ff00);
     } else {
         // 全体設定 × 魚ごとの逃げやすさ
@@ -1451,7 +1469,20 @@ export default class GameScene extends Phaser.Scene {
         const currentCount = getInventoryCount(this.playerData);
         if (currentCount >= this.playerData.maxInventorySlots) {
             // 満杯の場合は自動売却
-            const earnings = this.currentFish.price;
+            // ファイト開始時に生成したサイズを使用
+            const fishSize = this.currentFishSize;
+            if (fishSize !== undefined) {
+              updateFishSizeRecord(this.playerData, this.currentFish.id, fishSize);
+            }
+            
+            // サイズによる価格ボーナスを計算
+            const isJunk = this.currentFish.id.startsWith('junk_');
+            let earnings = this.currentFish.price;
+            if (!isJunk && fishSize !== undefined) {
+              const sizeRatio = fishSize / this.currentFish.maxSize; // 0.5〜1.0
+              earnings = calculatePriceWithSizeBonus(this.currentFish.price, sizeRatio, 0.5); // ボーナス係数0.5
+            }
+            
             this.playerData.money += earnings;
             // 図鑑には登録
             this.playerData.caughtFishIds.add(this.currentFish.id);
@@ -1468,7 +1499,10 @@ export default class GameScene extends Phaser.Scene {
 
             const stars = rarityStars[this.currentFish.rarity];
             const duration = config.result['6-2_成功表示時間'] * 1000;
-            let resultMessage = `${this.currentFish.emoji} ${this.currentFish.name} ${stars}\nバッグ満杯！自動売却 +${earnings} G`;
+            
+            // サイズを表示（ゴミの場合は表示しない）
+            const sizeText = fishSize !== undefined ? ` | ${fishSize}cm` : '';
+            let resultMessage = `${this.currentFish.emoji} ${this.currentFish.name} ${stars}${sizeText}\nバッグ満杯！自動売却 +${earnings} G`;
             if (leveledUp) {
               resultMessage += `\n🎉 レベルアップ！ Lv.${this.playerData.level}`;
             }
@@ -1476,8 +1510,17 @@ export default class GameScene extends Phaser.Scene {
             return;
         }
 
-        // インベントリに追加
-        const leveledUp = addFishToInventory(this.playerData, this.currentFish);
+        // インベントリに追加（ファイト開始時に生成したサイズを使用）
+        const fishSize = this.currentFishSize;
+        const { leveledUp } = addFishToInventory(this.playerData, this.currentFish, fishSize);
+        
+        // サイズによる価格ボーナスを計算
+        const isJunk = this.currentFish.id.startsWith('junk_');
+        let actualPrice = this.currentFish.price;
+        if (!isJunk && fishSize !== undefined) {
+          const sizeRatio = fishSize / this.currentFish.maxSize; // 0.5〜1.0
+          actualPrice = calculatePriceWithSizeBonus(this.currentFish.price, sizeRatio, 0.5); // ボーナス係数0.5
+        }
         
         // 統合BookUIが開いている場合はリストを更新
         if (this.unifiedBookOpen) {
@@ -1488,7 +1531,10 @@ export default class GameScene extends Phaser.Scene {
 
         const stars = rarityStars[this.currentFish.rarity];
         const duration = config.result['6-2_成功表示時間'] * 1000;
-        let resultMessage = `${this.currentFish.emoji} ${this.currentFish.name} を釣った！\n${stars} | ${this.currentFish.price}G`;
+        
+        // サイズを表示（ゴミの場合は表示しない）
+        const sizeText = fishSize !== undefined ? ` | ${fishSize}cm` : '';
+        let resultMessage = `${this.currentFish.emoji} ${this.currentFish.name} を釣った！\n${stars}${sizeText} | ${actualPrice}G`;
         
         // レベルアップ時のメッセージを追加
         if (leveledUp) {
@@ -1499,6 +1545,7 @@ export default class GameScene extends Phaser.Scene {
     }
     
     this.currentFish = null;
+    this.currentFishSize = undefined;
   }
 
   cancelFishing(reason: string) {
@@ -1506,6 +1553,7 @@ export default class GameScene extends Phaser.Scene {
     this.fightContainer.setVisible(false);
     this.cleanupFishingTools();
     this.currentFish = null;
+    this.currentFishSize = undefined;
     
     const duration = config.result['6-3_失敗表示時間'] * 1000;
     this.showResult(reason, duration);
@@ -1696,10 +1744,12 @@ export default class GameScene extends Phaser.Scene {
     if (!this.inventoryUIElement) return;
     
     // インベントリをフラット化（スタックを展開して個別表示）
-    const flatInventory: string[] = [];
+    const flatInventory: Array<{ fishId: string; size?: number }> = [];
     for (const item of this.playerData.inventory) {
         for (let j = 0; j < item.count; j++) {
-            flatInventory.push(item.fishId);
+            // 各個体のサイズを取得（配列にサイズがある場合）
+            const size = item.sizes[j];
+            flatInventory.push({ fishId: item.fishId, size });
         }
     }
     
@@ -1711,7 +1761,7 @@ export default class GameScene extends Phaser.Scene {
         const { bg: slotBg, image: slotImage, emoji: slotEmoji, name: slotName, price: slotPrice } = slotData;
 
         if (i < flatInventory.length) {
-            const fishId = flatInventory[i];
+            const { fishId, size } = flatInventory[i];
             const fish = getFishById(fishId);
             if (fish) {
                 // 画像があるかチェック
@@ -1767,7 +1817,16 @@ export default class GameScene extends Phaser.Scene {
                 }
                 
                 slotName.textContent = fish.name;
-                slotPrice.textContent = `${fish.price}G`;
+                // サイズを表示（ゴミの場合は表示しない）
+                const sizeText = size !== undefined ? `${size}cm` : '';
+                // サイズを考慮した価格を計算
+                const isJunk = fish.id.startsWith('junk_');
+                let displayPrice = fish.price;
+                if (!isJunk && size !== undefined) {
+                  const sizeRatio = size / fish.maxSize;
+                  displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
+                }
+                slotPrice.textContent = sizeText ? `${sizeText} / ${displayPrice}G` : `${displayPrice}G`;
                 
                 // レア度に応じた背景色
                 const rarityColor = rarityColors[fish.rarity];
@@ -1821,17 +1880,19 @@ export default class GameScene extends Phaser.Scene {
   openDetailModal() {
     if (!this.detailModalElement) return;
     
-    // フラット化したインベントリから取得
-    const flatInventory: string[] = [];
+    // フラット化したインベントリから取得（サイズも含む）
+    const flatInventory: Array<{ fishId: string; size?: number }> = [];
     for (const item of this.playerData.inventory) {
         for (let j = 0; j < item.count; j++) {
-            flatInventory.push(item.fishId);
+            // 各個体のサイズを取得（配列にサイズがある場合）
+            const size = item.sizes[j];
+            flatInventory.push({ fishId: item.fishId, size });
         }
     }
     
     if (this.selectedSlotIndex >= flatInventory.length) return;
 
-    const fishId = flatInventory[this.selectedSlotIndex];
+    const { fishId, size } = flatInventory[this.selectedSlotIndex];
     const fish = getFishById(fishId);
     if (!fish) return;
 
@@ -1873,7 +1934,17 @@ export default class GameScene extends Phaser.Scene {
     nameText.textContent = fish.name;
     rarityText.textContent = rarityStars[fish.rarity];
     descText.innerHTML = fish.description.replace(/\n/g, '<br>');
-    infoText.textContent = `💰 ${fish.price}G`;
+    
+    // サイズを表示（ゴミの場合は表示しない）
+    const sizeText = size !== undefined ? `サイズ: ${size}cm<br>` : '';
+    // サイズを考慮した価格を計算
+    const isJunk = fish.id.startsWith('junk_');
+    let displayPrice = fish.price;
+    if (!isJunk && size !== undefined) {
+      const sizeRatio = size / fish.maxSize;
+      displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
+    }
+    infoText.innerHTML = `${sizeText}💰 ${displayPrice}G`;
 
     // レア度に応じた色
     const color = rarityColors[fish.rarity];
@@ -2103,18 +2174,20 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.unifiedBookTab === 'inventory') {
       // インベントリタブ
-      const flatInventory: string[] = [];
+      const flatInventory: Array<{ fishId: string; size?: number }> = [];
       for (const item of this.playerData.inventory) {
         for (let j = 0; j < item.count; j++) {
-          flatInventory.push(item.fishId);
+          // 各個体のサイズを取得（配列にサイズがある場合）
+          const size = item.sizes[j];
+          flatInventory.push({ fishId: item.fishId, size });
         }
       }
 
-      flatInventory.forEach((fishId, index) => {
+      flatInventory.forEach(({ fishId, size }, index) => {
         const fish = getFishById(fishId);
         if (!fish) return;
 
-        const item = this.createUnifiedBookListItem(fish, index, true);
+        const item = this.createUnifiedBookListItem(fish, index, true, size);
         this.unifiedBookListScrollElement.appendChild(item);
         this.unifiedBookListItems.push(item);
       });
@@ -2130,7 +2203,7 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  createUnifiedBookListItem(fish: any, index: number, isCaught: boolean): HTMLElement {
+  createUnifiedBookListItem(fish: any, index: number, isCaught: boolean, size?: number): HTMLElement {
     const item = document.createElement('div');
     item.className = 'book-list-item';
     if (!isCaught && this.unifiedBookTab === 'pedia') {
@@ -2200,7 +2273,16 @@ export default class GameScene extends Phaser.Scene {
     const meta = document.createElement('div');
     meta.className = 'book-list-item-meta';
     if (this.unifiedBookTab === 'inventory') {
-      meta.textContent = `💰 ${fish.price}G`;
+      // インベントリではサイズを表示（ゴミの場合は表示しない）
+      const sizeText = size !== undefined ? `${size}cm / ` : '';
+      // サイズを考慮した価格を計算
+      const isJunk = fish.id.startsWith('junk_');
+      let displayPrice = fish.price;
+      if (!isJunk && size !== undefined) {
+        const sizeRatio = size / fish.maxSize;
+        displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
+      }
+      meta.textContent = `${sizeText}💰 ${displayPrice}G`;
     } else {
       if (isCaught) {
         meta.textContent = `💰 ${fish.price}G | ${rarityStars[fish.rarity]}`;
@@ -2315,9 +2397,63 @@ export default class GameScene extends Phaser.Scene {
         rarity.appendChild(star);
       }
 
+      // ゴミの場合は生息地を表示しない
+      const isJunk = fish.id.startsWith('junk_');
+      const habitatText = !isJunk ? (fish.habitat === Habitat.FRESHWATER ? '淡水' : '海水') : '';
+      
+      // インベントリタブの場合は個体のサイズ、図鑑タブの場合は記録を表示
+      let sizeText: string;
+      if (this.unifiedBookTab === 'inventory') {
+        // インベントリから選択されたアイテムのサイズを取得
+        // 選択されたインデックスから該当する個体のサイズを取得
+        const flatInventory: Array<{ fishId: string; size?: number }> = [];
+        for (const item of this.playerData.inventory) {
+          for (let j = 0; j < item.count; j++) {
+            const size = item.sizes[j];
+            flatInventory.push({ fishId: item.fishId, size });
+          }
+        }
+        const selectedIndex = this.unifiedBookListItems.findIndex(item => 
+          item.getAttribute('data-fish-id') === fish.id && item.classList.contains('selected')
+        );
+        const selectedItem = selectedIndex >= 0 ? flatInventory[selectedIndex] : null;
+        const itemSize = selectedItem?.size;
+        if (itemSize !== undefined) {
+          sizeText = `サイズ: ${itemSize}cm`;
+        } else {
+          sizeText = 'サイズ: -';
+        }
+      } else {
+        // 図鑑タブの場合は記録を表示
+        const recordSize = this.playerData.fishSizes[fish.id];
+        sizeText = recordSize ? `記録: ${recordSize}cm` : '記録: なし';
+      }
+      
+      // サイズを考慮した価格を計算（インベントリタブの場合のみ）
+      let displayPrice = fish.price;
+      if (this.unifiedBookTab === 'inventory' && sizeText !== 'サイズ: -') {
+        const flatInventory: Array<{ fishId: string; size?: number }> = [];
+        for (const item of this.playerData.inventory) {
+          for (let j = 0; j < item.count; j++) {
+            const s = item.sizes[j];
+            flatInventory.push({ fishId: item.fishId, size: s });
+          }
+        }
+        const selectedIndex = this.unifiedBookListItems.findIndex(item => 
+          item.getAttribute('data-fish-id') === fish.id && item.classList.contains('selected')
+        );
+        const selectedItem = selectedIndex >= 0 ? flatInventory[selectedIndex] : null;
+        if (selectedItem?.size !== undefined && !isJunk) {
+          const sizeRatio = selectedItem.size / fish.maxSize;
+          displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
+        }
+      }
+      
+      // 生息地の行を条件付きで追加
+      const habitatLine = habitatText ? `生息地: ${habitatText}<br>` : '';
       info.innerHTML = `
-        最大サイズ: ${fish.maxSize}cm<br>
-        売値: ${fish.price}G
+        ${sizeText}<br>
+        ${habitatLine}売値: ${displayPrice}G
       `;
 
       desc.innerHTML = (fish.description || '説明').replace(/\n/g, '<br>');
@@ -2730,7 +2866,14 @@ export default class GameScene extends Phaser.Scene {
           rarityText.appendChild(star);
         }
         descText.innerHTML = fish.description.replace(/\n/g, '<br>');
-        priceText.textContent = `💰 売値: ${fish.price}G`;
+        // ゴミの場合は生息地を表示しない
+        const isJunk = fish.id.startsWith('junk_');
+        const habitatText = !isJunk ? (fish.habitat === Habitat.FRESHWATER ? '淡水' : '海水') : '';
+        const recordSize = this.playerData.fishSizes[fish.id];
+        const recordText = recordSize ? `記録: ${recordSize}cm` : '記録: なし';
+        // 生息地の行を条件付きで追加
+        const habitatLine = habitatText ? `生息地: ${habitatText}<br>` : '';
+        priceText.innerHTML = `${recordText}<br>${habitatLine}💰 売値: ${fish.price}G`;
     } else {
         fishImage.style.display = 'none';
         emoji.textContent = '?';
@@ -3229,3 +3372,4 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 }
+
