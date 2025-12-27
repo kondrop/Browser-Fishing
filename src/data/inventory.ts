@@ -2,6 +2,11 @@
 
 import type { FishConfig } from './fishConfig';
 import { getFishById } from './fish';
+import type { AchievementConfig, AchievementCondition } from './achievementConfig';
+import { achievementConfigs } from './achievementConfig';
+import { Rarity } from './fishTypes';
+import { fishConfigs } from './fishConfig';
+import { rodConfigs, baitConfigs, lureConfigs } from './shopConfig';
 
 export interface InventoryItem {
   fishId: string;
@@ -32,6 +37,13 @@ export interface PlayerData {
   level: number;               // 現在のレベル
   // サイズ記録
   fishSizes: Record<string, number>; // 各魚IDの最大サイズ記録（cm）
+  // 実績システム
+  achievements: Set<string>;           // 獲得済み実績IDのセット
+  achievementProgress: Map<string, number>; // 実績の進捗（key: 実績ID, value: 現在の値）
+  totalMoneyEarned: number;            // 累計獲得金額（売却した金額の合計）
+  consecutiveSuccesses: number;        // 連続成功回数
+  fishCaughtCounts: Map<string, number>; // 魚種ごとの釣果数（key: 魚ID, value: 釣果数）
+  junkCaughtCount: number;             // ゴミを釣った回数
 }
 
 // プレイヤーデータの初期値
@@ -54,6 +66,13 @@ export function createInitialPlayerData(): PlayerData {
     level: 1,
     // サイズ記録の初期値
     fishSizes: {},
+    // 実績システムの初期値
+    achievements: new Set(),
+    achievementProgress: new Map(),
+    totalMoneyEarned: 0,
+    consecutiveSuccesses: 0,
+    fishCaughtCounts: new Map(),
+    junkCaughtCount: 0,
   };
 }
 
@@ -99,9 +118,18 @@ export function addFishToInventory(playerData: PlayerData, fish: FishConfig, siz
   playerData.caughtFishIds.add(fish.id);
   playerData.totalCaught++;
   
+  // 魚種ごとの釣果数を更新
+  const currentCount = playerData.fishCaughtCounts.get(fish.id) || 0;
+  playerData.fishCaughtCounts.set(fish.id, currentCount + 1);
+  
   // ゴミの場合はサイズを生成しない
   const isJunk = fish.id.startsWith('junk_');
   let fishSize: number | undefined;
+  
+  // ゴミの場合はカウントを更新
+  if (isJunk) {
+    playerData.junkCaughtCount++;
+  }
   
   if (!isJunk) {
     // サイズを生成（指定されていない場合）
@@ -178,6 +206,8 @@ export function sellFish(playerData: PlayerData, fishId: string, count: number =
   
   if (removeFishFromInventory(playerData, fishId, count)) {
     playerData.money += totalEarnings;
+    // 累計獲得金額を更新
+    playerData.totalMoneyEarned += totalEarnings;
     return totalEarnings;
   }
   return 0;
@@ -210,6 +240,8 @@ export function sellAllFish(playerData: PlayerData): number {
   
   playerData.inventory = [];
   playerData.money += totalEarnings;
+  // 累計獲得金額を更新
+  playerData.totalMoneyEarned += totalEarnings;
   return totalEarnings;
 }
 
@@ -254,6 +286,9 @@ export function savePlayerData(playerData: PlayerData): void {
   const dataToSave = {
     ...playerData,
     caughtFishIds: Array.from(playerData.caughtFishIds),
+    achievements: Array.from(playerData.achievements),
+    achievementProgress: Array.from(playerData.achievementProgress.entries()),
+    fishCaughtCounts: Array.from(playerData.fishCaughtCounts.entries()),
   };
   localStorage.setItem('fishingGame_playerData', JSON.stringify(dataToSave));
 }
@@ -307,6 +342,13 @@ export function loadPlayerData(): PlayerData {
         level: parsed.level !== undefined ? parsed.level : initial.level,
         // サイズ記録（互換性のため）
         fishSizes: parsed.fishSizes || initial.fishSizes,
+        // 実績システム（互換性のため）
+        achievements: new Set(parsed.achievements || []),
+        achievementProgress: new Map(parsed.achievementProgress || []),
+        totalMoneyEarned: parsed.totalMoneyEarned || initial.totalMoneyEarned,
+        consecutiveSuccesses: parsed.consecutiveSuccesses || initial.consecutiveSuccesses,
+        fishCaughtCounts: new Map(parsed.fishCaughtCounts || []),
+        junkCaughtCount: parsed.junkCaughtCount || initial.junkCaughtCount,
       };
     } catch {
       console.error('Failed to load player data');
@@ -425,5 +467,152 @@ export function getLevelBarRangeBonus(level: number): number {
 export function getLevelGaugeSpeedBonus(level: number): number {
   if (level <= 1) return 0;
   return (level - 1) * 0.005;
+}
+
+// ============================================
+// 実績システム
+// ============================================
+
+// 実績の進捗を更新
+export function updateAchievementProgress(playerData: PlayerData, achievementId: string, value: number): void {
+  playerData.achievementProgress.set(achievementId, value);
+}
+
+// 実績の進捗率を取得（0.0〜1.0）
+export function getAchievementProgress(playerData: PlayerData, achievement: AchievementConfig): number {
+  const currentValue = playerData.achievementProgress.get(achievement.id) || 0;
+  const targetValue = achievement.condition.target;
+  
+  if (targetValue === 0) return 1.0;
+  return Math.min(1.0, currentValue / targetValue);
+}
+
+// 条件をチェックして進捗を更新
+function checkCondition(playerData: PlayerData, condition: AchievementCondition): number {
+  switch (condition.type) {
+    case 'total_caught':
+      return playerData.totalCaught;
+    
+    case 'level':
+      return playerData.level;
+    
+    case 'total_money_earned':
+      return playerData.totalMoneyEarned;
+    
+    case 'collection_count':
+      return playerData.caughtFishIds.size;
+    
+    case 'first_rarity':
+      // 特定のレア度の魚を一度でも釣ったかチェック
+      if (condition.rarity) {
+        for (const fishId of playerData.caughtFishIds) {
+          const fish = getFishById(fishId);
+          if (fish && fish.rarity === condition.rarity) {
+            return 1;
+          }
+        }
+      }
+      return 0;
+    
+    case 'all_rarity':
+      // 特定のレア度の全種類を釣ったかチェック（進捗を返す）
+      if (condition.rarity) {
+        const fishOfRarity = fishConfigs.filter(f => 
+          f.rarity === condition.rarity && !f.id.startsWith('junk_')
+        );
+        let caughtCount = 0;
+        for (const fish of fishOfRarity) {
+          if (playerData.caughtFishIds.has(fish.id)) {
+            caughtCount++;
+          }
+        }
+        // 進捗を返す（目標値は全種類数）
+        return caughtCount;
+      }
+      return 0;
+    
+    case 'all_rods':
+      return playerData.ownedRods.length;
+    
+    case 'all_baits':
+      return playerData.baits.length;
+    
+    case 'all_lures':
+      return playerData.ownedLures.length;
+    
+    case 'all_equipment':
+      return playerData.ownedRods.length + playerData.baits.length + playerData.ownedLures.length;
+    
+    case 'consecutive_success':
+      return playerData.consecutiveSuccesses;
+    
+    case 'junk_caught':
+      return playerData.junkCaughtCount;
+    
+    default:
+      return 0;
+  }
+}
+
+// 実績を解除
+export function unlockAchievement(playerData: PlayerData, achievement: AchievementConfig): void {
+  if (playerData.achievements.has(achievement.id)) {
+    return; // 既に解除済み
+  }
+  
+  playerData.achievements.add(achievement.id);
+  
+  // 報酬を付与
+  if (achievement.reward) {
+    if (achievement.reward.money) {
+      playerData.money += achievement.reward.money;
+    }
+    if (achievement.reward.exp) {
+      addExp(playerData, achievement.reward.exp);
+    }
+    // アイテム報酬は後で実装（必要に応じて）
+  }
+}
+
+// 実績をチェックして、達成したものを返す
+export function checkAchievements(playerData: PlayerData, categories?: string[]): AchievementConfig[] {
+  const unlocked: AchievementConfig[] = [];
+  
+  // カテゴリでフィルタリング
+  const achievementsToCheck = categories
+    ? achievementConfigs.filter(a => categories.includes(a.category))
+    : achievementConfigs;
+  
+  for (const achievement of achievementsToCheck) {
+    // 既に解除済みの場合はスキップ
+    if (playerData.achievements.has(achievement.id)) {
+      continue;
+    }
+    
+    // 条件をチェック
+    const currentValue = checkCondition(playerData, achievement.condition);
+    
+    // 進捗を更新
+    updateAchievementProgress(playerData, achievement.id, currentValue);
+    
+    // 達成条件を満たしているかチェック
+    const targetValue = achievement.condition.target;
+    if (currentValue >= targetValue) {
+      unlockAchievement(playerData, achievement);
+      unlocked.push(achievement);
+    }
+  }
+  
+  return unlocked;
+}
+
+// 連続成功を更新（成功時）
+export function incrementConsecutiveSuccess(playerData: PlayerData): void {
+  playerData.consecutiveSuccesses++;
+}
+
+// 連続成功をリセット（失敗時）
+export function resetConsecutiveSuccess(playerData: PlayerData): void {
+  playerData.consecutiveSuccesses = 0;
 }
 

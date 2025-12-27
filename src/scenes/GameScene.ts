@@ -3,7 +3,8 @@ import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
 import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, type RarityBonuses, Habitat } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
-import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize } from '../data/inventory';
+import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize, checkAchievements, getAchievementProgress, incrementConsecutiveSuccess, resetConsecutiveSuccess } from '../data/inventory';
+import { achievementConfigs, getAllCategories, getAchievementsByCategory, type AchievementConfig } from '../data/achievementConfig';
 import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, getRodById, getBaitById, getLureById, getNextRod, getNextInventoryUpgrade } from '../data/shopConfig';
 
 enum FishingState {
@@ -114,6 +115,11 @@ export default class GameScene extends Phaser.Scene {
 
   // ショップUI（HTML/CSS）
   private shopUIElement!: HTMLElement;
+
+  // 実績UI（HTML/CSS）
+  private achievementUIElement!: HTMLElement;
+  private achievementNotificationElement!: HTMLElement;
+  private achievementOpen: boolean = false;
   private shopItemsListElement!: HTMLElement;
   private shopMoneyElement!: HTMLElement;
   private shopOpen: boolean = false;
@@ -440,6 +446,9 @@ export default class GameScene extends Phaser.Scene {
     // ショップUI
     this.createShopUI();
 
+    // 実績UI
+    this.createAchievementUI();
+
     if (this.input.keyboard) {
         this.cursors = this.input.keyboard.createCursorKeys();
         this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -466,6 +475,11 @@ export default class GameScene extends Phaser.Scene {
 
         // ESCキーで閉じる（最上位モーダルのみ）
         this.input.keyboard.on('keydown-ESC', () => {
+            // 実績モーダルが開いている場合は閉じる
+            if (this.achievementOpen) {
+                this.closeAchievementModal();
+                return;
+            }
             // 統合BookUIが開いている場合は閉じる
             if (this.unifiedBookOpen) {
                 this.closeUnifiedBook();
@@ -779,6 +793,7 @@ export default class GameScene extends Phaser.Scene {
           <div id="money-text" class="stat-item">💰 0 G</div>
           <div id="inventory-text" class="stat-item">🎒 0/9</div>
           <div id="collection-text" class="stat-item">📖 図鑑 0/0</div>
+          <button id="achievement-button" class="stat-item" style="pointer-events: auto; cursor: pointer; background: rgba(0,0,0,0.5); border: 1px solid #fff; color: #fff; padding: 5px 10px; border-radius: 5px; margin-top: 5px;">🏆 実績</button>
         </div>
       </div>
     `;
@@ -919,6 +934,13 @@ export default class GameScene extends Phaser.Scene {
     }
     
     const earnings = sellAllFish(this.playerData);
+    
+    // 実績チェック（経済系）
+    const unlockedAchievements = checkAchievements(this.playerData, ['money']);
+    unlockedAchievements.forEach(achievement => {
+      this.showAchievementNotification(achievement);
+    });
+    
     savePlayerData(this.playerData);
     this.updateStatusUI();
     
@@ -1514,6 +1536,9 @@ export default class GameScene extends Phaser.Scene {
         const fishSize = this.currentFishSize;
         const { leveledUp } = addFishToInventory(this.playerData, this.currentFish, fishSize);
         
+        // 連続成功を更新
+        incrementConsecutiveSuccess(this.playerData);
+        
         // サイズによる価格ボーナスを計算
         const isJunk = this.currentFish.id.startsWith('junk_');
         let actualPrice = this.currentFish.price;
@@ -1526,6 +1551,21 @@ export default class GameScene extends Phaser.Scene {
         if (this.unifiedBookOpen) {
           this.updateUnifiedBookList();
         }
+        
+        // 実績チェック（釣果、レア度、図鑑、連続成功、ゴミ）
+        const unlockedAchievements = checkAchievements(this.playerData, ['catch', 'rarity', 'collection', 'special']);
+        unlockedAchievements.forEach(achievement => {
+          this.showAchievementNotification(achievement);
+        });
+        
+        // レベルアップした場合はレベル実績もチェック
+        if (leveledUp) {
+          const levelAchievements = checkAchievements(this.playerData, ['level']);
+          levelAchievements.forEach(achievement => {
+            this.showAchievementNotification(achievement);
+          });
+        }
+        
         savePlayerData(this.playerData);
         this.updateStatusUI();
 
@@ -1554,6 +1594,9 @@ export default class GameScene extends Phaser.Scene {
     this.cleanupFishingTools();
     this.currentFish = null;
     this.currentFishSize = undefined;
+    
+    // 連続成功をリセット
+    resetConsecutiveSuccess(this.playerData);
     
     const duration = config.result['6-3_失敗表示時間'] * 1000;
     this.showResult(reason, duration);
@@ -2985,6 +3028,184 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  // ============================================
+  // 実績UI
+  // ============================================
+
+  createAchievementUI() {
+    // 実績モーダル
+    const achievementHTML = `
+      <div id="achievement-modal" class="modal" style="display: none;" aria-hidden="true">
+        <div class="modal-content achievement-modal nes-container with-rounded" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+          <div class="modal-header">
+            <h2>🏆 実績一覧</h2>
+            <button class="modal-close" id="achievement-close">×</button>
+          </div>
+          <div class="achievement-tabs">
+            <button class="achievement-tab nes-btn" data-category="catch">🎣 釣果</button>
+            <button class="achievement-tab nes-btn" data-category="rarity">⭐ レア度</button>
+            <button class="achievement-tab nes-btn" data-category="collection">📖 図鑑</button>
+            <button class="achievement-tab nes-btn" data-category="level">⭐ レベル</button>
+            <button class="achievement-tab nes-btn" data-category="money">💰 経済</button>
+            <button class="achievement-tab nes-btn" data-category="equipment">⚔️ 装備</button>
+            <button class="achievement-tab nes-btn" data-category="special">✨ 特殊</button>
+          </div>
+          <div id="achievement-list" class="achievement-list"></div>
+          <div class="modal-footer">
+            <div class="hint-text">ESC: 閉じる</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = achievementHTML;
+    this.achievementUIElement = tempDiv.firstElementChild as HTMLElement;
+    document.body.appendChild(this.achievementUIElement);
+
+    // 実績通知
+    const notificationHTML = `
+      <div id="achievement-notification" style="display: none; position: fixed; top: 20px; right: 20px; z-index: 2000; background: rgba(0,0,0,0.9); border: 2px solid #ffd700; border-radius: 10px; padding: 15px; max-width: 300px; color: #fff; pointer-events: none;">
+        <div style="font-size: 24px; margin-bottom: 10px;">🏆 実績解除！</div>
+        <div id="achievement-notification-name" style="font-size: 18px; font-weight: bold; margin-bottom: 5px;"></div>
+        <div id="achievement-notification-desc" style="font-size: 14px; margin-bottom: 10px;"></div>
+        <div id="achievement-notification-reward" style="font-size: 12px; color: #ffd700;"></div>
+      </div>
+    `;
+
+    const notificationDiv = document.createElement('div');
+    notificationDiv.innerHTML = notificationHTML;
+    this.achievementNotificationElement = notificationDiv.firstElementChild as HTMLElement;
+    document.body.appendChild(this.achievementNotificationElement);
+
+    // 実績ボタンのイベント
+    const achievementButton = this.statusUIElement.querySelector('#achievement-button');
+    if (achievementButton) {
+      achievementButton.addEventListener('click', () => {
+        this.openAchievementModal();
+      });
+    }
+
+    // 閉じるボタン
+    const closeButton = this.achievementUIElement.querySelector('#achievement-close');
+    if (closeButton) {
+      closeButton.addEventListener('click', () => {
+        this.closeAchievementModal();
+      });
+    }
+
+    // タブボタンのイベント
+    const tabButtons = this.achievementUIElement.querySelectorAll('.achievement-tab');
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const category = btn.getAttribute('data-category') as string;
+        this.updateAchievementList(category);
+        // アクティブタブを更新
+        tabButtons.forEach(b => b.classList.remove('is-primary'));
+        btn.classList.add('is-primary');
+      });
+    });
+
+    // 初期表示（最初のタブ）
+    if (tabButtons.length > 0) {
+      (tabButtons[0] as HTMLElement).click();
+    }
+  }
+
+  openAchievementModal() {
+    if (this.achievementOpen) return;
+    this.achievementOpen = true;
+    this.achievementUIElement.style.display = 'block';
+    this.achievementUIElement.setAttribute('aria-hidden', 'false');
+    this.updateModalStates();
+  }
+
+  closeAchievementModal() {
+    if (!this.achievementOpen) return;
+    this.achievementOpen = false;
+    this.achievementUIElement.style.display = 'none';
+    this.achievementUIElement.setAttribute('aria-hidden', 'true');
+    this.updateModalStates();
+  }
+
+  updateAchievementList(category: string) {
+    const listElement = this.achievementUIElement.querySelector('#achievement-list') as HTMLElement;
+    if (!listElement) return;
+
+    const achievements = getAchievementsByCategory(category);
+    listElement.innerHTML = '';
+
+    achievements.forEach(achievement => {
+      const isUnlocked = this.playerData.achievements.has(achievement.id);
+      const progress = getAchievementProgress(this.playerData, achievement);
+      const progressPercent = Math.round(progress * 100);
+
+      const itemHTML = `
+        <div class="achievement-item ${isUnlocked ? 'unlocked' : 'locked'}" style="
+          padding: 15px;
+          margin-bottom: 10px;
+          border: 2px solid ${isUnlocked ? '#4CAF50' : '#666'};
+          border-radius: 8px;
+          background: ${isUnlocked ? 'rgba(76, 175, 80, 0.1)' : 'rgba(0, 0, 0, 0.3)'};
+          opacity: ${isUnlocked ? '1' : '0.7'};
+        ">
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="font-size: 48px;">${achievement.emoji}</div>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                <span style="font-size: 20px; font-weight: bold;">${achievement.name}</span>
+                ${isUnlocked ? '<span style="color: #4CAF50;">✅</span>' : ''}
+              </div>
+              <div style="font-size: 14px; color: #ccc; margin-bottom: 10px;">${achievement.description}</div>
+              ${!isUnlocked ? `
+                <div style="margin-top: 10px;">
+                  <div style="background: #333; border-radius: 5px; height: 20px; overflow: hidden;">
+                    <div style="background: #4CAF50; height: 100%; width: ${progressPercent}%; transition: width 0.3s;"></div>
+                  </div>
+                  <div style="font-size: 12px; color: #aaa; margin-top: 5px;">進捗: ${progressPercent}%</div>
+                </div>
+              ` : achievement.reward ? `
+                <div style="font-size: 12px; color: #ffd700; margin-top: 5px;">
+                  報酬: ${achievement.reward.money ? `💰 ${achievement.reward.money}G` : ''} ${achievement.reward.exp ? `⭐ ${achievement.reward.exp}EXP` : ''}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+
+      const itemDiv = document.createElement('div');
+      itemDiv.innerHTML = itemHTML;
+      listElement.appendChild(itemDiv.firstElementChild as HTMLElement);
+    });
+  }
+
+  showAchievementNotification(achievement: AchievementConfig) {
+    const notification = this.achievementNotificationElement;
+    const nameEl = notification.querySelector('#achievement-notification-name') as HTMLElement;
+    const descEl = notification.querySelector('#achievement-notification-desc') as HTMLElement;
+    const rewardEl = notification.querySelector('#achievement-notification-reward') as HTMLElement;
+
+    if (nameEl) nameEl.textContent = `${achievement.emoji} ${achievement.name}`;
+    if (descEl) descEl.textContent = achievement.description;
+    
+    if (achievement.reward) {
+      const rewards: string[] = [];
+      if (achievement.reward.money) rewards.push(`💰 ${achievement.reward.money}G`);
+      if (achievement.reward.exp) rewards.push(`⭐ ${achievement.reward.exp}EXP`);
+      if (rewardEl) rewardEl.textContent = rewards.length > 0 ? `報酬: ${rewards.join(' ')}` : '';
+    } else {
+      if (rewardEl) rewardEl.textContent = '';
+    }
+
+    notification.style.display = 'block';
+    
+    // 3秒後に自動で非表示
+    setTimeout(() => {
+      notification.style.display = 'none';
+    }, 3000);
+  }
+
   toggleShop() {
     if (this.shopOpen) {
       this.closeShop();
@@ -3263,6 +3484,13 @@ export default class GameScene extends Phaser.Scene {
         this.playerData.ownedRods.push(rod.id);
       }
       this.playerData.equippedRodId = rod.id;
+      
+      // 実績チェック（装備系）
+      const unlockedAchievements = checkAchievements(this.playerData, ['equipment']);
+      unlockedAchievements.forEach(achievement => {
+        this.showAchievementNotification(achievement);
+      });
+      
       savePlayerData(this.playerData);
       this.updateStatusUI();
       this.updateShopContent();
@@ -3282,6 +3510,13 @@ export default class GameScene extends Phaser.Scene {
       addBait(this.playerData, bait.id, bait.quantity);
       // 自動で装備
       this.playerData.equippedBaitId = bait.id;
+      
+      // 実績チェック（装備系）
+      const unlockedAchievements = checkAchievements(this.playerData, ['equipment']);
+      unlockedAchievements.forEach(achievement => {
+        this.showAchievementNotification(achievement);
+      });
+      
       savePlayerData(this.playerData);
       this.updateStatusUI();
       this.updateShopContent();
@@ -3315,6 +3550,13 @@ export default class GameScene extends Phaser.Scene {
       this.playerData.money -= lure.price;
       this.playerData.ownedLures.push(lure.id);
       this.playerData.equippedLureId = lure.id;
+      
+      // 実績チェック（装備系）
+      const unlockedAchievements = checkAchievements(this.playerData, ['equipment']);
+      unlockedAchievements.forEach(achievement => {
+        this.showAchievementNotification(achievement);
+      });
+      
       savePlayerData(this.playerData);
       this.updateStatusUI();
       this.updateShopContent();
