@@ -105,7 +105,7 @@ export const achievementConfigs: AchievementConfig[] = [
     name: 'レア魚ゲッター',
     description: 'レア度「rare」の魚を初めて釣る',
     emoji: '⭐',
-    condition: { type: 'first_rarity', rarity: Rarity.RARE },
+    condition: { type: 'first_rarity', rarity: Rarity.RARE, target: 1 },
     reward: { money: 300, exp: 100 },
   },
   {
@@ -114,7 +114,7 @@ export const achievementConfigs: AchievementConfig[] = [
     name: 'エピックハンター',
     description: 'レア度「epic」の魚を初めて釣る',
     emoji: '⭐⭐',
-    condition: { type: 'first_rarity', rarity: Rarity.EPIC },
+    condition: { type: 'first_rarity', rarity: Rarity.EPIC, target: 1 },
     reward: { money: 1000, exp: 300 },
   },
   {
@@ -123,7 +123,7 @@ export const achievementConfigs: AchievementConfig[] = [
     name: 'レジェンダリー',
     description: 'レア度「legendary」の魚を初めて釣る',
     emoji: '⭐⭐⭐',
-    condition: { type: 'first_rarity', rarity: Rarity.LEGENDARY },
+    condition: { type: 'first_rarity', rarity: Rarity.LEGENDARY, target: 1 },
     reward: { money: 5000, exp: 1000 },
   },
   {
@@ -206,9 +206,9 @@ export const achievementConfigs: AchievementConfig[] = [
     id: 'collection_all',
     category: 'collection',
     name: '完全制覇',
-    description: '図鑑に全種類（19種類）の魚を登録',
+    description: '図鑑に全種類の魚を登録',
     emoji: '🏅',
-    condition: { type: 'collection_count', target: 19 },
+    condition: { type: 'all_collection', target: 0 }, // targetは使用されない（動的に全種類数をチェック）
     reward: { money: 10000, exp: 3000 },
   },
 

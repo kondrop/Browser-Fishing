@@ -1,7 +1,7 @@
 // 📦 インベントリ管理
 
 import type { FishConfig } from './fishConfig';
-import { getFishById } from './fish';
+import { getFishById, getRealFishCount } from './fish';
 import type { AchievementConfig, AchievementCondition } from './achievementConfig';
 import { achievementConfigs } from './achievementConfig';
 import { Rarity } from './fishTypes';
@@ -483,7 +483,32 @@ export function getAchievementProgress(playerData: PlayerData, achievement: Achi
   const currentValue = playerData.achievementProgress.get(achievement.id) || 0;
   const targetValue = achievement.condition.target;
   
-  if (targetValue === 0) return 1.0;
+  // all_collectionの場合は動的に全種類数を取得
+  if (achievement.condition.type === 'all_collection') {
+    const totalFishCount = getRealFishCount();
+    const caughtCount = Array.from(playerData.caughtFishIds).filter(id => !id.startsWith('junk_')).length;
+    if (totalFishCount === 0) return 1.0;
+    return Math.min(1.0, caughtCount / totalFishCount);
+  }
+  
+  // all_rarityの場合は動的に全種類数を取得
+  if (achievement.condition.type === 'all_rarity' && achievement.condition.rarity) {
+    const fishOfRarity = fishConfigs.filter(f => 
+      f.rarity === achievement.condition.rarity && !f.id.startsWith('junk_')
+    );
+    const totalCount = fishOfRarity.length;
+    if (totalCount === 0) return 1.0;
+    return Math.min(1.0, currentValue / totalCount);
+  }
+  
+  // first_rarityの場合は、targetが1なのでそのまま使用
+  if (achievement.condition.type === 'first_rarity') {
+    const target = achievement.condition.target || 1;
+    return Math.min(1.0, currentValue / target);
+  }
+  
+  // targetValueが0または未定義の場合は1.0を返す
+  if (!targetValue || targetValue === 0) return 1.0;
   return Math.min(1.0, currentValue / targetValue);
 }
 
@@ -501,6 +526,12 @@ function checkCondition(playerData: PlayerData, condition: AchievementCondition)
     
     case 'collection_count':
       return playerData.caughtFishIds.size;
+    
+    case 'all_collection':
+      // 全種類の魚を釣ったかチェック（ゴミを除く）
+      const totalFishCount = getRealFishCount();
+      const caughtCount = Array.from(playerData.caughtFishIds).filter(id => !id.startsWith('junk_')).length;
+      return caughtCount === totalFishCount ? 1 : 0;
     
     case 'first_rarity':
       // 特定のレア度の魚を一度でも釣ったかチェック
@@ -596,10 +627,18 @@ export function checkAchievements(playerData: PlayerData, categories?: string[])
     updateAchievementProgress(playerData, achievement.id, currentValue);
     
     // 達成条件を満たしているかチェック
-    const targetValue = achievement.condition.target;
-    if (currentValue >= targetValue) {
-      unlockAchievement(playerData, achievement);
-      unlocked.push(achievement);
+    // all_collectionの場合は、currentValueが1（全種類達成）の場合に達成
+    if (achievement.condition.type === 'all_collection') {
+      if (currentValue >= 1) {
+        unlockAchievement(playerData, achievement);
+        unlocked.push(achievement);
+      }
+    } else {
+      const targetValue = achievement.condition.target;
+      if (currentValue >= targetValue) {
+        unlockAchievement(playerData, achievement);
+        unlocked.push(achievement);
+      }
     }
   }
   

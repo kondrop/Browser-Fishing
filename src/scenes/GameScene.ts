@@ -473,6 +473,19 @@ export default class GameScene extends Phaser.Scene {
             }
         });
 
+        // Aキーで実績表示（統合BookUI）
+        this.input.keyboard.on('keydown-A', () => {
+            if (this.unifiedBookOpen) {
+                if (this.unifiedBookTab === 'achievement') {
+                    this.closeUnifiedBook();
+                } else {
+                    this.switchUnifiedBookTab('achievement');
+                }
+            } else {
+                this.openUnifiedBook('achievement');
+            }
+        });
+
         // ESCキーで閉じる（最上位モーダルのみ）
         this.input.keyboard.on('keydown-ESC', () => {
             // 実績モーダルが開いている場合は閉じる
@@ -793,7 +806,6 @@ export default class GameScene extends Phaser.Scene {
           <div id="money-text" class="stat-item">💰 0 G</div>
           <div id="inventory-text" class="stat-item">🎒 0/9</div>
           <div id="collection-text" class="stat-item">📖 図鑑 0/0</div>
-          <button id="achievement-button" class="stat-item" style="pointer-events: auto; cursor: pointer; background: rgba(0,0,0,0.5); border: 1px solid #fff; color: #fff; padding: 5px 10px; border-radius: 5px; margin-top: 5px;">🏆 実績</button>
         </div>
       </div>
     `;
@@ -3303,21 +3315,6 @@ export default class GameScene extends Phaser.Scene {
     this.achievementNotificationElement = notificationDiv.firstElementChild as HTMLElement;
     document.body.appendChild(this.achievementNotificationElement);
 
-    // 実績ボタンのイベント（統合BookUIを開く）
-    const achievementButton = this.statusUIElement.querySelector('#achievement-button');
-    if (achievementButton) {
-      achievementButton.addEventListener('click', () => {
-        if (this.unifiedBookOpen) {
-          if (this.unifiedBookTab === 'achievement') {
-            this.closeUnifiedBook();
-          } else {
-            this.switchUnifiedBookTab('achievement');
-          }
-        } else {
-          this.openUnifiedBook('achievement');
-        }
-      });
-    }
 
     // 閉じるボタン
     const closeButton = this.achievementUIElement.querySelector('#achievement-close');
