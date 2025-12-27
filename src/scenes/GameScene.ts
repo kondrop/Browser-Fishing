@@ -106,7 +106,7 @@ export default class GameScene extends Phaser.Scene {
   // 統合BookUI（2ペイン）
   private unifiedBookUIElement!: HTMLElement;
   private unifiedBookOpen: boolean = false;
-  private unifiedBookTab: 'inventory' | 'pedia' = 'inventory';
+  private unifiedBookTab: 'inventory' | 'pedia' | 'achievement' = 'inventory';
   private unifiedBookSelectedId: string | null = null;
   private unifiedBookListItems: HTMLElement[] = [];
   private unifiedBookListScrollElement!: HTMLElement;
@@ -2128,6 +2128,7 @@ export default class GameScene extends Phaser.Scene {
             <div class="book-tabs">
               <button class="book-tab-button active" data-tab="inventory">バッグ</button>
               <button class="book-tab-button" data-tab="pedia">図鑑</button>
+              <button class="book-tab-button" data-tab="achievement">実績</button>
             </div>
           </div>
           <div class="book-content">
@@ -2182,7 +2183,12 @@ export default class GameScene extends Phaser.Scene {
     (window as any).gameScene = this;
   }
 
-  switchUnifiedBookTab(tab: 'inventory' | 'pedia') {
+  switchUnifiedBookTab(tab: 'inventory' | 'pedia' | 'achievement') {
+    // 実績タブから他のタブに切り替える場合は、詳細エリアを元の構造に復元
+    if (this.unifiedBookTab === 'achievement' && tab !== 'achievement') {
+      this.restoreBookDetailStructure();
+    }
+
     this.unifiedBookTab = tab;
     this.unifiedBookSelectedId = null;
 
@@ -2201,6 +2207,16 @@ export default class GameScene extends Phaser.Scene {
     const header = this.unifiedBookUIElement.querySelector('#book-list-header') as HTMLElement;
     if (header) {
       header.textContent = '';
+      header.style.display = 'none';
+    }
+
+    // 実績タブの場合はdata属性を設定
+    if (tab === 'achievement') {
+      this.unifiedBookUIElement.setAttribute('data-tab', 'achievement');
+    } else {
+      this.unifiedBookUIElement.removeAttribute('data-tab');
+      // 念のため、実績タブ以外の場合は詳細エリアを復元
+      this.restoreBookDetailStructure();
     }
 
     // リストと詳細を更新
@@ -2214,6 +2230,15 @@ export default class GameScene extends Phaser.Scene {
     // 既存のアイテムをクリア
     this.unifiedBookListScrollElement.innerHTML = '';
     this.unifiedBookListItems = [];
+
+    // 実績タブ以外の場合は、実績タブ用のスタイルをリセット
+    if (this.unifiedBookTab !== 'achievement') {
+      this.unifiedBookListScrollElement.classList.remove('achievement-list-container');
+      this.unifiedBookListScrollElement.style.display = '';
+      this.unifiedBookListScrollElement.style.flexDirection = '';
+      this.unifiedBookListScrollElement.style.gap = '';
+      this.unifiedBookListScrollElement.style.padding = '';
+    }
 
     if (this.unifiedBookTab === 'inventory') {
       // インベントリタブ
@@ -2234,7 +2259,7 @@ export default class GameScene extends Phaser.Scene {
         this.unifiedBookListScrollElement.appendChild(item);
         this.unifiedBookListItems.push(item);
       });
-    } else {
+    } else if (this.unifiedBookTab === 'pedia') {
       // 図鑑タブ
       const fishList = this.getRealFishList();
       fishList.forEach((fish, index) => {
@@ -2243,6 +2268,28 @@ export default class GameScene extends Phaser.Scene {
         this.unifiedBookListScrollElement.appendChild(item);
         this.unifiedBookListItems.push(item);
       });
+    } else if (this.unifiedBookTab === 'achievement') {
+      // 実績タブ - 縦積みリスト形式で表示
+      const categories = getAllCategories();
+      this.unifiedBookListScrollElement.classList.add('achievement-list-container');
+      this.unifiedBookListScrollElement.style.display = 'flex';
+      this.unifiedBookListScrollElement.style.flexDirection = 'column';
+      this.unifiedBookListScrollElement.style.gap = '10px';
+      this.unifiedBookListScrollElement.style.padding = '10px';
+      
+      categories.forEach((category, index) => {
+        const achievements = getAchievementsByCategory(category);
+        const categoryItem = this.createAchievementCategoryItem(category, achievements.length, index);
+        this.unifiedBookListScrollElement.appendChild(categoryItem);
+        this.unifiedBookListItems.push(categoryItem);
+      });
+    } else {
+      // バッグ・図鑑タブの場合は通常のリスト表示
+      this.unifiedBookListScrollElement.classList.remove('achievement-list-container');
+      this.unifiedBookListScrollElement.style.display = '';
+      this.unifiedBookListScrollElement.style.flexDirection = '';
+      this.unifiedBookListScrollElement.style.gap = '';
+      this.unifiedBookListScrollElement.style.padding = '';
     }
   }
 
@@ -2353,6 +2400,15 @@ export default class GameScene extends Phaser.Scene {
   }
 
   selectUnifiedBookItem(fishId: string, index: number) {
+    // 実績タブの場合は別処理
+    if (this.unifiedBookTab === 'achievement') {
+      const category = this.unifiedBookListItems[index]?.getAttribute('data-category');
+      if (category) {
+        this.selectAchievementCategory(category, index);
+      }
+      return;
+    }
+
     this.unifiedBookSelectedId = fishId;
 
     // 選択状態を更新
@@ -2373,10 +2429,21 @@ export default class GameScene extends Phaser.Scene {
   updateUnifiedBookDetail() {
     if (!this.unifiedBookDetailElement || !this.unifiedBookDetailPlaceholderElement) return;
 
+    // 実績タブ以外の場合は、詳細エリアの構造が正しいことを確認（最初に実行）
+    if (this.unifiedBookTab !== 'achievement') {
+      this.restoreBookDetailStructure();
+    }
+
     if (!this.unifiedBookSelectedId) {
       // 未選択時はプレースホルダーを表示
       this.unifiedBookDetailPlaceholderElement.style.display = 'flex';
       this.unifiedBookDetailElement.classList.remove('active');
+      return;
+    }
+
+    // 実績タブの場合は別処理
+    if (this.unifiedBookTab === 'achievement') {
+      this.updateAchievementDetail(this.unifiedBookSelectedId);
       return;
     }
 
@@ -2390,12 +2457,27 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookDetailElement.classList.add('active');
 
     // 要素を取得
-    const imageCanvas = this.unifiedBookDetailElement.querySelector('#book-detail-image') as HTMLCanvasElement;
-    const emoji = this.unifiedBookDetailElement.querySelector('#book-detail-emoji') as HTMLElement;
-    const name = this.unifiedBookDetailElement.querySelector('#book-detail-name') as HTMLElement;
-    const rarity = this.unifiedBookDetailElement.querySelector('#book-detail-rarity') as HTMLElement;
-    const info = this.unifiedBookDetailElement.querySelector('#book-detail-info') as HTMLElement;
-    const desc = this.unifiedBookDetailElement.querySelector('#book-detail-desc') as HTMLElement;
+    let imageCanvas = this.unifiedBookDetailElement.querySelector('#book-detail-image') as HTMLCanvasElement;
+    let emoji = this.unifiedBookDetailElement.querySelector('#book-detail-emoji') as HTMLElement;
+    let name = this.unifiedBookDetailElement.querySelector('#book-detail-name') as HTMLElement;
+    let rarity = this.unifiedBookDetailElement.querySelector('#book-detail-rarity') as HTMLElement;
+    let info = this.unifiedBookDetailElement.querySelector('#book-detail-info') as HTMLElement;
+    let desc = this.unifiedBookDetailElement.querySelector('#book-detail-desc') as HTMLElement;
+    
+    // 要素が存在しない場合は復元して再取得
+    if (!imageCanvas || !emoji || !name || !rarity || !info || !desc) {
+      this.restoreBookDetailStructure();
+      imageCanvas = this.unifiedBookDetailElement.querySelector('#book-detail-image') as HTMLCanvasElement;
+      emoji = this.unifiedBookDetailElement.querySelector('#book-detail-emoji') as HTMLElement;
+      name = this.unifiedBookDetailElement.querySelector('#book-detail-name') as HTMLElement;
+      rarity = this.unifiedBookDetailElement.querySelector('#book-detail-rarity') as HTMLElement;
+      info = this.unifiedBookDetailElement.querySelector('#book-detail-info') as HTMLElement;
+      desc = this.unifiedBookDetailElement.querySelector('#book-detail-desc') as HTMLElement;
+      
+      if (!imageCanvas || !emoji || !name || !rarity || !info || !desc) {
+        return; // 復元に失敗した場合は処理を中断
+      }
+    }
 
     if (isCaught) {
       // 発見済み/所持品
@@ -2528,7 +2610,150 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  openUnifiedBook(tab: 'inventory' | 'pedia' = 'inventory') {
+  restoreBookDetailStructure() {
+    if (!this.unifiedBookDetailElement) return;
+    
+    // 実績タブの詳細表示（achievement-detail-list）が存在する場合は、元の構造に復元
+    const achievementDetailList = this.unifiedBookDetailElement.querySelector('.achievement-detail-list');
+    const existingTop = this.unifiedBookDetailElement.querySelector('.book-detail-top');
+    
+    // 実績タブの詳細表示が存在するか、元の構造が失われている場合は復元
+    if (achievementDetailList || !existingTop) {
+      this.unifiedBookDetailElement.innerHTML = `
+        <div class="book-detail-top">
+          <div class="book-detail-image-container">
+            <canvas id="book-detail-image" class="book-detail-image" width="120" height="120" style="display: none;"></canvas>
+            <div id="book-detail-emoji" class="book-detail-emoji" style="display: none;"></div>
+          </div>
+          <div class="book-detail-header">
+            <div id="book-detail-name" class="book-detail-name"></div>
+            <div id="book-detail-rarity" class="book-detail-rarity"></div>
+          </div>
+        </div>
+        <div id="book-detail-info" class="book-detail-info"></div>
+        <div id="book-detail-desc" class="book-detail-desc"></div>
+      `;
+    }
+  }
+
+  createAchievementCategoryItem(category: string, count: number, index: number): HTMLElement {
+    const item = document.createElement('div');
+    // 実績タブ用のクラス名（リスト形式）
+    item.className = 'achievement-category-list-item';
+    item.setAttribute('data-category', category);
+    item.setAttribute('data-index', index.toString());
+
+    const categoryData: Record<string, { name: string; emoji: string; char: string }> = {
+      'catch': { name: '釣果', emoji: '🎣', char: '釣' },
+      'rarity': { name: 'レア度', emoji: '⭐', char: 'レ' },
+      'collection': { name: '図鑑', emoji: '📖', char: '図' },
+      'level': { name: 'レベル', emoji: '⭐', char: 'レ' },
+      'money': { name: '経済', emoji: '💰', char: '経' },
+      'equipment': { name: '装備', emoji: '⚔️', char: '装' },
+      'special': { name: '特殊', emoji: '✨', char: '特' },
+    };
+
+    const data = categoryData[category] || { name: category, emoji: '⭐', char: category[0] };
+    const unlockedCount = getAchievementsByCategory(category).filter(a => 
+      this.playerData.achievements.has(a.id)
+    ).length;
+
+    // リスト形式のレイアウト
+    item.innerHTML = `
+      <div class="achievement-category-list-icon">${data.emoji}</div>
+      <div class="achievement-category-list-info">
+        <div class="achievement-category-list-name">${data.name}</div>
+        <div class="achievement-category-list-count">${unlockedCount}/${count} 達成</div>
+      </div>
+    `;
+
+    item.addEventListener('click', () => {
+      this.selectAchievementCategory(category, index);
+    });
+
+    return item;
+  }
+
+  selectAchievementCategory(category: string, index: number) {
+    this.unifiedBookSelectedId = category;
+
+    // 選択状態を更新
+    this.unifiedBookListItems.forEach((item, i) => {
+      if (i === index) {
+        item.classList.add('achievement-category-selected');
+        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        item.classList.remove('achievement-category-selected');
+      }
+    });
+
+    // 詳細を更新
+    this.updateUnifiedBookDetail();
+  }
+
+  updateAchievementDetail(category: string) {
+    if (!this.unifiedBookDetailElement || !this.unifiedBookDetailPlaceholderElement) return;
+
+    // プレースホルダーを非表示
+    this.unifiedBookDetailPlaceholderElement.style.display = 'none';
+    this.unifiedBookDetailElement.classList.add('active');
+
+    // 実績一覧を表示
+    const achievements = getAchievementsByCategory(category);
+    
+    // 詳細エリアをクリアして実績一覧用のHTMLに変更
+    this.unifiedBookDetailElement.innerHTML = `
+      <div class="achievement-detail-list" style="
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px;
+        max-height: 100%;
+        overflow-y: auto;
+      ">
+        ${achievements.map(achievement => {
+          const isUnlocked = this.playerData.achievements.has(achievement.id);
+          const progress = getAchievementProgress(this.playerData, achievement);
+          const progressPercent = Math.round(progress * 100);
+
+          return `
+            <div class="achievement-detail-item ${isUnlocked ? 'unlocked' : 'locked'}" style="
+              padding: 15px;
+              border: 2px solid ${isUnlocked ? '#4CAF50' : '#666'};
+              border-radius: 8px;
+              background: ${isUnlocked ? 'rgba(76, 175, 80, 0.1)' : 'rgba(0, 0, 0, 0.3)'};
+              opacity: ${isUnlocked ? '1' : '0.7'};
+            ">
+              <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="font-size: 48px;">${achievement.emoji}</div>
+                <div style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                    <span style="font-size: 20px; font-weight: bold;">${achievement.name}</span>
+                    ${isUnlocked ? '<span style="color: #4CAF50;">✅</span>' : ''}
+                  </div>
+                  <div style="font-size: 14px; color: #ccc; margin-bottom: 10px;">${achievement.description}</div>
+                  ${!isUnlocked ? `
+                    <div style="margin-top: 10px;">
+                      <div style="background: #333; border-radius: 5px; height: 20px; overflow: hidden;">
+                        <div style="background: #4CAF50; height: 100%; width: ${progressPercent}%; transition: width 0.3s;"></div>
+                      </div>
+                      <div style="font-size: 12px; color: #aaa; margin-top: 5px;">進捗: ${progressPercent}%</div>
+                    </div>
+                  ` : achievement.reward ? `
+                    <div style="font-size: 12px; color: #ffd700; margin-top: 5px;">
+                      報酬: ${achievement.reward.money ? `💰 ${achievement.reward.money}G` : ''} ${achievement.reward.exp ? `⭐ ${achievement.reward.exp}EXP` : ''}
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  openUnifiedBook(tab: 'inventory' | 'pedia' | 'achievement' = 'inventory') {
     if (this.state !== FishingState.IDLE) return;
 
     this.unifiedBookOpen = true;
@@ -3078,11 +3303,19 @@ export default class GameScene extends Phaser.Scene {
     this.achievementNotificationElement = notificationDiv.firstElementChild as HTMLElement;
     document.body.appendChild(this.achievementNotificationElement);
 
-    // 実績ボタンのイベント
+    // 実績ボタンのイベント（統合BookUIを開く）
     const achievementButton = this.statusUIElement.querySelector('#achievement-button');
     if (achievementButton) {
       achievementButton.addEventListener('click', () => {
-        this.openAchievementModal();
+        if (this.unifiedBookOpen) {
+          if (this.unifiedBookTab === 'achievement') {
+            this.closeUnifiedBook();
+          } else {
+            this.switchUnifiedBookTab('achievement');
+          }
+        } else {
+          this.openUnifiedBook('achievement');
+        }
       });
     }
 

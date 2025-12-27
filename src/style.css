@@ -1183,3 +1183,193 @@ img {
     opacity: 1;
   }
 }
+
+/* ============================================
+   統合BookUI - 実績タブ
+   ============================================ */
+
+/* 実績リストコンテナ */
+.achievement-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+/* 実績カテゴリリストアイテム（縦積み） */
+.achievement-category-list-item {
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #e8cfa6;
+  border: 3px solid #704A2B;
+  border-radius: 8px;
+  padding: 12px 15px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
+  font-family: 'DotGothic16', sans-serif;
+}
+
+.achievement-category-list-item:hover {
+  background: #d4b896;
+}
+
+.achievement-category-list-item.achievement-category-selected {
+  background: #f7d51d;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #f2c409,
+    inset 0 -4px #f2c409;
+}
+
+.achievement-category-list-icon {
+  font-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  flex-shrink: 0;
+}
+
+.achievement-category-list-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.achievement-category-list-name {
+  font-size: 18px;
+  font-weight: bold;
+  color: #320e0e;
+}
+
+.achievement-category-list-count {
+  font-size: 14px;
+  color: #320e0e;
+  opacity: 0.8;
+}
+
+/* 実績カテゴリグリッドアイテム（グリッド形式用 - 現在は未使用） */
+.achievement-category-grid-item {
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #e8cfa6;
+  border: 3px solid #704A2B;
+  border-radius: 8px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  position: relative;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
+}
+
+.achievement-category-grid-item:hover {
+  background: #d4b896;
+}
+
+.achievement-category-grid-item.achievement-category-selected {
+  background: #f7d51d;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #f2c409,
+    inset 0 -4px #f2c409;
+}
+
+.achievement-category-count {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 14px;
+  color: #320e0e;
+  font-weight: bold;
+}
+
+.achievement-category-char {
+  font-size: 64px;
+  font-weight: bold;
+  color: #320e0e;
+  line-height: 1;
+  margin: 10px 0;
+  font-family: 'DotGothic16', sans-serif;
+}
+
+.achievement-category-footer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: auto;
+  font-size: 14px;
+  color: #320e0e;
+}
+
+.achievement-category-emoji {
+  font-size: 16px;
+}
+
+.achievement-category-name {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* 実績詳細リスト */
+.achievement-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.achievement-detail-item {
+  padding: 15px;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.achievement-detail-item.unlocked {
+  border: 2px solid #4CAF50;
+  background: rgba(76, 175, 80, 0.1);
+  opacity: 1;
+}
+
+.achievement-detail-item.locked {
+  border: 2px solid #666;
+  background: rgba(0, 0, 0, 0.3);
+  opacity: 0.7;
+}
+
+/* 実績タブの詳細エリアのスタイル調整 */
+.book-ui[data-tab="achievement"] .book-detail-content {
+  padding: 0;
+}
+
+.book-ui[data-tab="achievement"] .book-detail-top,
+.book-ui[data-tab="achievement"] .book-detail-image-container,
+.book-ui[data-tab="achievement"] .book-detail-header {
+  display: none;
+}
