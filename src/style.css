@@ -1111,11 +1111,12 @@ img {
   padding: 15px;
   background: rgba(0, 0, 0, 0.05);
   border: none;
-  flex: 1;
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
   min-height: 100px;
+  height: auto;
+  flex-shrink: 0;
 }
 
 .book-detail-price {
@@ -1190,46 +1191,50 @@ img {
 
 /* 実績リストコンテナ */
 .achievement-list-container {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 14px;
+  padding: 14px;
 }
 
 /* 実績カテゴリリストアイテム（縦積み） */
 .achievement-category-list-item {
   cursor: pointer;
-  transition: all 0.2s;
+  transition: transform 0.1s, background 0.1s;
   background: #e8cfa6;
-  border: 3px solid #704A2B;
-  border-radius: 8px;
-  padding: 12px 15px;
+  border: none;
+  padding: 15px 15px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 15px;
+  gap: 10px;
+  position: relative;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
-    inset -4px 0 #c49a6c,
-    inset 0 -4px #c49a6c;
+    4px 0 #aa7959,
+    -4px 0 #aa7959,
+    0 4px #aa7959,
+    0 -4px #aa7959,
+    inset -4px 0 rgba(170, 121, 89, 0.4),
+    inset 0 -4px rgba(170, 121, 89, 0.4);
   font-family: 'DotGothic16', sans-serif;
 }
 
 .achievement-category-list-item:hover {
+  transform: scale(1.02);
   background: #d4b896;
 }
 
 .achievement-category-list-item.achievement-category-selected {
   background: #f7d51d;
+  border: none;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
-    inset -4px 0 #f2c409,
-    inset 0 -4px #f2c409;
+    4px 0 #aa7959,
+    -4px 0 #aa7959,
+    0 4px #aa7959,
+    0 -4px #aa7959,
+    inset -4px 0 rgba(170, 121, 89, 0.4),
+    inset 0 -4px rgba(170, 121, 89, 0.4);
 }
 
 .achievement-category-list-icon {
@@ -1247,12 +1252,14 @@ img {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  line-height: 16px;
 }
 
 .achievement-category-list-name {
   font-size: 18px;
   font-weight: bold;
   color: #320e0e;
+  text-align: center;
 }
 
 .achievement-category-list-count {

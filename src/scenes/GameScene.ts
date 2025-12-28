@@ -2248,6 +2248,8 @@ export default class GameScene extends Phaser.Scene {
       this.unifiedBookListScrollElement.classList.remove('achievement-list-container');
       this.unifiedBookListScrollElement.style.display = '';
       this.unifiedBookListScrollElement.style.flexDirection = '';
+      this.unifiedBookListScrollElement.style.gridTemplateColumns = '';
+      this.unifiedBookListScrollElement.style.gridTemplateRows = '';
       this.unifiedBookListScrollElement.style.gap = '';
       this.unifiedBookListScrollElement.style.padding = '';
     }
@@ -2281,13 +2283,14 @@ export default class GameScene extends Phaser.Scene {
         this.unifiedBookListItems.push(item);
       });
     } else if (this.unifiedBookTab === 'achievement') {
-      // 実績タブ - 縦積みリスト形式で表示
+      // 実績タブ - グリッド形式で表示
       const categories = getAllCategories();
       this.unifiedBookListScrollElement.classList.add('achievement-list-container');
-      this.unifiedBookListScrollElement.style.display = 'flex';
-      this.unifiedBookListScrollElement.style.flexDirection = 'column';
-      this.unifiedBookListScrollElement.style.gap = '10px';
-      this.unifiedBookListScrollElement.style.padding = '10px';
+      this.unifiedBookListScrollElement.style.display = 'grid';
+      this.unifiedBookListScrollElement.style.gridTemplateColumns = 'repeat(2, 1fr)';
+      this.unifiedBookListScrollElement.style.gridTemplateRows = 'repeat(4, 1fr)';
+      this.unifiedBookListScrollElement.style.gap = '14px';
+      this.unifiedBookListScrollElement.style.padding = '14px';
       
       categories.forEach((category, index) => {
         const achievements = getAchievementsByCategory(category);
@@ -2299,7 +2302,8 @@ export default class GameScene extends Phaser.Scene {
       // バッグ・図鑑タブの場合は通常のリスト表示
       this.unifiedBookListScrollElement.classList.remove('achievement-list-container');
       this.unifiedBookListScrollElement.style.display = '';
-      this.unifiedBookListScrollElement.style.flexDirection = '';
+      this.unifiedBookListScrollElement.style.gridTemplateColumns = '';
+      this.unifiedBookListScrollElement.style.gridTemplateRows = '';
       this.unifiedBookListScrollElement.style.gap = '';
       this.unifiedBookListScrollElement.style.padding = '';
     }
