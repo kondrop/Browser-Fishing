@@ -177,6 +177,9 @@ export default class GameScene extends Phaser.Scene {
       'fish_crucian_herabuna': 'ヘラブナ',
       'fish_sea_bass': 'スズキ',
       'fish_goldfish': 'キンギョ',
+      'fish_clownfish': 'クマノミ',
+      'fish_pufferfish': 'フグ',
+      'fish_tang': 'ナンヨウハギ',
       // UNCOMMON
       'fish_catfish': 'ナマズ',
       'fish_black_bass': 'ブラックバス',
@@ -188,6 +191,10 @@ export default class GameScene extends Phaser.Scene {
       'fish_rockfish': 'カサゴ',
       'fish_flatfish': 'カレイ',
       'fish_amago': 'アマゴ',
+      'fish_squid': 'イカ',
+      'fish_octopus': 'タコ',
+      'fish_jellyfish': 'クラゲ',
+      'fish_seahorse': 'タツノオトシゴ',
       // RARE
       'fish_salmon': 'サケ',
       'fish_yellowtail': 'ブリ',
@@ -197,9 +204,12 @@ export default class GameScene extends Phaser.Scene {
       'fish_horse_mackerel': 'アジ',
       'fish_tuna': 'マグロ',
       'fish_sturgeon': 'チョウザメ',
+      'fish_swordfish': 'カジキ',
       // LEGENDARY
       'fish_golden_koi': '黄金の鯉',
       'fish_arowana': 'アロワナ',
+      'fish_coelacanth': 'シーラカンス',
+      'fish_itou': 'イトウ',
       // ゴミ
       'junk_boot': '長靴',
       'junk_can': '空き缶',

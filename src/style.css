@@ -953,7 +953,7 @@ img {
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.1);
-  padding: 8px;
+  padding: 10px;
   z-index: 1;
 }
 
@@ -1196,6 +1196,8 @@ img {
   grid-template-rows: repeat(4, 1fr);
   gap: 14px;
   padding: 14px;
+  flex: none;
+  height: fit-content;
 }
 
 /* 実績カテゴリリストアイテム（縦積み） */
@@ -1206,10 +1208,11 @@ img {
   border: none;
   padding: 15px 15px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   gap: 10px;
   position: relative;
+  height: 80px;
   box-shadow: 
     4px 0 #aa7959,
     -4px 0 #aa7959,
@@ -1259,7 +1262,7 @@ img {
   font-size: 18px;
   font-weight: bold;
   color: #320e0e;
-  text-align: center;
+  text-align: left;
 }
 
 .achievement-category-list-count {
