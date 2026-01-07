@@ -102,21 +102,29 @@ img {
   left: 0;
   width: 100%;
   height: 100%;
-  display: none;
+  display: flex;
   justify-content: center;
   align-items: center;
   z-index: 2000;
   pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0s 0.3s, opacity 0.3s ease-out;
 }
 
 /* 最上位モーダル：アクティブ */
 .modal.is-open.is-topmost {
   pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+  transition: visibility 0s 0s, opacity 0.3s ease-out;
 }
 
 /* 背面モーダル：非アクティブ */
 .modal.is-open.is-behind {
   pointer-events: none;
+  visibility: visible;
+  opacity: 1;
 }
 
 /* グローバルoverlay（1枚だけ） */
@@ -126,15 +134,21 @@ img {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0);
   z-index: 1999;
-  display: none;
+  display: block;
   pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0s 0.3s, opacity 0.3s ease-out, background 0.3s ease-out;
 }
 
 .modal-overlay.is-active {
-  display: block;
   pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.8);
+  transition: visibility 0s 0s, opacity 0.3s ease-out, background 0.3s ease-out;
 }
 
 .modal-content {
@@ -153,6 +167,21 @@ img {
     inset -4px 0 #c49a6c,
     inset 0 -4px #c49a6c;
   position: relative;
+  transform: translateY(50px);
+  opacity: 0;
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+/* モーダルが開いている時：下から50pxの位置からスライドイン */
+.modal.is-open.is-topmost .modal-content {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* モーダルが閉じる時：下に50pxスライドアウト */
+.modal:not(.is-open) .modal-content {
+  transform: translateY(50px);
+  opacity: 0;
 }
 
 .modal-header {
@@ -745,23 +774,34 @@ img {
   left: 0;
   width: 100%;
   height: 100%;
-  display: none;
+  display: flex;
   justify-content: center;
   align-items: center;
   z-index: 2000;
   pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0s 0.3s, opacity 0.3s ease-out;
 }
 
-#book-ui.is-open {
-  display: flex;
+#book-ui.is-open.is-topmost {
   pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+  transition: visibility 0s 0s, opacity 0.3s ease-out;
+}
+
+#book-ui.is-open.is-behind {
+  pointer-events: none;
+  visibility: visible;
+  opacity: 1;
 }
 
 .book-container {
   background: #e8cfa6;
   border: none;
   width: 90%;
-  max-width: 1200px;
+  max-width: 800px;
   height: 85%;
   max-height: 800px;
   display: flex;
@@ -775,6 +815,21 @@ img {
     inset -4px 0 #c49a6c,
     inset 0 -4px #c49a6c;
   position: relative;
+  transform: translateY(50px);
+  opacity: 0;
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+/* 統合BookUIが開いている時：下から50pxの位置からスライドイン */
+#book-ui.is-open.is-topmost .book-container {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* 統合BookUIが閉じる時：下に50pxスライドアウト */
+#book-ui:not(.is-open) .book-container {
+  transform: translateY(50px);
+  opacity: 0;
 }
 
 .book-header {

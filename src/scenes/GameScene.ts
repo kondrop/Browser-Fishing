@@ -157,6 +157,7 @@ export default class GameScene extends Phaser.Scene {
     BOOK: 'book-modal',
     BOOK_DETAIL: 'book-detail-modal',
     SHOP: 'shop-modal',
+    UNIFIED_BOOK: 'book-ui',
   } as const;
 
   constructor() {
@@ -697,6 +698,7 @@ export default class GameScene extends Phaser.Scene {
       { id: this.MODAL_IDS.BOOK, element: this.bookUIElement },
       { id: this.MODAL_IDS.BOOK_DETAIL, element: this.bookDetailElement },
       { id: this.MODAL_IDS.SHOP, element: this.shopUIElement },
+      { id: this.MODAL_IDS.UNIFIED_BOOK, element: this.unifiedBookUIElement },
     ];
 
     allModals.forEach(({ id, element }) => {
@@ -723,6 +725,21 @@ export default class GameScene extends Phaser.Scene {
           }
           element.removeAttribute('inert');
           
+          // アニメーションを確実に動作させるため、transformとopacityをリセットしてからアニメーション開始
+          const content = element.querySelector('.modal-content') || element.querySelector('.book-container');
+          if (content) {
+            // まず初期位置と不透明度を設定
+            (content as HTMLElement).style.transform = 'translateY(50px)';
+            (content as HTMLElement).style.opacity = '0';
+            // 次のフレームでアニメーション開始（requestAnimationFrameを使用）
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                (content as HTMLElement).style.transform = 'translateY(0)';
+                (content as HTMLElement).style.opacity = '1';
+              });
+            });
+          }
+          
           // 背面から復帰した場合は更新を再開
           this.resumeModalUpdates(id);
         } else {
@@ -742,7 +759,6 @@ export default class GameScene extends Phaser.Scene {
         }
       } else {
         // 閉じたモーダル：完全に非表示
-        element.style.display = 'none';
         element.style.pointerEvents = 'none';
         element.setAttribute('aria-hidden', 'true');
         
@@ -751,6 +767,25 @@ export default class GameScene extends Phaser.Scene {
           (element as any).inert = false;
         }
         element.removeAttribute('inert');
+        
+        // display: noneは使わず、visibilityとopacityで制御（transformの状態を維持）
+        // アニメーション完了後にtransformとopacityをリセット
+        setTimeout(() => {
+          if (!this.modalStack.includes(id)) {
+            // transformとopacityをリセットして次回のアニメーションが正しく動作するようにする
+            const content = element.querySelector('.modal-content') || element.querySelector('.book-container');
+            if (content) {
+              (content as HTMLElement).style.transform = 'translateY(50px)';
+              (content as HTMLElement).style.opacity = '0';
+              // トランジションを一時的に無効化してリセット
+              (content as HTMLElement).style.transition = 'none';
+              // 次のフレームでトランジションを再有効化
+              requestAnimationFrame(() => {
+                (content as HTMLElement).style.transition = '';
+              });
+            }
+          }
+        }, 300);
       }
     });
 
@@ -762,12 +797,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.modalStack.length > 0) {
         this.modalOverlayElement.classList.add('is-active');
       }
-      // スタイルも明示的に設定（念のため）
-      if (this.modalStack.length > 0) {
-        this.modalOverlayElement.style.display = 'block';
-      } else {
-        this.modalOverlayElement.style.display = 'none';
-      }
+      // visibilityとopacityで制御するため、displayの設定は不要
     }
 
     // Phaser側の入力制御
@@ -2786,18 +2816,20 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookTab = tab;
     this.unifiedBookSelectedId = null;
 
+    // モーダルスタックに追加してオーバーレイを表示（updateModalStatesでis-openクラスが追加される）
+    this.openModal(this.MODAL_IDS.UNIFIED_BOOK);
+
     if (this.unifiedBookUIElement) {
-      this.unifiedBookUIElement.classList.add('is-open');
       this.switchUnifiedBookTab(tab);
     }
   }
 
   closeUnifiedBook() {
     this.unifiedBookOpen = false;
-    if (this.unifiedBookUIElement) {
-      this.unifiedBookUIElement.classList.remove('is-open');
-    }
     this.unifiedBookSelectedId = null;
+
+    // モーダルスタックから削除してオーバーレイを非表示（updateModalStatesでis-openクラスが削除される）
+    this.closeModal(this.MODAL_IDS.UNIFIED_BOOK);
   }
 
   toggleUnifiedBook(tab: 'inventory' | 'pedia' = 'inventory') {
@@ -3239,6 +3271,7 @@ export default class GameScene extends Phaser.Scene {
     const shopHTML = `
       <div id="shop-modal" class="modal" style="display: none;" aria-hidden="true">
         <div class="modal-content shop-modal nes-container with-rounded">
+          <button class="modal-close" onclick="window.gameScene?.closeShop()">✕</button>
           <div class="modal-header">
             <h2>🏪 ショップ</h2>
           </div>
