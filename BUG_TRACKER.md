@@ -76,6 +76,63 @@ if (this.unifiedBookTab !== 'achievement') {
 
 ---
 
+### BUG-UI-002: 図鑑詳細の価格・サイズ表示のフォントスタイルが適用されない問題
+
+**発生日**: 2024年（記録時点）  
+**重要度**: 低
+
+#### 症状
+- 図鑑詳細画面の価格（`#book-detail-price`）とサイズ（`#book-detail-size`）のフォントスタイルが期待通りに適用されない
+- `font-family: "Jersey 10"` と `font-size: 24px` が反映されず、デフォルトのスタイルが表示される
+- ブラウザの開発者ツールで確認すると、IDセレクタのスタイルがクラスセレクタに上書きされている
+
+#### 原因
+`src/style.css` において：
+
+1. `.book-detail-stat-value` クラスが `#book-detail-price` と `#book-detail-size` の両方に適用されている
+2. IDセレクタ（`#book-detail-price`, `#book-detail-size`）を追加したが、CSSの読み込み順序や特異性の問題で、クラスセレクタ（`.book-detail-stat-value`）のスタイルが優先されていた
+3. 最初は `!important` なしでIDセレクタを追加したが、ブラウザのキャッシュや他のスタイルの影響で適用されなかった
+
+**問題箇所**: `src/style.css` 1422-1426行目
+
+```css
+.book-detail-stat-value {
+  font-size: 28px;
+  color: #212121;
+  font-family: 'Jersey 10', 'DotGothic16', sans-serif;
+}
+/* ❌ IDセレクタを追加したが、!importantがないと適用されない場合がある */
+```
+
+#### 解決法
+IDセレクタに `!important` を追加して、確実にスタイルが適用されるようにした。
+
+**修正箇所**: `src/style.css` 1428-1436行目
+
+```css
+#book-detail-price {
+  font-family: "Jersey 10" !important;
+  font-size: 24px !important;
+}
+
+#book-detail-size {
+  font-family: "Jersey 10" !important;
+  font-size: 24px !important;
+}
+```
+
+#### 教訓・対策
+- **CSSの特異性（specificity）を理解する**: IDセレクタはクラスセレクタより特異性が高いが、読み込み順序や他の要因で期待通りに動作しない場合がある
+- **`!important` は慎重に使用する**: 可能な限り避けるべきだが、既存のスタイルを上書きする必要がある場合は使用を検討する
+- **ブラウザのキャッシュを考慮する**: スタイル変更後は、ハードリロード（Ctrl+Shift+R / Cmd+Shift+R）で確認する
+- **開発者ツールで確認する**: 実際にどのスタイルが適用されているか、開発者ツールで確認する習慣をつける
+
+#### 関連ファイル
+- `src/style.css`: `.book-detail-stat-value` クラス（1422行目）、`#book-detail-price` IDセレクタ（1428行目）、`#book-detail-size` IDセレクタ（1433行目）
+- `src/scenes/GameScene.ts`: 図鑑詳細表示の実装部分
+
+---
+
 ## 状態管理関連
 
 <!-- 今後、状態管理関連の不具合が発生した場合はここに追記 -->
@@ -150,13 +207,17 @@ if (this.unifiedBookTab !== 'achievement') {
 
 ### ファイル別
 - `src/scenes/GameScene.ts`: BUG-UI-001
-- `src/style.css`: BUG-UI-001
+- `src/style.css`: BUG-UI-001, BUG-UI-002
 
 ### キーワード別
 - `gridTemplateColumns`: BUG-UI-001
 - `インラインスタイル`: BUG-UI-001
 - `タブ切り替え`: BUG-UI-001
 - `スタイルリセット`: BUG-UI-001
+- `CSS特異性`: BUG-UI-002
+- `!important`: BUG-UI-002
+- `book-detail-price`: BUG-UI-002
+- `book-detail-size`: BUG-UI-002
 
 ---
 

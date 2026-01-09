@@ -325,55 +325,254 @@ img {
     inset 0 -4px #f2c409;
 }
 
-/* 詳細モーダル */
+/* 詳細モーダル（Figmaデザインに基づく） */
 .modal-content.detail-modal {
   min-width: 350px;
   max-width: 400px;
   position: relative;
+  background: #d3c4a7;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .detail-content {
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
 }
 
-.detail-image {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-  margin: 0 auto 15px;
-  display: block;
-}
-
-.detail-emoji {
-  font-size: 68px;
-  margin-bottom: 15px;
+/* ヘッダー: 魚名 + レアリティバッジ */
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 0;
 }
 
 .detail-name {
   font-size: 24px;
   font-weight: normal;
-  color: #320e0e;
-  margin-bottom: 10px;
+  color: #212121;
+  text-align: left;
   text-shadow: none;
+  margin: 0;
+  font-family: 'DotGothic16', sans-serif;
 }
 
-.detail-rarity {
-  font-size: 26px;
-  margin-bottom: 15px;
+.detail-rarity-badge {
+  position: relative;
+  background: #dfd3b9;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
 }
 
-.detail-desc {
+.detail-rarity-stars {
+  font-size: 16px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.detail-rarity-label {
+  position: absolute;
+  left: -6px;
+  top: -8px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.rarity-label-text {
+  background: #c2681f;
+  color: #dfd3b9;
+  padding: 0 3px;
   font-size: 18px;
-  color: #320e0e;
+  font-family: 'Micro 5', 'DotGothic16', sans-serif;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.rarity-label-decoration {
+  width: 6px;
+  height: 14px;
+  background: #c2681f;
+  position: relative;
+  display: block;
+  /* ドットパターンの装飾（簡略版） */
+  background-image: 
+    radial-gradient(circle, #c2681f 1px, transparent 1px),
+    radial-gradient(circle, #c2681f 1px, transparent 1px);
+  background-size: 2px 2px;
+  background-position: 0 0, 2px 2px;
+}
+
+/* 魚のイラストコンテナ */
+.detail-image-container {
+  border: 6px solid #dfd3b9;
+  width: 100%;
+  height: 165px;
+  position: relative;
+  background: #bdb294;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.detail-image-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #bdb294;
+  opacity: 0.6;
+  z-index: 1;
+}
+
+.detail-image {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  position: relative;
+  z-index: 2;
+  max-width: 148px;
+  max-height: 165px;
+}
+
+.detail-emoji {
+  font-size: 80px;
+  position: relative;
+  z-index: 2;
+}
+
+/* 統計情報: 売値とサイズ */
+.detail-stats {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.detail-stat-item {
+  flex: 1;
+  background: #dfd3b9;
+  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
+}
+
+.detail-stat-label {
+  font-size: 18px;
+  color: #212121;
+  font-family: 'DotGothic16', sans-serif;
+}
+
+.detail-stat-value {
+  font-size: 28px;
+  color: #212121;
+  font-family: 'Jersey 10', 'DotGothic16', sans-serif;
+}
+
+/* 生息地と捕獲数 */
+.detail-habitat-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  align-items: stretch;
+}
+
+.detail-habitat {
+  background: #327f75;
+  color: white;
+  padding: 5px 10px;
+  font-size: 20px;
+  font-family: 'DotGothic16', sans-serif;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
+}
+
+.detail-catch-count {
+  flex: 1;
+  background: #dfd3b9;
+  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 18px;
+  color: #212121;
+  font-family: 'DotGothic16', sans-serif;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
+}
+
+/* Noteセクション */
+.detail-note {
+  background: #dfd3b9;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
+}
+
+.detail-note-header {
+  border-bottom: 1px solid #d3c4a7;
+  padding-bottom: 2px;
+}
+
+.detail-note-title {
+  font-size: 20px;
+  color: #c2681f;
+  font-family: 'Jersey 10', 'DotGothic16', sans-serif;
+  line-height: 1;
+}
+
+.detail-note-content {
+  font-size: 16px;
+  color: #212121;
   line-height: 1.6;
-  margin-bottom: 15px;
+  font-family: 'DotGothic16', sans-serif;
   text-align: left;
   word-wrap: break-word;
-}
-
-.detail-price {
-  font-size: 28px;
-  color: #320e0e;
-  font-weight: normal;
 }
 
 /* 図鑑モーダル */
@@ -1008,7 +1207,7 @@ img {
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.1);
-  padding: 10px;
+  padding: 14px;
   z-index: 1;
 }
 
@@ -1068,9 +1267,10 @@ img {
   width: 50%;
   display: flex;
   flex-direction: column;
-  background: #e8cfa6;
+  background: #d3c4a7;
   padding: 20px;
   overflow-y: auto;
+  gap: 10px;
 }
 
 .book-detail-placeholder {
@@ -1086,96 +1286,237 @@ img {
 .book-detail-content {
   display: none;
   flex-direction: column;
-  height: 100%;
+  gap: 10px;
+  width: 100%;
 }
 
 .book-detail-content.active {
   display: flex;
 }
 
-.book-detail-top {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 20px;
-  align-items: flex-start;
-}
-
-.book-detail-image-container {
-  width: 120px;
-  height: 120px;
-  flex-shrink: 0;
+/* ヘッダー: 魚名 + レアリティバッジ */
+.book-detail-header-new {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.1);
-  border: none;
-  box-shadow: 
-    4px 0 #aa7959,
-    -4px 0 #aa7959,
-    0 4px #aa7959,
-    0 -4px #aa7959;
-}
-
-.book-detail-image {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-  max-width: 100%;
-  max-height: 100%;
-}
-
-.book-detail-emoji {
-  font-size: 80px;
-}
-
-.book-detail-header {
-  flex: 1;
-  min-width: 0;
-}
-
-.book-detail-name {
-  font-size: 24px;
-  font-weight: normal;
-  color: #320e0e;
-  margin-bottom: 8px;
-}
-
-.book-detail-rarity {
-  font-size: 20px;
+  justify-content: space-between;
+  width: 100%;
   margin-bottom: 0;
 }
 
-.book-detail-rarity .star {
-  display: inline-block;
+.book-detail-name-new {
+  font-size: 24px;
+  font-weight: normal;
+  color: #212121;
+  text-align: left;
+  text-shadow: none;
+  margin: 0;
+  font-family: 'DotGothic16', sans-serif;
 }
 
-.book-detail-rarity .star-inactive {
-  opacity: 0.3;
+.book-detail-rarity-badge {
+  position: relative;
+  background: #dfd3b9;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
 }
 
-.book-detail-info {
-  font-size: 18px;
-  color: #320e0e;
-  line-height: 1.8;
-  margin-bottom: 20px;
+.book-detail-rarity-stars {
+  font-size: 16px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
-.book-detail-desc {
-  font-size: 18px;
-  color: #320e0e;
-  line-height: 1.6;
-  padding: 15px;
-  background: rgba(0, 0, 0, 0.05);
-  border: none;
+.book-detail-rarity-label {
+  position: absolute;
+  left: -6px;
+  top: -8px;
   display: flex;
   align-items: flex-start;
-  justify-content: flex-start;
-  min-height: 100px;
-  height: auto;
-  flex-shrink: 0;
 }
 
-.book-detail-price {
-  display: none;
+.book-rarity-label-image {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  height: 14px;
+  width: auto;
+}
+
+/* 魚のイラストコンテナ */
+.book-detail-image-container-new {
+  border: 6px solid #dfd3b9;
+  width: 100%;
+  height: 165px;
+  position: relative;
+  background: #bdb294;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.book-detail-image-container-new::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #bdb294;
+  opacity: 0.6;
+  z-index: 1;
+}
+
+.book-detail-image-new {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  position: relative;
+  z-index: 2;
+  max-width: 148px;
+  max-height: 165px;
+}
+
+.book-detail-emoji-new {
+  font-size: 80px;
+  position: relative;
+  z-index: 2;
+}
+
+/* 統計情報: 売値とサイズ */
+.book-detail-stats {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.book-detail-stat-item {
+  flex: 1;
+  background: #dfd3b9;
+  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
+}
+
+.book-detail-stat-label {
+  font-size: 18px;
+  color: #212121;
+  font-family: 'DotGothic16', sans-serif;
+}
+
+.book-detail-stat-value {
+  font-size: 28px;
+  color: #212121;
+  font-family: 'Jersey 10', 'DotGothic16', sans-serif;
+}
+
+#book-detail-price {
+  font-family: "Jersey 10" !important;
+  font-size: 32px !important;
+}
+
+#book-detail-size {
+  font-family: "Jersey 10" !important;
+  font-size: 32px !important;
+}
+
+/* 生息地と捕獲数 */
+.book-detail-habitat-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  align-items: stretch;
+}
+
+.book-detail-habitat {
+  background: #327f75;
+  color: white;
+  padding: 5px 10px;
+  font-size: 20px;
+  font-family: 'DotGothic16', sans-serif;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
+}
+
+.book-detail-catch-count {
+  flex: 1;
+  background: #dfd3b9;
+  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 18px;
+  color: #212121;
+  font-family: 'DotGothic16', sans-serif;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
+}
+
+/* Noteセクション */
+.book-detail-note {
+  background: #dfd3b9;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  box-shadow: 
+    4px 0 #704A2B,
+    -4px 0 #704A2B,
+    0 4px #704A2B,
+    0 -4px #704A2B,
+    inset -4px 0 #c49a6c,
+    inset 0 -4px #c49a6c;
+}
+
+.book-detail-note-header {
+  border-bottom: 1px solid #d3c4a7;
+  padding-bottom: 2px;
+}
+
+.book-detail-note-title {
+  font-size: 20px;
+  color: #c2681f;
+  font-family: "Jersey 10" !important;
+  line-height: 1;
+}
+
+.book-detail-note-content {
+  font-size: 16px;
+  color: #212121;
+  line-height: 1.6;
+  font-family: 'DotGothic16', sans-serif;
+  text-align: left;
+  word-wrap: break-word;
 }
 
 /* ============================================
@@ -1433,8 +1774,10 @@ img {
   padding: 0;
 }
 
-.book-ui[data-tab="achievement"] .book-detail-top,
-.book-ui[data-tab="achievement"] .book-detail-image-container,
-.book-ui[data-tab="achievement"] .book-detail-header {
+.book-ui[data-tab="achievement"] .book-detail-header-new,
+.book-ui[data-tab="achievement"] .book-detail-image-container-new,
+.book-ui[data-tab="achievement"] .book-detail-stats,
+.book-ui[data-tab="achievement"] .book-detail-habitat-row,
+.book-ui[data-tab="achievement"] .book-detail-note {
   display: none;
 }

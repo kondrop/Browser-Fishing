@@ -1783,18 +1783,59 @@ export default class GameScene extends Phaser.Scene {
   }
 
   createDetailModal() {
-    // HTML/CSSで詳細モーダルを作成
+    // HTML/CSSで詳細モーダルを作成（Figmaデザインに基づく）
     const detailHTML = `
       <div id="detail-modal" class="modal" style="display: none;" aria-hidden="true">
         <div class="modal-content detail-modal nes-container with-rounded">
           <button class="modal-close nes-btn" onclick="window.gameScene?.closeDetailModal()">✕</button>
           <div class="detail-content">
-            <canvas id="detail-fish-image" class="detail-image" width="80" height="80" style="display: none;"></canvas>
-            <div id="detail-emoji" class="detail-emoji" style="display: none;"></div>
-            <div id="detail-name" class="detail-name"></div>
-            <div id="detail-rarity" class="detail-rarity"></div>
-            <div id="detail-desc" class="detail-desc"></div>
-            <div id="detail-info" class="detail-info"></div>
+            <!-- ヘッダー: 魚名 + レアリティバッジ -->
+            <div class="detail-header">
+              <div id="detail-name" class="detail-name"></div>
+              <div class="detail-rarity-badge">
+                <div id="detail-rarity-stars" class="detail-rarity-stars"></div>
+                <div class="detail-rarity-label">
+                  <span class="rarity-label-text">Rarity</span>
+                  <div class="rarity-label-decoration"></div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 魚のイラスト -->
+            <div class="detail-image-container">
+              <canvas id="detail-fish-image" class="detail-image" width="148" height="165" style="display: none;"></canvas>
+              <div id="detail-emoji" class="detail-emoji" style="display: none;"></div>
+            </div>
+            
+            <!-- 統計情報: 売値とサイズ -->
+            <div class="detail-stats">
+              <div class="detail-stat-item" data-name="売値">
+                <span class="detail-stat-label">$</span>
+                <span id="detail-price" class="detail-stat-value"></span>
+              </div>
+              <div class="detail-stat-item" data-name="サイズ">
+                <span class="detail-stat-label">S</span>
+                <span id="detail-size" class="detail-stat-value"></span>
+              </div>
+            </div>
+            
+            <!-- 生息地と捕獲数 -->
+            <div class="detail-habitat-row">
+              <div id="detail-habitat" class="detail-habitat"></div>
+              <div class="detail-catch-count">
+                <span>捕獲数：</span>
+                <span id="detail-catch-count-value"></span>
+                <span>匹</span>
+              </div>
+            </div>
+            
+            <!-- Noteセクション -->
+            <div class="detail-note">
+              <div class="detail-note-header">
+                <span class="detail-note-title">Note</span>
+              </div>
+              <div id="detail-desc" class="detail-note-content"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1993,29 +2034,33 @@ export default class GameScene extends Phaser.Scene {
 
     this.detailModalOpen = true;
 
-    // モーダルの内容を更新
+    // モーダルの内容を更新（Figmaデザインに基づく）
     const fishImage = this.detailModalElement.querySelector('#detail-fish-image') as HTMLCanvasElement;
     const emoji = this.detailModalElement.querySelector('#detail-emoji') as HTMLElement;
     const nameText = this.detailModalElement.querySelector('#detail-name') as HTMLElement;
-    const rarityText = this.detailModalElement.querySelector('#detail-rarity') as HTMLElement;
+    const rarityStarsElement = this.detailModalElement.querySelector('#detail-rarity-stars') as HTMLElement;
     const descText = this.detailModalElement.querySelector('#detail-desc') as HTMLElement;
-    const infoText = this.detailModalElement.querySelector('#detail-info') as HTMLElement;
+    const priceText = this.detailModalElement.querySelector('#detail-price') as HTMLElement;
+    const sizeText = this.detailModalElement.querySelector('#detail-size') as HTMLElement;
+    const habitatText = this.detailModalElement.querySelector('#detail-habitat') as HTMLElement;
+    const catchCountText = this.detailModalElement.querySelector('#detail-catch-count-value') as HTMLElement;
 
     // 画像があれば画像、なければ絵文字
     if (this.textures.exists(fish.id)) {
         const ctx = fishImage.getContext('2d');
         if (ctx) {
             const frame = this.textures.getFrame(fish.id);
-            const maxSize = 80;
-            const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+            const maxWidth = 148;
+            const maxHeight = 165;
+            const scale = Math.min(maxWidth / frame.width, maxHeight / frame.height);
             const width = frame.width * scale;
             const height = frame.height * scale;
             
-            ctx.clearRect(0, 0, 80, 80);
+            ctx.clearRect(0, 0, 148, 165);
             const sourceImage = frame.source.image as HTMLImageElement;
             if (sourceImage) {
                 ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
-                             (80 - width) / 2, (80 - height) / 2, width, height);
+                             (148 - width) / 2, (165 - height) / 2, width, height);
             }
         }
         fishImage.style.display = 'block';
@@ -2026,24 +2071,54 @@ export default class GameScene extends Phaser.Scene {
         emoji.style.display = 'block';
     }
     
+    // 魚名
     nameText.textContent = fish.name;
-    rarityText.textContent = rarityStars[fish.rarity];
+    
+    // レアリティスター表示
+    const starCount = rarityStarCount[fish.rarity];
+    const color = rarityColors[fish.rarity];
+    // レアリティ1（COMMON）のアクティブな星の色を特別に設定
+    const colorHex = fish.rarity === 'common' ? '#aa8783' : `#${color.toString(16).padStart(6, '0')}`;
+    let starsHTML = '';
+    for (let i = 0; i < 5; i++) {
+      if (i < starCount) {
+        starsHTML += `<span style="color: ${colorHex}">★</span>`;
+      } else {
+        starsHTML += `<span style="color: #bababa">★</span>`;
+      }
+    }
+    rarityStarsElement.innerHTML = starsHTML;
+    
+    // 説明文
     descText.innerHTML = fish.description.replace(/\n/g, '<br>');
     
     // サイズを表示（ゴミの場合は表示しない）
-    const sizeText = size !== undefined ? `サイズ: ${size}cm<br>` : '';
-    // サイズを考慮した価格を計算
     const isJunk = fish.id.startsWith('junk_');
+    if (!isJunk && size !== undefined) {
+      sizeText.textContent = `${size.toFixed(1)}cm`;
+    } else {
+      sizeText.textContent = '-';
+    }
+    
+    // サイズを考慮した価格を計算
     let displayPrice = fish.price;
     if (!isJunk && size !== undefined) {
       const sizeRatio = size / fish.maxSize;
       displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
     }
-    infoText.innerHTML = `${sizeText}💰 ${displayPrice}G`;
-
-    // レア度に応じた色
-    const color = rarityColors[fish.rarity];
-    rarityText.style.color = `#${color.toString(16).padStart(6, '0')}`;
+    priceText.textContent = Math.floor(displayPrice).toString();
+    
+    // 生息地
+    const habitatTextMap: Record<Habitat, string> = {
+      [Habitat.FRESHWATER]: '淡水',
+      [Habitat.SALTWATER]: '海水'
+    };
+    habitatText.textContent = habitatTextMap[fish.habitat] || '不明';
+    
+    // 捕獲数（インベントリ内のこの魚の数）
+    const inventoryItem = this.playerData.inventory.find(item => item.fishId === fish.id);
+    const catchCount = inventoryItem ? inventoryItem.count : 0;
+    catchCountText.textContent = catchCount.toString();
 
     this.openModal(this.MODAL_IDS.DETAIL);
     // モーダル位置を更新
@@ -2193,18 +2268,52 @@ export default class GameScene extends Phaser.Scene {
                 左のリストから選択してください
               </div>
               <div class="book-detail-content" id="book-detail-content">
-                <div class="book-detail-top">
-                  <div class="book-detail-image-container">
-                    <canvas id="book-detail-image" class="book-detail-image" width="120" height="120" style="display: none;"></canvas>
-                    <div id="book-detail-emoji" class="book-detail-emoji" style="display: none;"></div>
-                  </div>
-                  <div class="book-detail-header">
-                    <div id="book-detail-name" class="book-detail-name"></div>
-                    <div id="book-detail-rarity" class="book-detail-rarity"></div>
+                <!-- ヘッダー: 魚名 + レアリティバッジ -->
+                <div class="book-detail-header-new">
+                  <div id="book-detail-name" class="book-detail-name-new"></div>
+                  <div class="book-detail-rarity-badge">
+                    <div id="book-detail-rarity-stars" class="book-detail-rarity-stars"></div>
+                    <div class="book-detail-rarity-label">
+                      <img src="/images/rarity-label.svg" alt="Rarity" class="book-rarity-label-image" />
+                    </div>
                   </div>
                 </div>
-                <div id="book-detail-info" class="book-detail-info"></div>
-                <div id="book-detail-desc" class="book-detail-desc"></div>
+                
+                <!-- 魚のイラスト -->
+                <div class="book-detail-image-container-new">
+                  <canvas id="book-detail-image" class="book-detail-image-new" width="148" height="165" style="display: none;"></canvas>
+                  <div id="book-detail-emoji" class="book-detail-emoji-new" style="display: none;"></div>
+                </div>
+                
+                <!-- 統計情報: 売値とサイズ -->
+                <div class="book-detail-stats">
+                  <div class="book-detail-stat-item" data-name="売値">
+                    <span class="book-detail-stat-label">$</span>
+                    <span id="book-detail-price" class="book-detail-stat-value"></span>
+                  </div>
+                  <div class="book-detail-stat-item" data-name="サイズ">
+                    <span class="book-detail-stat-label">S</span>
+                    <span id="book-detail-size" class="book-detail-stat-value"></span>
+                  </div>
+                </div>
+                
+                <!-- 生息地と捕獲数 -->
+                <div class="book-detail-habitat-row">
+                  <div id="book-detail-habitat" class="book-detail-habitat"></div>
+                  <div class="book-detail-catch-count">
+                    <span>捕獲数：</span>
+                    <span id="book-detail-catch-count-value"></span>
+                    <span>匹</span>
+                  </div>
+                </div>
+                
+                <!-- Noteセクション -->
+                <div class="book-detail-note">
+                  <div class="book-detail-note-header">
+                    <span class="book-detail-note-title">Note</span>
+                  </div>
+                  <div id="book-detail-desc" class="book-detail-note-content"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -2512,25 +2621,31 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookDetailPlaceholderElement.style.display = 'none';
     this.unifiedBookDetailElement.classList.add('active');
 
-    // 要素を取得
+    // 要素を取得（Figmaデザインに基づく）
     let imageCanvas = this.unifiedBookDetailElement.querySelector('#book-detail-image') as HTMLCanvasElement;
     let emoji = this.unifiedBookDetailElement.querySelector('#book-detail-emoji') as HTMLElement;
     let name = this.unifiedBookDetailElement.querySelector('#book-detail-name') as HTMLElement;
-    let rarity = this.unifiedBookDetailElement.querySelector('#book-detail-rarity') as HTMLElement;
-    let info = this.unifiedBookDetailElement.querySelector('#book-detail-info') as HTMLElement;
+    let rarityStarsElement = this.unifiedBookDetailElement.querySelector('#book-detail-rarity-stars') as HTMLElement;
     let desc = this.unifiedBookDetailElement.querySelector('#book-detail-desc') as HTMLElement;
+    let priceText = this.unifiedBookDetailElement.querySelector('#book-detail-price') as HTMLElement;
+    let sizeText = this.unifiedBookDetailElement.querySelector('#book-detail-size') as HTMLElement;
+    let habitatText = this.unifiedBookDetailElement.querySelector('#book-detail-habitat') as HTMLElement;
+    let catchCountText = this.unifiedBookDetailElement.querySelector('#book-detail-catch-count-value') as HTMLElement;
     
     // 要素が存在しない場合は復元して再取得
-    if (!imageCanvas || !emoji || !name || !rarity || !info || !desc) {
+    if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !sizeText || !habitatText || !catchCountText) {
       this.restoreBookDetailStructure();
       imageCanvas = this.unifiedBookDetailElement.querySelector('#book-detail-image') as HTMLCanvasElement;
       emoji = this.unifiedBookDetailElement.querySelector('#book-detail-emoji') as HTMLElement;
       name = this.unifiedBookDetailElement.querySelector('#book-detail-name') as HTMLElement;
-      rarity = this.unifiedBookDetailElement.querySelector('#book-detail-rarity') as HTMLElement;
-      info = this.unifiedBookDetailElement.querySelector('#book-detail-info') as HTMLElement;
+      rarityStarsElement = this.unifiedBookDetailElement.querySelector('#book-detail-rarity-stars') as HTMLElement;
       desc = this.unifiedBookDetailElement.querySelector('#book-detail-desc') as HTMLElement;
+      priceText = this.unifiedBookDetailElement.querySelector('#book-detail-price') as HTMLElement;
+      sizeText = this.unifiedBookDetailElement.querySelector('#book-detail-size') as HTMLElement;
+      habitatText = this.unifiedBookDetailElement.querySelector('#book-detail-habitat') as HTMLElement;
+      catchCountText = this.unifiedBookDetailElement.querySelector('#book-detail-catch-count-value') as HTMLElement;
       
-      if (!imageCanvas || !emoji || !name || !rarity || !info || !desc) {
+      if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !sizeText || !habitatText || !catchCountText) {
         return; // 復元に失敗した場合は処理を中断
       }
     }
@@ -2542,16 +2657,17 @@ export default class GameScene extends Phaser.Scene {
         const ctx = imageCanvas.getContext('2d');
         if (ctx) {
           const frame = this.textures.getFrame(fish.id);
-          const maxSize = 120;
-          const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+          const maxWidth = 148;
+          const maxHeight = 165;
+          const scale = Math.min(maxWidth / frame.width, maxHeight / frame.height);
           const width = frame.width * scale;
           const height = frame.height * scale;
 
-          ctx.clearRect(0, 0, 120, 120);
+          ctx.clearRect(0, 0, 148, 165);
           const sourceImage = frame.source.image as HTMLImageElement;
           if (sourceImage) {
             ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
-                         (120 - width) / 2, (120 - height) / 2, width, height);
+                         (148 - width) / 2, (165 - height) / 2, width, height);
           }
         }
         imageCanvas.style.display = 'block';
@@ -2562,31 +2678,31 @@ export default class GameScene extends Phaser.Scene {
         emoji.style.display = 'block';
       }
 
+      // 魚名
       name.textContent = fish.name;
+      
+      // レアリティスター表示
       const starCount = rarityStarCount[fish.rarity];
       const color = rarityColors[fish.rarity];
-      const colorHex = `#${color.toString(16).padStart(6, '0')}`;
-      rarity.innerHTML = '';
-      rarity.style.color = colorHex;
+      // レアリティ1（COMMON）のアクティブな星の色を特別に設定
+      const colorHex = fish.rarity === 'common' ? '#aa8783' : `#${color.toString(16).padStart(6, '0')}`;
+      let starsHTML = '';
       for (let i = 0; i < 5; i++) {
-        const star = document.createElement('span');
-        star.className = 'star';
-        star.textContent = '★';
-        if (i >= starCount) {
-          star.classList.add('star-inactive');
+        if (i < starCount) {
+          starsHTML += `<span style="color: ${colorHex}">★</span>`;
+        } else {
+          starsHTML += `<span style="color: #bababa">★</span>`;
         }
-        rarity.appendChild(star);
       }
+      rarityStarsElement.innerHTML = starsHTML;
 
       // ゴミの場合は生息地を表示しない
       const isJunk = fish.id.startsWith('junk_');
-      const habitatText = !isJunk ? (fish.habitat === Habitat.FRESHWATER ? '淡水' : '海水') : '';
       
       // インベントリタブの場合は個体のサイズ、図鑑タブの場合は記録を表示
-      let sizeText: string;
+      let displaySize: string;
       if (this.unifiedBookTab === 'inventory') {
         // インベントリから選択されたアイテムのサイズを取得
-        // 選択されたインデックスから該当する個体のサイズを取得
         const flatInventory: Array<{ fishId: string; size?: number }> = [];
         for (const item of this.playerData.inventory) {
           for (let j = 0; j < item.count; j++) {
@@ -2600,19 +2716,20 @@ export default class GameScene extends Phaser.Scene {
         const selectedItem = selectedIndex >= 0 ? flatInventory[selectedIndex] : null;
         const itemSize = selectedItem?.size;
         if (itemSize !== undefined) {
-          sizeText = `サイズ: ${itemSize}cm`;
+          displaySize = `${itemSize.toFixed(1)}cm`;
         } else {
-          sizeText = 'サイズ: -';
+          displaySize = '-';
         }
       } else {
         // 図鑑タブの場合は記録を表示
         const recordSize = this.playerData.fishSizes[fish.id];
-        sizeText = recordSize ? `記録: ${recordSize}cm` : '記録: なし';
+        displaySize = recordSize ? `${recordSize.toFixed(1)}cm` : '-';
       }
+      sizeText.textContent = displaySize;
       
       // サイズを考慮した価格を計算（インベントリタブの場合のみ）
       let displayPrice = fish.price;
-      if (this.unifiedBookTab === 'inventory' && sizeText !== 'サイズ: -') {
+      if (this.unifiedBookTab === 'inventory' && displaySize !== '-') {
         const flatInventory: Array<{ fishId: string; size?: number }> = [];
         for (const item of this.playerData.inventory) {
           for (let j = 0; j < item.count; j++) {
@@ -2629,14 +2746,25 @@ export default class GameScene extends Phaser.Scene {
           displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
         }
       }
+      priceText.textContent = Math.floor(displayPrice).toString();
       
-      // 生息地の行を条件付きで追加
-      const habitatLine = habitatText ? `生息地: ${habitatText}<br>` : '';
-      info.innerHTML = `
-        ${sizeText}<br>
-        ${habitatLine}売値: ${displayPrice}G
-      `;
+      // 生息地
+      const habitatTextMap: Record<Habitat, string> = {
+        [Habitat.FRESHWATER]: '淡水',
+        [Habitat.SALTWATER]: '海水'
+      };
+      if (!isJunk) {
+        habitatText.textContent = habitatTextMap[fish.habitat] || '不明';
+      } else {
+        habitatText.textContent = '-';
+      }
+      
+      // 捕獲数（インベントリ内のこの魚の数）
+      const inventoryItem = this.playerData.inventory.find(item => item.fishId === fish.id);
+      const catchCount = inventoryItem ? inventoryItem.count : 0;
+      catchCountText.textContent = catchCount.toString();
 
+      // 説明文
       desc.innerHTML = (fish.description || '説明').replace(/\n/g, '<br>');
     } else {
       // 未発見（図鑑のみ）
@@ -2646,21 +2774,22 @@ export default class GameScene extends Phaser.Scene {
 
       name.textContent = '？？？';
       const starCount = rarityStarCount[fish.rarity];
-      rarity.innerHTML = '';
-      rarity.style.color = '#666666';
+      // レアリティ1（COMMON）のアクティブな星の色を特別に設定（未捕獲の場合も）
+      const inactiveStarColor = fish.rarity === 'common' ? '#aa8783' : '#666666';
+      let starsHTML = '';
       for (let i = 0; i < 5; i++) {
-        const star = document.createElement('span');
-        star.className = 'star';
-        star.textContent = '★';
-        if (i >= starCount) {
-          star.classList.add('star-inactive');
+        if (i < starCount) {
+          starsHTML += `<span style="color: ${inactiveStarColor}">★</span>`;
+        } else {
+          starsHTML += `<span style="color: #bababa">★</span>`;
         }
-        rarity.appendChild(star);
       }
+      rarityStarsElement.innerHTML = starsHTML;
 
-      info.innerHTML = `
-        状態: 未発見
-      `;
+      sizeText.textContent = '-';
+      priceText.textContent = '-';
+      habitatText.textContent = '-';
+      catchCountText.textContent = '0';
 
       desc.innerHTML = 'まだ発見されていません...<br>この魚を釣って図鑑を完成させよう！';
     }
@@ -2671,23 +2800,57 @@ export default class GameScene extends Phaser.Scene {
     
     // 実績タブの詳細表示（achievement-detail-list）が存在する場合は、元の構造に復元
     const achievementDetailList = this.unifiedBookDetailElement.querySelector('.achievement-detail-list');
-    const existingTop = this.unifiedBookDetailElement.querySelector('.book-detail-top');
+    const existingHeader = this.unifiedBookDetailElement.querySelector('.book-detail-header-new');
     
     // 実績タブの詳細表示が存在するか、元の構造が失われている場合は復元
-    if (achievementDetailList || !existingTop) {
+    if (achievementDetailList || !existingHeader) {
       this.unifiedBookDetailElement.innerHTML = `
-        <div class="book-detail-top">
-          <div class="book-detail-image-container">
-            <canvas id="book-detail-image" class="book-detail-image" width="120" height="120" style="display: none;"></canvas>
-            <div id="book-detail-emoji" class="book-detail-emoji" style="display: none;"></div>
-          </div>
-          <div class="book-detail-header">
-            <div id="book-detail-name" class="book-detail-name"></div>
-            <div id="book-detail-rarity" class="book-detail-rarity"></div>
+        <!-- ヘッダー: 魚名 + レアリティバッジ -->
+        <div class="book-detail-header-new">
+          <div id="book-detail-name" class="book-detail-name-new"></div>
+          <div class="book-detail-rarity-badge">
+            <div id="book-detail-rarity-stars" class="book-detail-rarity-stars"></div>
+            <div class="book-detail-rarity-label">
+              <img src="/images/rarity-label.svg" alt="Rarity" class="book-rarity-label-image" />
+            </div>
           </div>
         </div>
-        <div id="book-detail-info" class="book-detail-info"></div>
-        <div id="book-detail-desc" class="book-detail-desc"></div>
+        
+        <!-- 魚のイラスト -->
+        <div class="book-detail-image-container-new">
+          <canvas id="book-detail-image" class="book-detail-image-new" width="148" height="165" style="display: none;"></canvas>
+          <div id="book-detail-emoji" class="book-detail-emoji-new" style="display: none;"></div>
+        </div>
+        
+        <!-- 統計情報: 売値とサイズ -->
+        <div class="book-detail-stats">
+          <div class="book-detail-stat-item" data-name="売値">
+            <span class="book-detail-stat-label">$</span>
+            <span id="book-detail-price" class="book-detail-stat-value"></span>
+          </div>
+          <div class="book-detail-stat-item" data-name="サイズ">
+            <span class="book-detail-stat-label">S</span>
+            <span id="book-detail-size" class="book-detail-stat-value"></span>
+          </div>
+        </div>
+        
+        <!-- 生息地と捕獲数 -->
+        <div class="book-detail-habitat-row">
+          <div id="book-detail-habitat" class="book-detail-habitat"></div>
+          <div class="book-detail-catch-count">
+            <span>捕獲数：</span>
+            <span id="book-detail-catch-count-value"></span>
+            <span>匹</span>
+          </div>
+        </div>
+        
+        <!-- Noteセクション -->
+        <div class="book-detail-note">
+          <div class="book-detail-note-header">
+            <span class="book-detail-note-title">Note</span>
+          </div>
+          <div id="book-detail-desc" class="book-detail-note-content"></div>
+        </div>
       `;
     }
   }
@@ -3179,7 +3342,8 @@ export default class GameScene extends Phaser.Scene {
         nameText.textContent = fish.name;
         const starCount = rarityStarCount[fish.rarity];
         const color = rarityColors[fish.rarity];
-        const colorHex = `#${color.toString(16).padStart(6, '0')}`;
+        // レアリティ1（COMMON）のアクティブな星の色を特別に設定
+        const colorHex = fish.rarity === 'common' ? '#aa8783' : `#${color.toString(16).padStart(6, '0')}`;
         rarityText.innerHTML = '';
         rarityText.style.color = colorHex;
         for (let i = 0; i < 5; i++) {
@@ -3207,7 +3371,8 @@ export default class GameScene extends Phaser.Scene {
         nameText.textContent = '？？？';
         const starCount = rarityStarCount[fish.rarity];
         rarityText.innerHTML = '';
-        rarityText.style.color = '#666666';
+        // レアリティ1（COMMON）のアクティブな星の色を特別に設定（未捕獲の場合も）
+        rarityText.style.color = fish.rarity === 'common' ? '#aa8783' : '#666666';
         for (let i = 0; i < 5; i++) {
           const star = document.createElement('span');
           star.className = 'star';
