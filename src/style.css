@@ -500,7 +500,7 @@ img {
 }
 
 .detail-habitat {
-  background: #327f75;
+  background: #327F75; /* デフォルト: 渓流 */
   color: white;
   padding: 5px 10px;
   font-size: 20px;
@@ -997,7 +997,9 @@ img {
 }
 
 .book-container {
-  background: #e8cfa6;
+  background-image: url('/images/ui/book-texture.png');
+  background-repeat: repeat;
+  background-size: auto;
   border: none;
   width: 90%;
   max-width: 800px;
@@ -1037,7 +1039,7 @@ img {
   justify-content: flex-start;
   padding: 15px 20px;
   border-bottom: none;
-  background: #e8cfa6;
+  background: unset;
 }
 
 .book-title {
@@ -1138,7 +1140,7 @@ img {
   border-right: none;
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.05);
+  background: transparent;
 }
 
 .book-list-header {
@@ -1267,8 +1269,8 @@ img {
   width: 50%;
   display: flex;
   flex-direction: column;
-  background: #d3c4a7;
-  padding: 20px;
+  background: transparent;
+  padding: 8px 20px 20px 20px;
   overflow-y: auto;
   gap: 10px;
 }
@@ -1444,7 +1446,7 @@ img {
 }
 
 .book-detail-habitat {
-  background: #327f75;
+  background: #327F75; /* デフォルト: 渓流 */
   color: white;
   padding: 5px 10px;
   font-size: 20px;

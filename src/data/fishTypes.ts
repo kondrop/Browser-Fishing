@@ -11,5 +11,6 @@ export enum Rarity {
 export enum Habitat {
   FRESHWATER = 'freshwater', // 淡水
   SALTWATER = 'saltwater',   // 海水
+  STREAM = 'stream',         // 渓流
 }
 

@@ -2108,12 +2108,19 @@ export default class GameScene extends Phaser.Scene {
     }
     priceText.textContent = Math.floor(displayPrice).toString();
     
-    // 生息地
-    const habitatTextMap: Record<Habitat, string> = {
-      [Habitat.FRESHWATER]: '淡水',
-      [Habitat.SALTWATER]: '海水'
-    };
-    habitatText.textContent = habitatTextMap[fish.habitat] || '不明';
+      // 生息地
+      const habitatTextMap: Record<Habitat, string> = {
+        [Habitat.FRESHWATER]: '淡水',
+        [Habitat.SALTWATER]: '海水',
+        [Habitat.STREAM]: '渓流'
+      };
+      const habitatColorMap: Record<Habitat, string> = {
+        [Habitat.FRESHWATER]: '#383680',
+        [Habitat.SALTWATER]: '#19648B',
+        [Habitat.STREAM]: '#327F75'
+      };
+      habitatText.textContent = habitatTextMap[fish.habitat] || '不明';
+      habitatText.style.backgroundColor = habitatColorMap[fish.habitat] || '#327F75';
     
     // 捕獲数（インベントリ内のこの魚の数）
     const inventoryItem = this.playerData.inventory.find(item => item.fishId === fish.id);
@@ -2631,9 +2638,10 @@ export default class GameScene extends Phaser.Scene {
     let sizeText = this.unifiedBookDetailElement.querySelector('#book-detail-size') as HTMLElement;
     let habitatText = this.unifiedBookDetailElement.querySelector('#book-detail-habitat') as HTMLElement;
     let catchCountText = this.unifiedBookDetailElement.querySelector('#book-detail-catch-count-value') as HTMLElement;
+    let imageContainer = this.unifiedBookDetailElement.querySelector('.book-detail-image-container-new') as HTMLElement;
     
     // 要素が存在しない場合は復元して再取得
-    if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !sizeText || !habitatText || !catchCountText) {
+    if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !sizeText || !habitatText || !catchCountText || !imageContainer) {
       this.restoreBookDetailStructure();
       imageCanvas = this.unifiedBookDetailElement.querySelector('#book-detail-image') as HTMLCanvasElement;
       emoji = this.unifiedBookDetailElement.querySelector('#book-detail-emoji') as HTMLElement;
@@ -2644,10 +2652,29 @@ export default class GameScene extends Phaser.Scene {
       sizeText = this.unifiedBookDetailElement.querySelector('#book-detail-size') as HTMLElement;
       habitatText = this.unifiedBookDetailElement.querySelector('#book-detail-habitat') as HTMLElement;
       catchCountText = this.unifiedBookDetailElement.querySelector('#book-detail-catch-count-value') as HTMLElement;
+      imageContainer = this.unifiedBookDetailElement.querySelector('.book-detail-image-container-new') as HTMLElement;
       
-      if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !sizeText || !habitatText || !catchCountText) {
+      if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !sizeText || !habitatText || !catchCountText || !imageContainer) {
         return; // 復元に失敗した場合は処理を中断
       }
+    }
+
+    // 生息地に応じて背景画像を設定
+    const isJunk = fish.id.startsWith('junk_');
+    if (!isJunk && imageContainer) {
+      const habitatBgMap: Record<Habitat, string> = {
+        [Habitat.FRESHWATER]: '/images/habitats/freshwater-bg.png',
+        [Habitat.SALTWATER]: '/images/habitats/saltwater-bg.png',
+        [Habitat.STREAM]: '/images/habitats/stream-bg.png',
+      };
+      const bgImage = habitatBgMap[fish.habitat] || '/images/habitats/freshwater-bg.png';
+      imageContainer.style.backgroundImage = `url(${bgImage})`;
+      imageContainer.style.backgroundSize = 'cover';
+      imageContainer.style.backgroundPosition = 'center';
+      imageContainer.style.backgroundRepeat = 'no-repeat';
+    } else if (imageContainer) {
+      // ゴミの場合はデフォルト背景
+      imageContainer.style.backgroundImage = '';
     }
 
     if (isCaught) {
@@ -2751,12 +2778,20 @@ export default class GameScene extends Phaser.Scene {
       // 生息地
       const habitatTextMap: Record<Habitat, string> = {
         [Habitat.FRESHWATER]: '淡水',
-        [Habitat.SALTWATER]: '海水'
+        [Habitat.SALTWATER]: '海水',
+        [Habitat.STREAM]: '渓流'
+      };
+      const habitatColorMap: Record<Habitat, string> = {
+        [Habitat.FRESHWATER]: '#383680',
+        [Habitat.SALTWATER]: '#19648B',
+        [Habitat.STREAM]: '#327F75'
       };
       if (!isJunk) {
         habitatText.textContent = habitatTextMap[fish.habitat] || '不明';
+        habitatText.style.backgroundColor = habitatColorMap[fish.habitat] || '#327F75';
       } else {
         habitatText.textContent = '-';
+        habitatText.style.backgroundColor = '#327F75';
       }
       
       // 捕獲数（インベントリ内のこの魚の数）
@@ -2789,6 +2824,7 @@ export default class GameScene extends Phaser.Scene {
       sizeText.textContent = '-';
       priceText.textContent = '-';
       habitatText.textContent = '-';
+      habitatText.style.backgroundColor = '#327F75'; // デフォルト色
       catchCountText.textContent = '0';
 
       desc.innerHTML = 'まだ発見されていません...<br>この魚を釣って図鑑を完成させよう！';
@@ -3358,7 +3394,11 @@ export default class GameScene extends Phaser.Scene {
         descText.innerHTML = fish.description.replace(/\n/g, '<br>');
         // ゴミの場合は生息地を表示しない
         const isJunk = fish.id.startsWith('junk_');
-        const habitatText = !isJunk ? (fish.habitat === Habitat.FRESHWATER ? '淡水' : '海水') : '';
+        const habitatText = !isJunk ? (
+          fish.habitat === Habitat.FRESHWATER ? '淡水' :
+          fish.habitat === Habitat.SALTWATER ? '海水' :
+          fish.habitat === Habitat.STREAM ? '渓流' : '不明'
+        ) : '';
         const recordSize = this.playerData.fishSizes[fish.id];
         const recordText = recordSize ? `記録: ${recordSize}cm` : '記録: なし';
         // 生息地の行を条件付きで追加
