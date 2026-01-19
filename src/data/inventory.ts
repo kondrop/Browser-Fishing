@@ -80,7 +80,8 @@ export function createInitialPlayerData(): PlayerData {
 export function generateRandomSize(maxSize: number): number {
   const minSize = maxSize * 0.5;
   const maxSizeActual = maxSize;
-  return Math.round(minSize + Math.random() * (maxSizeActual - minSize));
+  const randomSize = minSize + Math.random() * (maxSizeActual - minSize);
+  return Math.round(randomSize * 10) / 10; // 小数点第一位まで
 }
 
 // サイズ記録を更新（新しいサイズが大きい場合のみ更新）

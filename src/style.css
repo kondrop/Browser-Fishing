@@ -1062,13 +1062,9 @@ img {
   font-size: 20px;
   font-weight: normal;
   cursor: pointer;
-    box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
-    inset -4px 0 #c49a6c,
-    inset 0 -4px #c49a6c;
+  box-shadow: 
+    inset -4px 0px 0px 0px rgba(196, 154, 108, 1),
+    inset 0px -4px 0px 0px rgba(196, 154, 108, 1);
   font-family: 'DotGothic16', sans-serif;
   transition: background 0.1s;
 }
@@ -1080,12 +1076,8 @@ img {
 .book-tab-button.active {
   background: #f7d51d;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
-    inset -4px 0 #f2c409,
-    inset 0 -4px #f2c409;
+    inset -4px 0px 0px 0px rgba(242, 196, 9, 1),
+    inset 0px -4px 0px 0px rgba(242, 196, 9, 1);
 }
 
 .book-close {
@@ -1104,12 +1096,8 @@ img {
   align-items: center;
   justify-content: center;
     box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
-    inset -4px 0 #c49a6c,
-    inset 0 -4px #c49a6c;
+    inset -4px 0px 0px 0px rgba(196, 154, 108, 1),
+    inset 0px -4px 0px 0px rgba(196, 154, 108, 1);
   transition: background 0.1s;
   z-index: 10;
   font-family: 'DotGothic16', sans-serif;
@@ -1324,12 +1312,8 @@ img {
   justify-content: center;
   gap: 10px;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
-    inset -4px 0 #c49a6c,
-    inset 0 -4px #c49a6c;
+    inset -4px 0px 0px 0px rgba(196, 154, 108, 1),
+    inset 0px -4px 0px 0px rgba(196, 154, 108, 1);
 }
 
 .book-detail-rarity-stars {
@@ -1404,21 +1388,26 @@ img {
   padding: 5px 10px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   height: 42px;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
-    inset -4px 0 #c49a6c,
-    inset 0 -4px #c49a6c;
+    inset -4px 0px 0px 0px rgba(196, 154, 108, 1),
+    inset 0px -4px 0px 0px rgba(196, 154, 108, 1);
 }
 
 .book-detail-stat-label {
   font-size: 18px;
   color: #212121;
   font-family: 'DotGothic16', sans-serif;
+}
+
+.book-detail-stat-label-icon {
+  width: fit-content;
+  height: 27px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+  flex-shrink: 0;
 }
 
 .book-detail-stat-value {
@@ -1435,6 +1424,27 @@ img {
 #book-detail-size {
   font-family: "Jersey 10" !important;
   font-size: 32px !important;
+}
+
+.book-detail-stat-unit {
+  font-family: "Jersey 10" !important;
+  font-size: 28px;
+  color: #212121;
+  align-self: flex-end;
+}
+
+#book-detail-size-unit {
+  vertical-align: bottom;
+  height: 100%;
+  margin-bottom: 4px;
+  color: rgba(33, 33, 33, 0.6);
+}
+
+#book-detail-price-unit {
+  vertical-align: bottom;
+  height: 100%;
+  margin-bottom: 4px;
+  color: rgba(33, 33, 33, 0.6);
 }
 
 /* 生息地と捕獲数 */
@@ -1456,12 +1466,8 @@ img {
   align-items: center;
   justify-content: center;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
-    inset -4px 0 #c49a6c,
-    inset 0 -4px #c49a6c;
+    inset -4px 0px 0px 0px rgba(255, 255, 255, 0.3),
+    inset 0px -4px 0px 0px rgba(255, 255, 255, 0.3);
 }
 
 .book-detail-catch-count {
@@ -1475,12 +1481,8 @@ img {
   color: #212121;
   font-family: 'DotGothic16', sans-serif;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
-    inset -4px 0 #c49a6c,
-    inset 0 -4px #c49a6c;
+    inset -4px 0px 0px 0px rgba(196, 154, 108, 1),
+    inset 0px -4px 0px 0px rgba(196, 154, 108, 1);
 }
 
 /* Noteセクション */
@@ -1492,12 +1494,8 @@ img {
   gap: 4px;
   width: 100%;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
-    inset -4px 0 #c49a6c,
-    inset 0 -4px #c49a6c;
+    inset -4px 0px 0px 0px rgba(196, 154, 108, 1),
+    inset 0px -4px 0px 0px rgba(196, 154, 108, 1);
 }
 
 .book-detail-note-header {

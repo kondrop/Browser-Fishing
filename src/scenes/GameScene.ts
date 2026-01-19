@@ -1561,6 +1561,9 @@ export default class GameScene extends Phaser.Scene {
             // 図鑑には登録
             this.playerData.caughtFishIds.add(this.currentFish.id);
             this.playerData.totalCaught++;
+            // 魚種ごとの釣果数を更新
+            const currentCount = this.playerData.fishCaughtCounts.get(this.currentFish.id) || 0;
+            this.playerData.fishCaughtCounts.set(this.currentFish.id, currentCount + 1);
             // 経験値も獲得
             const leveledUp = addExp(this.playerData, getExpByRarity(this.currentFish.rarity));
             savePlayerData(this.playerData);
@@ -2106,7 +2109,7 @@ export default class GameScene extends Phaser.Scene {
       const sizeRatio = size / fish.maxSize;
       displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
     }
-    priceText.textContent = Math.floor(displayPrice).toString();
+    priceText.textContent = `${Math.floor(displayPrice)}G`;
     
       // 生息地
       const habitatTextMap: Record<Habitat, string> = {
@@ -2295,12 +2298,14 @@ export default class GameScene extends Phaser.Scene {
                 <!-- 統計情報: 売値とサイズ -->
                 <div class="book-detail-stats">
                   <div class="book-detail-stat-item" data-name="売値">
-                    <span class="book-detail-stat-label">$</span>
+                    <img src="/images/ui/ゴールド.png" alt="売値" class="book-detail-stat-label-icon" />
                     <span id="book-detail-price" class="book-detail-stat-value"></span>
+                    <span id="book-detail-price-unit" class="book-detail-stat-unit"></span>
                   </div>
                   <div class="book-detail-stat-item" data-name="サイズ">
-                    <span class="book-detail-stat-label">S</span>
+                    <img id="book-detail-size-icon" src="/images/ui/サイズ.png" alt="サイズ" class="book-detail-stat-label-icon" />
                     <span id="book-detail-size" class="book-detail-stat-value"></span>
+                    <span id="book-detail-size-unit" class="book-detail-stat-unit"></span>
                   </div>
                 </div>
                 
@@ -2635,13 +2640,15 @@ export default class GameScene extends Phaser.Scene {
     let rarityStarsElement = this.unifiedBookDetailElement.querySelector('#book-detail-rarity-stars') as HTMLElement;
     let desc = this.unifiedBookDetailElement.querySelector('#book-detail-desc') as HTMLElement;
     let priceText = this.unifiedBookDetailElement.querySelector('#book-detail-price') as HTMLElement;
+    let priceUnitText = this.unifiedBookDetailElement.querySelector('#book-detail-price-unit') as HTMLElement;
     let sizeText = this.unifiedBookDetailElement.querySelector('#book-detail-size') as HTMLElement;
+    let sizeUnitText = this.unifiedBookDetailElement.querySelector('#book-detail-size-unit') as HTMLElement;
     let habitatText = this.unifiedBookDetailElement.querySelector('#book-detail-habitat') as HTMLElement;
     let catchCountText = this.unifiedBookDetailElement.querySelector('#book-detail-catch-count-value') as HTMLElement;
     let imageContainer = this.unifiedBookDetailElement.querySelector('.book-detail-image-container-new') as HTMLElement;
     
     // 要素が存在しない場合は復元して再取得
-    if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !sizeText || !habitatText || !catchCountText || !imageContainer) {
+    if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !priceUnitText || !sizeText || !sizeUnitText || !habitatText || !catchCountText || !imageContainer) {
       this.restoreBookDetailStructure();
       imageCanvas = this.unifiedBookDetailElement.querySelector('#book-detail-image') as HTMLCanvasElement;
       emoji = this.unifiedBookDetailElement.querySelector('#book-detail-emoji') as HTMLElement;
@@ -2649,12 +2656,14 @@ export default class GameScene extends Phaser.Scene {
       rarityStarsElement = this.unifiedBookDetailElement.querySelector('#book-detail-rarity-stars') as HTMLElement;
       desc = this.unifiedBookDetailElement.querySelector('#book-detail-desc') as HTMLElement;
       priceText = this.unifiedBookDetailElement.querySelector('#book-detail-price') as HTMLElement;
+      priceUnitText = this.unifiedBookDetailElement.querySelector('#book-detail-price-unit') as HTMLElement;
       sizeText = this.unifiedBookDetailElement.querySelector('#book-detail-size') as HTMLElement;
+      sizeUnitText = this.unifiedBookDetailElement.querySelector('#book-detail-size-unit') as HTMLElement;
       habitatText = this.unifiedBookDetailElement.querySelector('#book-detail-habitat') as HTMLElement;
       catchCountText = this.unifiedBookDetailElement.querySelector('#book-detail-catch-count-value') as HTMLElement;
       imageContainer = this.unifiedBookDetailElement.querySelector('.book-detail-image-container-new') as HTMLElement;
       
-      if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !sizeText || !habitatText || !catchCountText || !imageContainer) {
+      if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !priceUnitText || !sizeText || !sizeUnitText || !habitatText || !catchCountText || !imageContainer) {
         return; // 復元に失敗した場合は処理を中断
       }
     }
@@ -2727,7 +2736,8 @@ export default class GameScene extends Phaser.Scene {
       const isJunk = fish.id.startsWith('junk_');
       
       // インベントリタブの場合は個体のサイズ、図鑑タブの場合は記録を表示
-      let displaySize: string;
+      let displaySizeValue: string;
+      let displaySizeUnit: string;
       if (this.unifiedBookTab === 'inventory') {
         // インベントリから選択されたアイテムのサイズを取得
         const flatInventory: Array<{ fishId: string; size?: number }> = [];
@@ -2743,20 +2753,45 @@ export default class GameScene extends Phaser.Scene {
         const selectedItem = selectedIndex >= 0 ? flatInventory[selectedIndex] : null;
         const itemSize = selectedItem?.size;
         if (itemSize !== undefined) {
-          displaySize = `${itemSize.toFixed(1)}cm`;
+          displaySizeValue = itemSize.toFixed(1);
+          displaySizeUnit = 'cm';
         } else {
-          displaySize = '-';
+          displaySizeValue = '-';
+          displaySizeUnit = '';
         }
       } else {
         // 図鑑タブの場合は記録を表示
         const recordSize = this.playerData.fishSizes[fish.id];
-        displaySize = recordSize ? `${recordSize.toFixed(1)}cm` : '-';
+        if (recordSize) {
+          displaySizeValue = recordSize.toFixed(1);
+          displaySizeUnit = 'cm';
+        } else {
+          displaySizeValue = '-';
+          displaySizeUnit = '';
+        }
       }
-      sizeText.textContent = displaySize;
+      sizeText.textContent = displaySizeValue;
+      if (sizeUnitText) {
+        sizeUnitText.textContent = displaySizeUnit;
+      }
+      
+      // サイズアイコンをタブに応じて変更
+      const sizeIconElement = this.unifiedBookDetailElement?.querySelector('#book-detail-size-icon') as HTMLImageElement;
+      if (sizeIconElement) {
+        if (this.unifiedBookTab === 'inventory') {
+          // インベントリタブの場合は魚と宝箱のアイコン
+          sizeIconElement.src = '/images/ui/サイズ.png';
+          sizeIconElement.alt = 'サイズ';
+        } else {
+          // 図鑑タブの場合はトロフィーアイコン（最大サイズ）
+          sizeIconElement.src = '/images/ui/最大サイズ.png';
+          sizeIconElement.alt = '最大サイズ';
+        }
+      }
       
       // サイズを考慮した価格を計算（インベントリタブの場合のみ）
       let displayPrice = fish.price;
-      if (this.unifiedBookTab === 'inventory' && displaySize !== '-') {
+      if (this.unifiedBookTab === 'inventory' && displaySizeValue !== '-') {
         const flatInventory: Array<{ fishId: string; size?: number }> = [];
         for (const item of this.playerData.inventory) {
           for (let j = 0; j < item.count; j++) {
@@ -2774,6 +2809,9 @@ export default class GameScene extends Phaser.Scene {
         }
       }
       priceText.textContent = Math.floor(displayPrice).toString();
+      if (priceUnitText) {
+        priceUnitText.textContent = 'G';
+      }
       
       // 生息地
       const habitatTextMap: Record<Habitat, string> = {
@@ -2794,9 +2832,8 @@ export default class GameScene extends Phaser.Scene {
         habitatText.style.backgroundColor = '#327F75';
       }
       
-      // 捕獲数（インベントリ内のこの魚の数）
-      const inventoryItem = this.playerData.inventory.find(item => item.fishId === fish.id);
-      const catchCount = inventoryItem ? inventoryItem.count : 0;
+      // 捕獲数（累計で何匹釣ったか）
+      const catchCount = this.playerData.fishCaughtCounts.get(fish.id) || 0;
       catchCountText.textContent = catchCount.toString();
 
       // 説明文
@@ -2822,9 +2859,32 @@ export default class GameScene extends Phaser.Scene {
       rarityStarsElement.innerHTML = starsHTML;
 
       sizeText.textContent = '-';
+      if (sizeUnitText) {
+        sizeUnitText.textContent = '';
+      }
       priceText.textContent = '-';
-      habitatText.textContent = '-';
-      habitatText.style.backgroundColor = '#327F75'; // デフォルト色
+      if (priceUnitText) {
+        priceUnitText.textContent = '';
+      }
+      // 生息地（未発見でも表示する）
+      const habitatTextMap: Record<Habitat, string> = {
+        [Habitat.FRESHWATER]: '淡水',
+        [Habitat.SALTWATER]: '海水',
+        [Habitat.STREAM]: '渓流'
+      };
+      const habitatColorMap: Record<Habitat, string> = {
+        [Habitat.FRESHWATER]: '#383680',
+        [Habitat.SALTWATER]: '#19648B',
+        [Habitat.STREAM]: '#327F75'
+      };
+      const isJunk = fish.id.startsWith('junk_');
+      if (!isJunk) {
+        habitatText.textContent = habitatTextMap[fish.habitat] || '不明';
+        habitatText.style.backgroundColor = habitatColorMap[fish.habitat] || '#327F75';
+      } else {
+        habitatText.textContent = '-';
+        habitatText.style.backgroundColor = '#327F75';
+      }
       catchCountText.textContent = '0';
 
       desc.innerHTML = 'まだ発見されていません...<br>この魚を釣って図鑑を完成させよう！';
@@ -2861,12 +2921,14 @@ export default class GameScene extends Phaser.Scene {
         <!-- 統計情報: 売値とサイズ -->
         <div class="book-detail-stats">
           <div class="book-detail-stat-item" data-name="売値">
-            <span class="book-detail-stat-label">$</span>
+            <img src="/images/ui/ゴールド.png" alt="売値" class="book-detail-stat-label-icon" />
             <span id="book-detail-price" class="book-detail-stat-value"></span>
+            <span id="book-detail-price-unit" class="book-detail-stat-unit"></span>
           </div>
           <div class="book-detail-stat-item" data-name="サイズ">
-            <span class="book-detail-stat-label">S</span>
+            <img id="book-detail-size-icon" src="/images/ui/サイズ.png" alt="サイズ" class="book-detail-stat-label-icon" />
             <span id="book-detail-size" class="book-detail-stat-value"></span>
+            <span id="book-detail-size-unit" class="book-detail-stat-unit"></span>
           </div>
         </div>
         
