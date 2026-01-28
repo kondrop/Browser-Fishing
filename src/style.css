@@ -1388,7 +1388,7 @@ img {
   padding: 5px 10px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   height: 42px;
   box-shadow: 
     inset -4px 0px 0px 0px rgba(196, 154, 108, 1),
