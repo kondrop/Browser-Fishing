@@ -74,6 +74,11 @@ if (this.unifiedBookTab !== 'achievement') {
 - `src/scenes/GameScene.ts`: `updateUnifiedBookList()` 関数
 - `src/style.css`: `.book-list-scroll` クラス（906行目）
 
+#### 関連事象: バッグ・図鑑タブ切り替えで詳細欄のスタイルが変わる
+- **症状**: バッグと図鑑タブを行き来すると、右側の詳細欄の見た目（枠・余白など）が変わってしまう。
+- **原因**: 実績タブから戻る際に呼ばれる `restoreBookDetailStructure()` の復元HTMLが、初期表示（`createUnifiedBookUI`）と異なり、`.book-detail-rarity-badge` や `.book-detail-stat-item` などに `ui-frame-box` が付与されていなかった。その結果、復元後の詳細欄だけ枠スタイルが欠けていた。
+- **対応**: `restoreBookDetailStructure()` の復元テンプレートを初期HTMLと完全に同一にし、該当要素に `ui-frame-box` を付与。あわせて未選択時（プレースホルダー表示時）に画像コンテナのインライン背景スタイルをリセットするようにした。
+
 ---
 
 ### BUG-UI-002: 図鑑詳細の価格・サイズ表示のフォントスタイルが適用されない問題

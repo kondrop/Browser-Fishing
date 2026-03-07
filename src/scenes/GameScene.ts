@@ -2353,10 +2353,11 @@ export default class GameScene extends Phaser.Scene {
               <div class="book-list-scroll" id="book-list-scroll"></div>
             </div>
             <div class="book-right-pane">
-              <div class="book-detail-placeholder" id="book-detail-placeholder">
-                左のリストから選択してください
-              </div>
-              <div class="book-detail-content" id="book-detail-content">
+              <div class="book-right-pane-inner ui-frame-box">
+                <div class="book-detail-placeholder" id="book-detail-placeholder">
+                  左のリストから選択してください
+                </div>
+                <div class="book-detail-content" id="book-detail-content">
                 <!-- ヘッダー: 魚名 + レアリティバッジ -->
                 <div class="book-detail-header-new">
                   <div id="book-detail-name" class="book-detail-name-new"></div>
@@ -2374,14 +2375,15 @@ export default class GameScene extends Phaser.Scene {
                   <div id="book-detail-emoji" class="book-detail-emoji-new" style="display: none;"></div>
                 </div>
                 
+                <div class="book-detail-sections">
                 <!-- 統計情報: 売値とサイズ -->
                 <div class="book-detail-stats">
-                  <div class="book-detail-stat-item ui-frame-box" data-name="売値">
+                  <div class="book-detail-stat-item" data-name="売値">
                     <img src="/images/ui/ゴールド.png" alt="売値" class="book-detail-stat-label-icon" />
                     <span id="book-detail-price" class="book-detail-stat-value"></span>
                     <span id="book-detail-price-unit" class="book-detail-stat-unit"></span>
                   </div>
-                  <div class="book-detail-stat-item ui-frame-box" data-name="サイズ">
+                  <div class="book-detail-stat-item" data-name="サイズ">
                     <img id="book-detail-size-icon" src="/images/ui/サイズ.png" alt="サイズ" class="book-detail-stat-label-icon" />
                     <span id="book-detail-size" class="book-detail-stat-value"></span>
                     <span id="book-detail-size-unit" class="book-detail-stat-unit"></span>
@@ -2390,21 +2392,23 @@ export default class GameScene extends Phaser.Scene {
                 
                 <!-- 生息地と捕獲数 -->
                 <div class="book-detail-habitat-row">
-                  <div id="book-detail-habitat" class="book-detail-habitat ui-frame-box"></div>
-                  <div class="book-detail-catch-count ui-frame-box">
+                  <div id="book-detail-habitat" class="book-detail-habitat"></div>
+                  <div class="book-detail-catch-count">
                     <span>捕獲数：</span>
                     <span id="book-detail-catch-count-value"></span>
                     <span>匹</span>
                   </div>
                 </div>
+                </div>
                 
                 <!-- Noteセクション -->
-                <div class="book-detail-note ui-frame-box">
+                <div class="book-detail-note">
                   <div class="book-detail-note-header">
                     <span class="book-detail-note-title">Note</span>
                   </div>
                   <div id="book-detail-desc" class="book-detail-note-content"></div>
                 </div>
+              </div>
               </div>
             </div>
           </div>
@@ -2680,7 +2684,14 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (!this.unifiedBookSelectedId) {
-      // 未選択時はプレースホルダーを表示
+      // 未選択時はプレースホルダーを表示（前タブのインラインスタイルが残らないよう画像コンテナをリセット）
+      const imageContainer = this.unifiedBookDetailElement.querySelector('.book-detail-image-container-new') as HTMLElement;
+      if (imageContainer) {
+        imageContainer.style.backgroundImage = '';
+        imageContainer.style.backgroundSize = '';
+        imageContainer.style.backgroundPosition = '';
+        imageContainer.style.backgroundRepeat = '';
+      }
       this.unifiedBookDetailPlaceholderElement.style.display = 'flex';
       this.unifiedBookDetailElement.classList.remove('active');
       return;
@@ -2968,11 +2979,13 @@ export default class GameScene extends Phaser.Scene {
     
     // 実績タブの詳細表示が存在するか、元の構造が失われている場合は復元
     if (achievementDetailList || !existingHeader) {
+      // 初期HTML（createUnifiedBookUI）と完全に同一の構造・クラスに復元し、
+      // バッグ・図鑑タブ間の切り替え時も詳細欄のスタイルが変わらないようにする（BUG-UI-001 同種対策）
       this.unifiedBookDetailElement.innerHTML = `
         <!-- ヘッダー: 魚名 + レアリティバッジ -->
         <div class="book-detail-header-new">
           <div id="book-detail-name" class="book-detail-name-new"></div>
-          <div class="book-detail-rarity-badge">
+          <div class="book-detail-rarity-badge ui-frame-box">
             <div id="book-detail-rarity-stars" class="book-detail-rarity-stars"></div>
             <div class="book-detail-rarity-label">
               <img src="/images/rarity-label.svg" alt="Rarity" class="book-rarity-label-image" />
@@ -2986,6 +2999,7 @@ export default class GameScene extends Phaser.Scene {
           <div id="book-detail-emoji" class="book-detail-emoji-new" style="display: none;"></div>
         </div>
         
+        <div class="book-detail-sections">
         <!-- 統計情報: 売値とサイズ -->
         <div class="book-detail-stats">
           <div class="book-detail-stat-item" data-name="売値">
@@ -3008,6 +3022,7 @@ export default class GameScene extends Phaser.Scene {
             <span id="book-detail-catch-count-value"></span>
             <span>匹</span>
           </div>
+        </div>
         </div>
         
         <!-- Noteセクション -->

@@ -1063,6 +1063,7 @@ img {
   display: flex;
   flex: 1;
   overflow: hidden;
+  gap: 8px;
 }
 
 .book-left-pane {
@@ -1086,11 +1087,11 @@ img {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 15px;
+  padding: 4px 8px 16px 16px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  column-gap: 16px;
-  row-gap: 16px;
+  column-gap: 8px;
+  row-gap: 8px;
   align-content: start;
 }
 
@@ -1182,9 +1183,31 @@ img {
   display: flex;
   flex-direction: column;
   background: transparent;
-  padding: 8px 20px 20px 20px;
+  padding: 4px 8px 16px 16px;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
   gap: 10px;
+}
+
+.book-right-pane-inner {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 0;
+  overflow: visible;
+  gap: 10px;
+}
+
+/* 右ペイン内側に9スライス枠＋インセット塗り */
+.book-right-pane-inner.ui-frame-box {
+  padding: calc(var(--frame-slice) * var(--frame-scale) * 1px);
+}
+/* 他UIと同じデフォルト枠塗り色 (#e8cfa6) に合わせる */
+.book-right-pane-inner.ui-frame-box::before {
+  --frame-fill-color: #e8cfa6;
 }
 
 .book-detail-placeholder {
@@ -1200,12 +1223,19 @@ img {
 .book-detail-content {
   display: none;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
 }
 
 .book-detail-content.active {
   display: flex;
+}
+
+.book-detail-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
 }
 
 /* ヘッダー: 魚名 + レアリティバッジ */
@@ -1250,7 +1280,7 @@ img {
 .book-detail-rarity-label {
   position: absolute;
   left: -6px;
-  top: -8px;
+  top: -5px;
   display: flex;
   align-items: flex-start;
 }
@@ -1265,22 +1295,24 @@ img {
 
 /* 魚のイラストコンテナ */
 .book-detail-image-container-new {
-  border: 6px solid #dfd3b9;
   width: 100%;
   height: 165px;
   position: relative;
-  background: #bdb294;
+  background: #DBC299;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-style: solid;
+  border-width: 6px;
+  border-color: rgba(219, 194, 153, 1);
 }
 
 .book-detail-image-container-new::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: #bdb294;
+  background: #DBC299;
   opacity: 0.6;
   z-index: 1;
 }
@@ -1303,8 +1335,9 @@ img {
 /* 統計情報: 売値とサイズ */
 .book-detail-stats {
   display: flex;
-  gap: 10px;
+  gap: 4px;
   width: 100%;
+  background: unset;
 }
 
 .book-detail-stat-item {
@@ -1314,7 +1347,9 @@ img {
   align-items: center;
   gap: 2px;
   height: 42px;
+  background-color: rgba(219, 194, 153, 1);
 }
+
 
 .book-detail-stat-label {
   font-size: 18px;
@@ -1372,14 +1407,15 @@ img {
 /* 生息地と捕獲数 */
 .book-detail-habitat-row {
   display: flex;
-  gap: 10px;
+  gap: 4px;
   width: 100%;
   align-items: stretch;
+  background: #DBC299;
 }
 
 .book-detail-habitat {
   color: white;
-  padding: 9px 10px;
+  padding: 5px 10px;
   font-size: 20px;
   font-family: 'DotGothic16', sans-serif;
   white-space: nowrap;
@@ -1390,7 +1426,7 @@ img {
 
 .book-detail-catch-count {
   flex: 1;
-  padding: 9px 10px;
+  padding: 5px 10px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -1406,11 +1442,13 @@ img {
   flex-direction: column;
   gap: 4px;
   width: 100%;
+  background: #DBC299;
 }
 
 .book-detail-note-header {
-  border-bottom: 1px solid #d3c4a7;
   padding-bottom: 2px;
+  border: none;
+  border-bottom: 1px solid rgba(95, 45, 29, 1);
 }
 
 .book-detail-note-title {
@@ -1655,8 +1693,6 @@ img {
 
 .book-ui[data-tab="achievement"] .book-detail-header-new,
 .book-ui[data-tab="achievement"] .book-detail-image-container-new,
-.book-ui[data-tab="achievement"] .book-detail-stats,
-.book-ui[data-tab="achievement"] .book-detail-habitat-row,
-.book-ui[data-tab="achievement"] .book-detail-note {
+.book-ui[data-tab="achievement"] .book-detail-sections {
   display: none;
 }
