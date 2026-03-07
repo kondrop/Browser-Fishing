@@ -144,6 +144,9 @@ export default class GameScene extends Phaser.Scene {
   
   // Canvas描画キャッシュ（画像のスケール済みデータを保持）
   private canvasImageCache: Map<string, { canvas: HTMLCanvasElement; width: number; height: number }> = new Map();
+  // 輪郭白フチ描画用の一時Canvas（再利用）
+  private outlineTempCanvas: HTMLCanvasElement | null = null;
+  private outlineTempCtx: CanvasRenderingContext2D | null = null;
 
   // モーダルスタック管理
   private modalStack: string[] = [];
@@ -252,6 +255,80 @@ export default class GameScene extends Phaser.Scene {
     for (const [itemId, fileName] of Object.entries(itemImages)) {
       this.load.image(itemId, `/images/items/${fileName}.png`);
     }
+  }
+
+  /** 白フチ用シャドウ: 真下方向オフセット X（px） */
+  private static readonly OUTLINE_SHADOW_OFFSET_X = 0;
+  /** 白フチ用シャドウ: 真下方向オフセット Y（px）、距離を2増やして 5 */
+  private static readonly OUTLINE_SHADOW_OFFSET_Y = 5;
+  /** 白フチ用シャドウ: 黒 25% */
+  private static readonly OUTLINE_SHADOW_STYLE = 'rgba(0,0,0,0.35)';
+
+  /**
+   * 切り抜き形状に沿った白フチ（輪郭ストローク）＋真下方向のシャドウを付けて魚画像を描画する。
+   * 画像のアルファ形状に沿ったアウトラインになり、四角い枠にはならない。
+   */
+  private drawFishImageWithOutline(
+    ctx: CanvasRenderingContext2D,
+    sourceImage: HTMLImageElement,
+    frame: { cutX: number; cutY: number; cutWidth: number; cutHeight: number },
+    destX: number,
+    destY: number,
+    destW: number,
+    destH: number,
+    outlineWidth: number = 2,
+    outlineColor: string = '#ffffff'
+  ): void {
+    const needWidth = Math.ceil(destW) + outlineWidth * 4;
+    const needHeight = Math.ceil(destH) + outlineWidth * 4;
+    if (!this.outlineTempCanvas || this.outlineTempCanvas.width < needWidth || this.outlineTempCanvas.height < needHeight) {
+      this.outlineTempCanvas = document.createElement('canvas');
+      this.outlineTempCanvas.width = Math.max(needWidth, 256);
+      this.outlineTempCanvas.height = Math.max(needHeight, 256);
+      this.outlineTempCtx = this.outlineTempCanvas.getContext('2d');
+    }
+    const temp = this.outlineTempCtx;
+    if (!temp) return;
+
+    const tw = Math.ceil(destW);
+    const th = Math.ceil(destH);
+    const sox = GameScene.OUTLINE_SHADOW_OFFSET_X;
+    const soy = GameScene.OUTLINE_SHADOW_OFFSET_Y;
+
+    // シャドウ・白フチをぼかしなしで描画（スムージング無効）
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    temp.save();
+    temp.imageSmoothingEnabled = false;
+
+    // 1. シャドウ（真下方向・黒25%）をシルエットで描画（ぼかしなし）
+    temp.clearRect(0, 0, tw, th);
+    temp.fillStyle = GameScene.OUTLINE_SHADOW_STYLE;
+    temp.fillRect(0, 0, tw, th);
+    temp.globalCompositeOperation = 'destination-in';
+    temp.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, tw, th);
+    temp.restore();
+    ctx.drawImage(this.outlineTempCanvas, 0, 0, tw, th, destX + sox, destY + soy, tw, th);
+
+    // 2. 白フチ（8方向オフセット）
+    temp.save();
+    temp.clearRect(0, 0, tw, th);
+    temp.fillStyle = outlineColor;
+    temp.fillRect(0, 0, tw, th);
+    temp.globalCompositeOperation = 'destination-in';
+    temp.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, tw, th);
+    temp.restore();
+    const offsets: [number, number][] = [
+      [-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1],
+    ];
+    for (const [ox, oy] of offsets) {
+      ctx.drawImage(this.outlineTempCanvas, 0, 0, tw, th, destX + ox * outlineWidth, destY + oy * outlineWidth, tw, th);
+    }
+
+    // 3. 元画像
+    ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, destX, destY, destW, destH);
+
+    ctx.restore();
   }
 
   create() {
@@ -1925,25 +2002,27 @@ export default class GameScene extends Phaser.Scene {
                                 const width = frame.width * scale;
                                 const height = frame.height * scale;
                                 
-                                // キャッシュ用のCanvasを作成
+                                // キャッシュ用のCanvas（スロットサイズで白フチ込みの魚を中央に描画）
                                 const cacheCanvas = document.createElement('canvas');
-                                cacheCanvas.width = width;
-                                cacheCanvas.height = height;
+                                cacheCanvas.width = 70;
+                                cacheCanvas.height = 70;
                                 const cacheCtx = cacheCanvas.getContext('2d');
                                 
                                 if (cacheCtx) {
+                                    cacheCtx.clearRect(0, 0, 70, 70);
                                     const sourceImage = frame.source.image as HTMLImageElement;
                                     if (sourceImage) {
-                                        cacheCtx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, width, height);
+                                        this.drawFishImageWithOutline(cacheCtx, sourceImage, frame,
+                                            (70 - width) / 2, (70 - height) / 2, width, height, 1, '#ffffff');
                                     }
                                 }
-                                
-                                cached = { canvas: cacheCanvas, width, height };
+
+                                cached = { canvas: cacheCanvas, width: 70, height: 70 };
                                 this.canvasImageCache.set(cacheKey, cached);
                             }
-                            
+
                             // キャッシュから描画
-                            ctx.drawImage(cached.canvas, (70 - cached.width) / 2, (70 - cached.height) / 2);
+                            ctx.drawImage(cached.canvas, 0, 0);
                             slotImage.setAttribute('data-fish-id', fishId);
                         }
                     }
@@ -2062,8 +2141,8 @@ export default class GameScene extends Phaser.Scene {
             ctx.clearRect(0, 0, 148, 165);
             const sourceImage = frame.source.image as HTMLImageElement;
             if (sourceImage) {
-                ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
-                             (148 - width) / 2, (165 - height) / 2, width, height);
+                this.drawFishImageWithOutline(ctx, sourceImage, frame,
+                    (148 - width) / 2, (165 - height) / 2, width, height, 2, '#ffffff');
             }
         }
         fishImage.style.display = 'block';
@@ -2485,35 +2564,24 @@ export default class GameScene extends Phaser.Scene {
 
     const hasTexture = this.textures.exists(fish.id);
     if (hasTexture && isCaught) {
-      const img = document.createElement('img');
-      const fileName = this.fishImageMap[fish.id];
-      if (fileName) {
-        img.src = `/images/fish/${fileName}.png`;
-        img.style.width = '100%';
-        img.style.height = '100%';
-        img.style.objectFit = 'contain';
-        icon.appendChild(img);
-      } else {
-        // マッピングが見つからない場合はcanvasにフォールバック
-        const canvas = document.createElement('canvas');
-        canvas.width = 60;
-        canvas.height = 60;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const frame = this.textures.getFrame(fish.id);
-          const maxSize = 60;
-          const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
-          const width = frame.width * scale;
-          const height = frame.height * scale;
-
-          const sourceImage = frame.source.image as HTMLImageElement;
-          if (sourceImage) {
-            ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
-                         (60 - width) / 2, (60 - height) / 2, width, height);
-          }
+      // 図鑑・バッグ左カラムのサムネイルも共通の白フチで描画（常にCanvas使用）
+      const canvas = document.createElement('canvas');
+      canvas.width = 60;
+      canvas.height = 60;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const frame = this.textures.getFrame(fish.id);
+        const maxSize = 60;
+        const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+        const width = frame.width * scale;
+        const height = frame.height * scale;
+        const sourceImage = frame.source.image as HTMLImageElement;
+        if (sourceImage) {
+          this.drawFishImageWithOutline(ctx, sourceImage, frame,
+              (60 - width) / 2, (60 - height) / 2, width, height, 1, '#ffffff');
         }
-        icon.appendChild(canvas);
       }
+      icon.appendChild(canvas);
     } else {
       const emoji = document.createElement('div');
       emoji.className = 'book-list-item-emoji';
@@ -2702,8 +2770,8 @@ export default class GameScene extends Phaser.Scene {
           ctx.clearRect(0, 0, 148, 165);
           const sourceImage = frame.source.image as HTMLImageElement;
           if (sourceImage) {
-            ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
-                         (148 - width) / 2, (165 - height) / 2, width, height);
+            this.drawFishImageWithOutline(ctx, sourceImage, frame,
+                (148 - width) / 2, (165 - height) / 2, width, height, 2, '#ffffff');
           }
         }
         imageCanvas.style.display = 'block';
@@ -3263,25 +3331,27 @@ export default class GameScene extends Phaser.Scene {
                                 const width = frame.width * scale;
                                 const height = frame.height * scale;
                                 
-                                // キャッシュ用のCanvasを作成
+                                // キャッシュ用のCanvas（スロットサイズで白フチ込みの魚を中央に描画）
                                 const cacheCanvas = document.createElement('canvas');
-                                cacheCanvas.width = width;
-                                cacheCanvas.height = height;
+                                cacheCanvas.width = 70;
+                                cacheCanvas.height = 70;
                                 const cacheCtx = cacheCanvas.getContext('2d');
                                 
                                 if (cacheCtx) {
+                                    cacheCtx.clearRect(0, 0, 70, 70);
                                     const sourceImage = frame.source.image as HTMLImageElement;
                                     if (sourceImage) {
-                                        cacheCtx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, width, height);
+                                        this.drawFishImageWithOutline(cacheCtx, sourceImage, frame,
+                                            (70 - width) / 2, (70 - height) / 2, width, height, 1, '#ffffff');
                                     }
                                 }
-                                
-                                cached = { canvas: cacheCanvas, width, height };
+
+                                cached = { canvas: cacheCanvas, width: 70, height: 70 };
                                 this.canvasImageCache.set(cacheKey, cached);
                             }
-                            
+
                             // キャッシュから描画
-                            ctx.drawImage(cached.canvas, (70 - cached.width) / 2, (70 - cached.height) / 2);
+                            ctx.drawImage(cached.canvas, 0, 0);
                             slotImage.setAttribute('data-fish-id', fish.id);
                         }
                     }
@@ -3425,8 +3495,8 @@ export default class GameScene extends Phaser.Scene {
                 ctx.clearRect(0, 0, 80, 80);
                 const sourceImage = frame.source.image as HTMLImageElement;
                 if (sourceImage) {
-                    ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight,
-                                 (80 - width) / 2, (80 - height) / 2, width, height);
+                    this.drawFishImageWithOutline(ctx, sourceImage, frame,
+                        (80 - width) / 2, (80 - height) / 2, width, height, 2, '#ffffff');
                 }
             }
             fishImage.style.display = 'block';
@@ -3436,7 +3506,7 @@ export default class GameScene extends Phaser.Scene {
             emoji.textContent = fish.emoji;
             emoji.style.display = 'block';
         }
-        
+
         nameText.textContent = fish.name;
         const starCount = rarityStarCount[fish.rarity];
         const color = rarityColors[fish.rarity];
