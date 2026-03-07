@@ -912,17 +912,17 @@ export default class GameScene extends Phaser.Scene {
       <div id="status-ui" style="position: fixed; pointer-events: none; z-index: 1000; top: 0; left: 0; width: 100%; height: 100%;">
         <!-- 左上: レベルと経験値 -->
         <div id="level-section" style="position: absolute; top: 10px; left: 10px;">
-          <div id="level-text" class="stat-item">⭐ Lv.1</div>
-          <div id="exp-bar-bg">
+          <div id="level-text" class="stat-item ui-frame-box">⭐ Lv.1</div>
+          <div id="exp-bar-bg" class="ui-frame-box">
             <div id="exp-bar-fill"></div>
           </div>
         </div>
         
         <!-- 右上: 所持金、インベントリ、図鑑 -->
         <div id="stats-section" style="position: absolute; top: 10px; right: 10px;">
-          <div id="money-text" class="stat-item">💰 0 G</div>
-          <div id="inventory-text" class="stat-item">🎒 0/9</div>
-          <div id="collection-text" class="stat-item">📖 図鑑 0/0</div>
+          <div id="money-text" class="stat-item ui-frame-box">💰 0 G</div>
+          <div id="inventory-text" class="stat-item ui-frame-box">🎒 0/9</div>
+          <div id="collection-text" class="stat-item ui-frame-box">📖 図鑑 0/0</div>
         </div>
       </div>
     `;
@@ -1787,18 +1787,18 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < maxSlots; i++) {
       slotsHTML += `
         <div class="inventory-slot" data-index="${i}">
-          <div class="slot-bg"></div>
+          <div class="slot-bg ui-frame-box"></div>
           <canvas class="slot-image" width="70" height="70" style="display: none;"></canvas>
           <div class="slot-emoji"></div>
-          <div class="slot-name"></div>
-          <div class="slot-price"></div>
+          <div class="slot-name ui-frame-box"></div>
+          <div class="slot-price ui-frame-box"></div>
         </div>
       `;
     }
 
     const inventoryHTML = `
       <div id="inventory-modal" class="modal" style="display: none;" aria-hidden="true">
-        <div class="modal-content inventory-modal nes-container with-rounded">
+        <div class="modal-content inventory-modal nes-container with-rounded ui-frame-box">
           <div class="modal-header">
             <h2>🎒 インベントリ</h2>
           </div>
@@ -1866,13 +1866,13 @@ export default class GameScene extends Phaser.Scene {
     // HTML/CSSで詳細モーダルを作成（Figmaデザインに基づく）
     const detailHTML = `
       <div id="detail-modal" class="modal" style="display: none;" aria-hidden="true">
-        <div class="modal-content detail-modal nes-container with-rounded">
-          <button class="modal-close nes-btn" onclick="window.gameScene?.closeDetailModal()">✕</button>
+        <div class="modal-content detail-modal nes-container with-rounded ui-frame-box">
+          <button class="modal-close nes-btn ui-frame-box" onclick="window.gameScene?.closeDetailModal()">✕</button>
           <div class="detail-content">
             <!-- ヘッダー: 魚名 + レアリティバッジ -->
             <div class="detail-header">
               <div id="detail-name" class="detail-name"></div>
-              <div class="detail-rarity-badge">
+              <div class="detail-rarity-badge ui-frame-box">
                 <div id="detail-rarity-stars" class="detail-rarity-stars"></div>
                 <div class="detail-rarity-label">
                   <span class="rarity-label-text">Rarity</span>
@@ -1889,11 +1889,11 @@ export default class GameScene extends Phaser.Scene {
             
             <!-- 統計情報: 売値とサイズ -->
             <div class="detail-stats">
-              <div class="detail-stat-item" data-name="売値">
+              <div class="detail-stat-item ui-frame-box" data-name="売値">
                 <span class="detail-stat-label">$</span>
                 <span id="detail-price" class="detail-stat-value"></span>
               </div>
-              <div class="detail-stat-item" data-name="サイズ">
+              <div class="detail-stat-item ui-frame-box" data-name="サイズ">
                 <span class="detail-stat-label">S</span>
                 <span id="detail-size" class="detail-stat-value"></span>
               </div>
@@ -1901,8 +1901,8 @@ export default class GameScene extends Phaser.Scene {
             
             <!-- 生息地と捕獲数 -->
             <div class="detail-habitat-row">
-              <div id="detail-habitat" class="detail-habitat"></div>
-              <div class="detail-catch-count">
+              <div id="detail-habitat" class="detail-habitat ui-frame-box"></div>
+              <div class="detail-catch-count ui-frame-box">
                 <span>捕獲数：</span>
                 <span id="detail-catch-count-value"></span>
                 <span>匹</span>
@@ -1910,7 +1910,7 @@ export default class GameScene extends Phaser.Scene {
             </div>
             
             <!-- Noteセクション -->
-            <div class="detail-note">
+            <div class="detail-note ui-frame-box">
               <div class="detail-note-header">
                 <span class="detail-note-title">Note</span>
               </div>
@@ -2013,7 +2013,7 @@ export default class GameScene extends Phaser.Scene {
                                     const sourceImage = frame.source.image as HTMLImageElement;
                                     if (sourceImage) {
                                         this.drawFishImageWithOutline(cacheCtx, sourceImage, frame,
-                                            (70 - width) / 2, (70 - height) / 2, width, height, 1, '#ffffff');
+                                            (70 - width) / 2, (70 - height) / 2, width, height, 2, '#ffffff');
                                     }
                                 }
 
@@ -2142,7 +2142,7 @@ export default class GameScene extends Phaser.Scene {
             const sourceImage = frame.source.image as HTMLImageElement;
             if (sourceImage) {
                 this.drawFishImageWithOutline(ctx, sourceImage, frame,
-                    (148 - width) / 2, (165 - height) / 2, width, height, 2, '#ffffff');
+                    (148 - width) / 2, (165 - height) / 2, width, height, 3, '#ffffff');
             }
         }
         fishImage.style.display = 'block';
@@ -2263,10 +2263,10 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < slotsPerPage; i++) {
       slotsHTML += `
         <div class="book-slot" data-index="${i}">
-          <div class="slot-bg"></div>
+          <div class="slot-bg ui-frame-box"></div>
           <canvas class="slot-image" width="70" height="70" style="display: none;"></canvas>
           <div class="slot-emoji"></div>
-          <div class="slot-name"></div>
+          <div class="slot-name ui-frame-box"></div>
           <div class="slot-rarity"></div>
         </div>
       `;
@@ -2274,10 +2274,10 @@ export default class GameScene extends Phaser.Scene {
 
     const bookHTML = `
       <div id="book-modal" class="modal" style="display: none;">
-        <div class="modal-content book-modal nes-container with-rounded">
+        <div class="modal-content book-modal nes-container with-rounded ui-frame-box">
           <div class="modal-header">
             <h2>📖 魚図鑑</h2>
-            <div id="book-progress" class="book-progress"></div>
+            <div id="book-progress" class="book-progress ui-frame-box"></div>
           </div>
           <div id="book-slots-grid" class="book-grid">
             ${slotsHTML}
@@ -2337,19 +2337,19 @@ export default class GameScene extends Phaser.Scene {
   createUnifiedBookUI() {
     const bookHTML = `
       <div id="book-ui" class="book-ui">
-        <div class="book-container">
-          <button class="book-close" onclick="window.gameScene?.closeUnifiedBook()">✕</button>
+        <div class="book-container ui-frame-box">
+          <button class="book-close ui-frame-box" onclick="window.gameScene?.closeUnifiedBook()">✕</button>
           <div class="book-header">
             <h2 class="book-title"></h2>
             <div class="book-tabs">
-              <button class="book-tab-button active" data-tab="inventory">バッグ</button>
-              <button class="book-tab-button" data-tab="pedia">図鑑</button>
-              <button class="book-tab-button" data-tab="achievement">実績</button>
+              <button class="book-tab-button active ui-frame-box" data-tab="inventory">バッグ</button>
+              <button class="book-tab-button ui-frame-box" data-tab="pedia">図鑑</button>
+              <button class="book-tab-button ui-frame-box" data-tab="achievement">実績</button>
             </div>
           </div>
           <div class="book-content">
             <div class="book-left-pane">
-              <div class="book-list-header" id="book-list-header">所持品一覧</div>
+              <div class="book-list-header ui-frame-box" id="book-list-header">所持品一覧</div>
               <div class="book-list-scroll" id="book-list-scroll"></div>
             </div>
             <div class="book-right-pane">
@@ -2360,7 +2360,7 @@ export default class GameScene extends Phaser.Scene {
                 <!-- ヘッダー: 魚名 + レアリティバッジ -->
                 <div class="book-detail-header-new">
                   <div id="book-detail-name" class="book-detail-name-new"></div>
-                  <div class="book-detail-rarity-badge">
+                  <div class="book-detail-rarity-badge ui-frame-box">
                     <div id="book-detail-rarity-stars" class="book-detail-rarity-stars"></div>
                     <div class="book-detail-rarity-label">
                       <img src="/images/rarity-label.svg" alt="Rarity" class="book-rarity-label-image" />
@@ -2376,12 +2376,12 @@ export default class GameScene extends Phaser.Scene {
                 
                 <!-- 統計情報: 売値とサイズ -->
                 <div class="book-detail-stats">
-                  <div class="book-detail-stat-item" data-name="売値">
+                  <div class="book-detail-stat-item ui-frame-box" data-name="売値">
                     <img src="/images/ui/ゴールド.png" alt="売値" class="book-detail-stat-label-icon" />
                     <span id="book-detail-price" class="book-detail-stat-value"></span>
                     <span id="book-detail-price-unit" class="book-detail-stat-unit"></span>
                   </div>
-                  <div class="book-detail-stat-item" data-name="サイズ">
+                  <div class="book-detail-stat-item ui-frame-box" data-name="サイズ">
                     <img id="book-detail-size-icon" src="/images/ui/サイズ.png" alt="サイズ" class="book-detail-stat-label-icon" />
                     <span id="book-detail-size" class="book-detail-stat-value"></span>
                     <span id="book-detail-size-unit" class="book-detail-stat-unit"></span>
@@ -2390,8 +2390,8 @@ export default class GameScene extends Phaser.Scene {
                 
                 <!-- 生息地と捕獲数 -->
                 <div class="book-detail-habitat-row">
-                  <div id="book-detail-habitat" class="book-detail-habitat"></div>
-                  <div class="book-detail-catch-count">
+                  <div id="book-detail-habitat" class="book-detail-habitat ui-frame-box"></div>
+                  <div class="book-detail-catch-count ui-frame-box">
                     <span>捕獲数：</span>
                     <span id="book-detail-catch-count-value"></span>
                     <span>匹</span>
@@ -2399,7 +2399,7 @@ export default class GameScene extends Phaser.Scene {
                 </div>
                 
                 <!-- Noteセクション -->
-                <div class="book-detail-note">
+                <div class="book-detail-note ui-frame-box">
                   <div class="book-detail-note-header">
                     <span class="book-detail-note-title">Note</span>
                   </div>
@@ -2551,7 +2551,7 @@ export default class GameScene extends Phaser.Scene {
 
   createUnifiedBookListItem(fish: any, index: number, isCaught: boolean, size?: number): HTMLElement {
     const item = document.createElement('div');
-    item.className = 'book-list-item';
+    item.className = 'book-list-item ui-frame-box';
     if (!isCaught && this.unifiedBookTab === 'pedia') {
       item.classList.add('book-list-item-unknown');
     }
@@ -2578,7 +2578,7 @@ export default class GameScene extends Phaser.Scene {
         const sourceImage = frame.source.image as HTMLImageElement;
         if (sourceImage) {
           this.drawFishImageWithOutline(ctx, sourceImage, frame,
-              (60 - width) / 2, (60 - height) / 2, width, height, 1, '#ffffff');
+              (60 - width) / 2, (60 - height) / 2, width, height, 2, '#ffffff');
         }
       }
       icon.appendChild(canvas);
@@ -2771,7 +2771,7 @@ export default class GameScene extends Phaser.Scene {
           const sourceImage = frame.source.image as HTMLImageElement;
           if (sourceImage) {
             this.drawFishImageWithOutline(ctx, sourceImage, frame,
-                (148 - width) / 2, (165 - height) / 2, width, height, 2, '#ffffff');
+                (148 - width) / 2, (165 - height) / 2, width, height, 3, '#ffffff');
           }
         }
         imageCanvas.style.display = 'block';
@@ -3024,7 +3024,7 @@ export default class GameScene extends Phaser.Scene {
   createAchievementCategoryItem(category: string, count: number, index: number): HTMLElement {
     const item = document.createElement('div');
     // 実績タブ用のクラス名（リスト形式）
-    item.className = 'achievement-category-list-item';
+    item.className = 'achievement-category-list-item ui-frame-box';
     item.setAttribute('data-category', category);
     item.setAttribute('data-index', index.toString());
 
@@ -3102,11 +3102,8 @@ export default class GameScene extends Phaser.Scene {
           const progressPercent = Math.round(progress * 100);
 
           return `
-            <div class="achievement-detail-item ${isUnlocked ? 'unlocked' : 'locked'}" style="
+            <div class="achievement-detail-item ui-frame-box ${isUnlocked ? 'unlocked' : 'locked'}" style="
               padding: 15px;
-              border: 2px solid ${isUnlocked ? '#4CAF50' : '#666'};
-              border-radius: 8px;
-              background: ${isUnlocked ? 'rgba(76, 175, 80, 0.1)' : 'rgba(0, 0, 0, 0.3)'};
               opacity: ${isUnlocked ? '1' : '0.7'};
             ">
               <div style="display: flex; align-items: center; gap: 15px;">
@@ -3223,8 +3220,8 @@ export default class GameScene extends Phaser.Scene {
     // HTML/CSSで図鑑詳細モーダルを作成
     const bookDetailHTML = `
       <div id="book-detail-modal" class="modal" style="display: none;" aria-hidden="true">
-        <div class="modal-content detail-modal nes-container with-rounded">
-          <button class="modal-close nes-btn" onclick="window.gameScene?.closeBookDetail()">✕</button>
+        <div class="modal-content detail-modal nes-container with-rounded ui-frame-box">
+          <button class="modal-close nes-btn ui-frame-box" onclick="window.gameScene?.closeBookDetail()">✕</button>
           <div class="detail-content">
             <canvas id="book-detail-fish-image" class="detail-image" width="80" height="80" style="display: none;"></canvas>
             <div id="book-detail-emoji" class="detail-emoji" style="display: none;"></div>
@@ -3342,7 +3339,7 @@ export default class GameScene extends Phaser.Scene {
                                     const sourceImage = frame.source.image as HTMLImageElement;
                                     if (sourceImage) {
                                         this.drawFishImageWithOutline(cacheCtx, sourceImage, frame,
-                                            (70 - width) / 2, (70 - height) / 2, width, height, 1, '#ffffff');
+                                            (70 - width) / 2, (70 - height) / 2, width, height, 2, '#ffffff');
                                     }
                                 }
 
@@ -3496,7 +3493,7 @@ export default class GameScene extends Phaser.Scene {
                 const sourceImage = frame.source.image as HTMLImageElement;
                 if (sourceImage) {
                     this.drawFishImageWithOutline(ctx, sourceImage, frame,
-                        (80 - width) / 2, (80 - height) / 2, width, height, 2, '#ffffff');
+                        (80 - width) / 2, (80 - height) / 2, width, height, 3, '#ffffff');
                 }
             }
             fishImage.style.display = 'block';
@@ -3607,8 +3604,8 @@ export default class GameScene extends Phaser.Scene {
     // HTML/CSSでショップUIを作成
     const shopHTML = `
       <div id="shop-modal" class="modal" style="display: none;" aria-hidden="true">
-        <div class="modal-content shop-modal nes-container with-rounded">
-          <button class="modal-close" onclick="window.gameScene?.closeShop()">✕</button>
+        <div class="modal-content shop-modal nes-container with-rounded ui-frame-box">
+          <button class="modal-close ui-frame-box" onclick="window.gameScene?.closeShop()">✕</button>
           <div class="modal-header">
             <h2>🏪 ショップ</h2>
           </div>
@@ -3620,7 +3617,7 @@ export default class GameScene extends Phaser.Scene {
           </div>
           <div id="shop-items-list" class="shop-items-list"></div>
           <div class="modal-footer">
-            <div id="shop-money" class="shop-money"></div>
+            <div id="shop-money" class="shop-money ui-frame-box"></div>
             <div class="hint-text">↑↓: 選択 | ENTER: 購入/装備 | S/ESC: 閉じる</div>
           </div>
         </div>
@@ -3657,10 +3654,10 @@ export default class GameScene extends Phaser.Scene {
     // 実績モーダル
     const achievementHTML = `
       <div id="achievement-modal" class="modal" style="display: none;" aria-hidden="true">
-        <div class="modal-content achievement-modal nes-container with-rounded" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+        <div class="modal-content achievement-modal nes-container with-rounded ui-frame-box" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
           <div class="modal-header">
             <h2>🏆 実績一覧</h2>
-            <button class="modal-close" id="achievement-close">×</button>
+            <button class="modal-close ui-frame-box" id="achievement-close">×</button>
           </div>
           <div class="achievement-tabs">
             <button class="achievement-tab nes-btn" data-category="catch">🎣 釣果</button>
@@ -3948,6 +3945,9 @@ export default class GameScene extends Phaser.Scene {
       const itemEl = document.createElement('div');
       itemEl.className = 'shop-item';
       itemEl.setAttribute('data-index', index.toString());
+
+      const contentWrap = document.createElement('div');
+      contentWrap.className = 'shop-item-content ui-frame-box';
       
       const iconContainer = document.createElement('div');
       iconContainer.className = 'shop-item-icon';
@@ -3986,9 +3986,10 @@ export default class GameScene extends Phaser.Scene {
       priceEl.textContent = priceText;
       priceEl.style.color = priceColor;
       
-      itemEl.appendChild(iconContainer);
-      itemEl.appendChild(infoContainer);
-      itemEl.appendChild(priceEl);
+      contentWrap.appendChild(iconContainer);
+      contentWrap.appendChild(infoContainer);
+      contentWrap.appendChild(priceEl);
+      itemEl.appendChild(contentWrap);
       
       this.shopItemsListElement.appendChild(itemEl);
     });
