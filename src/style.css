@@ -1696,3 +1696,105 @@ img {
 .book-ui[data-tab="achievement"] .book-detail-sections {
   display: none;
 }
+
+/* キャラクター設定パネル（デバッグ用） */
+.character-settings {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3000;
+  min-width: 320px;
+  padding: 24px;
+  box-sizing: border-box;
+  display: none;
+}
+.character-settings.is-hidden {
+  display: none !important;
+}
+.character-settings.is-active {
+  display: block !important;
+}
+.character-settings__title {
+  margin: 0 0 16px 0;
+  font-size: 20px;
+}
+.character-settings__field {
+  display: block;
+  margin-bottom: 16px;
+}
+.character-settings__field span {
+  display: block;
+  margin-bottom: 4px;
+}
+.character-settings__note {
+  font-size: 12px;
+  color: #666;
+  margin: 8px 0 16px 0;
+}
+.character-settings__buttons {
+  display: flex;
+  gap: 12px;
+}
+.character-settings__buttons .nes-btn {
+  flex: 1;
+}
+
+/* キャラサムネイル：シートの1コマ目（24x24）のみ表示 */
+.character-thumb-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.character-thumb-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+}
+.character-thumb-frame {
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  background: #ffffff;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.character-thumb-frame img {
+  display: block;
+  margin: 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  /* 1コマ目だけ見えるよう位置は0,0。サイズはJSで2倍に設定 */
+}
+.character-thumb-label {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+/* 選択中キャラのアイドルプレビュー（3倍スケール） */
+.character-preview-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.character-preview-canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #ffffff;
+  border-radius: 4px;
+}
+
+.character-color-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.character-color-item {
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  min-width: 0;
+}

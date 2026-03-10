@@ -6,6 +6,7 @@ import type { PlayerData } from '../data/inventory';
 import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize, checkAchievements, getAchievementProgress, incrementConsecutiveSuccess, resetConsecutiveSuccess } from '../data/inventory';
 import { achievementConfigs, getAllCategories, getAchievementsByCategory, type AchievementConfig } from '../data/achievementConfig';
 import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, getRodById, getBaitById, getLureById, getNextRod, getNextInventoryUpgrade } from '../data/shopConfig';
+import { characterConfigs, getCharacterById, getDefaultCharacterId } from '../data/characterConfig';
 
 enum FishingState {
   IDLE,
@@ -164,16 +165,52 @@ export default class GameScene extends Phaser.Scene {
     BOOK_DETAIL: 'book-detail-modal',
     SHOP: 'shop-modal',
     UNIFIED_BOOK: 'book-ui',
+    CHARACTER: 'character-settings',
   } as const;
+
+  // デバッグ用キャラクター設定UI
+  private characterSettingsElement!: HTMLElement;
+  private characterPreviewIntervalId: number | null = null;
+  private characterColorTemp: string = '#ffffff';
 
   constructor() {
     super('GameScene');
   }
 
+  // --- キャラクター設定ヘルパー ---
+
+  private getSelectedCharacterId(): string {
+    if (typeof window === 'undefined') return getDefaultCharacterId();
+    const stored = window.localStorage.getItem('bf_character_id');
+    if (!stored) return getDefaultCharacterId();
+    return getCharacterById(stored) ? stored : getDefaultCharacterId();
+  }
+
+  private getSelectedPlayerName(): string {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem('bf_player_name') ?? '';
+  }
+
+  private getSelectedColor(): string {
+    if (typeof window === 'undefined') return '#ffffff';
+    return window.localStorage.getItem('bf_character_color') ?? '#ffffff';
+  }
+
+  private saveCharacterSettings(id: string, name: string, color: string) {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('bf_character_id', id);
+    window.localStorage.setItem('bf_player_name', name);
+    window.localStorage.setItem('bf_character_color', color);
+  }
+
   preload() {
-    // プレイヤーキャラクターのスプライトシート
+    // プレイヤーキャラクターのスプライトシート（characterConfig から取得）
     // 1行目: アイドル, 2行目: 移動（1コマ24x24）
-    this.load.spritesheet('player', 'images/character/Basic character v2.png', {
+    const characterId = this.getSelectedCharacterId();
+    const character = getCharacterById(characterId);
+    const spriteSheetPath = character?.sheetPath ?? characterConfigs[0]?.sheetPath ?? 'images/character/Basic character v1.png';
+
+    this.load.spritesheet('player', spriteSheetPath, {
       frameWidth: 24,
       frameHeight: 24
     });
@@ -461,6 +498,15 @@ export default class GameScene extends Phaser.Scene {
       this.playerShadow.setPosition(this.player.x, this.player.y + shadowOffsetY);
     });
 
+    // キャラカラーを適用（白以外ならtint）
+    const colorHex = this.getSelectedColor().toLowerCase();
+    if (colorHex && colorHex !== '#ffffff' && /^#([0-9a-f]{6})$/.test(colorHex)) {
+      const tint = parseInt(colorHex.slice(1), 16);
+      this.player.setTint(tint);
+    } else {
+      this.player.clearTint();
+    }
+
     // プレイヤーアニメーション（1行目=アイドル 0-7, 2行目=移動 10-12）
     this.anims.create({
       key: 'player-idle',
@@ -576,6 +622,9 @@ export default class GameScene extends Phaser.Scene {
     // 実績UI
     this.createAchievementUI();
 
+    // デバッグ用キャラクター設定UI（起動時に一度生成）
+    this.createCharacterSettingsUI();
+
     if (this.input.keyboard) {
         this.cursors = this.input.keyboard.createCursorKeys();
         this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -656,6 +705,25 @@ export default class GameScene extends Phaser.Scene {
                 this.purchaseOrEquipItem();
             }
         });
+
+        // Cキーでキャラクター設定（デバッグ用）※大文字・小文字どちらでも反応
+        const openCharacterSettingsPanel = () => {
+            if (this.modalStack.length > 0) return;
+
+            if (!this.characterSettingsElement) {
+                this.createCharacterSettingsUI();
+            }
+            if (!this.characterSettingsElement) return;
+
+            const isActive = this.characterSettingsElement.classList.contains('is-active');
+            if (isActive) {
+                this.closeCharacterSettings();
+            } else {
+                this.openCharacterSettings();
+            }
+        };
+        this.input.keyboard.on('keydown-C', openCharacterSettingsPanel);
+        this.input.keyboard.on('keydown-c', openCharacterSettingsPanel);
 
         // Bキーで図鑑表示（統合BookUI）
         this.input.keyboard.on('keydown-B', () => {
@@ -815,6 +883,7 @@ export default class GameScene extends Phaser.Scene {
       { id: this.MODAL_IDS.BOOK_DETAIL, element: this.bookDetailElement },
       { id: this.MODAL_IDS.SHOP, element: this.shopUIElement },
       { id: this.MODAL_IDS.UNIFIED_BOOK, element: this.unifiedBookUIElement },
+      { id: this.MODAL_IDS.CHARACTER, element: this.characterSettingsElement },
     ];
 
     allModals.forEach(({ id, element }) => {
@@ -963,6 +1032,11 @@ export default class GameScene extends Phaser.Scene {
           <div id="inventory-text" class="stat-item ui-frame-box">🎒 0/9</div>
           <div id="collection-text" class="stat-item ui-frame-box">📖 図鑑 0/0</div>
         </div>
+
+        <!-- 左下: キャラクター設定ボタン（デバッグ用） -->
+        <div id="character-settings-btn-wrap" style="position: absolute; bottom: 16px; left: 16px; pointer-events: auto;">
+          <button type="button" id="character-settings-btn" class="nes-btn is-small">キャラ設定</button>
+        </div>
       </div>
     `;
     
@@ -971,6 +1045,19 @@ export default class GameScene extends Phaser.Scene {
     tempDiv.innerHTML = statusHTML;
     this.statusUIElement = tempDiv.firstElementChild as HTMLElement;
     document.body.appendChild(this.statusUIElement);
+
+    // キャラ設定ボタン: クリックでパネルを開く
+    const charBtn = document.getElementById('character-settings-btn');
+    if (charBtn) {
+      charBtn.addEventListener('click', () => {
+        if (!this.characterSettingsElement) {
+          this.createCharacterSettingsUI();
+        }
+        if (this.characterSettingsElement) {
+          this.openCharacterSettings();
+        }
+      });
+    }
     
     this.updateStatusUI();
   }
@@ -3791,6 +3878,245 @@ export default class GameScene extends Phaser.Scene {
     if (tabButtons.length > 0) {
       (tabButtons[0] as HTMLElement).click();
     }
+  }
+
+  // --- キャラクター設定UI（デバッグ用） ---
+
+  createCharacterSettingsUI() {
+    if (this.characterSettingsElement) return;
+
+    const currentId = this.getSelectedCharacterId();
+    const currentName = this.getSelectedPlayerName();
+    const currentColor = this.getSelectedColor();
+    this.characterColorTemp = currentColor;
+
+    const html = `
+      <div id="character-modal" class="modal" style="display: none;" aria-hidden="true">
+        <div class="modal-content character-modal nes-container with-rounded ui-frame-box" style="max-width: 520px;">
+          <div class="modal-header">
+            <h2>キャラクター設定（デバッグ）</h2>
+            <button class="modal-close ui-frame-box" id="character-settings-close">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="character-preview-wrap">
+              <canvas id="character-preview-canvas" width="96" height="96" class="character-preview-canvas"></canvas>
+            </div>
+            <fieldset class="character-settings__field">
+              <legend>キャラカラー</legend>
+              <div class="character-color-list">
+                <!-- なし(白) + 7色 -->
+                <button type="button" class="character-color-item nes-btn ${currentColor === '#ffffff' ? 'is-primary' : ''}" data-color="#ffffff" style="background:#ffffff;">なし</button>
+                <button type="button" class="character-color-item nes-btn ${currentColor === '#ff5555' ? 'is-primary' : ''}" data-color="#ff5555" style="background:#ff5555;"></button>
+                <button type="button" class="character-color-item nes-btn ${currentColor === '#ffb347' ? 'is-primary' : ''}" data-color="#ffb347" style="background:#ffb347;"></button>
+                <button type="button" class="character-color-item nes-btn ${currentColor === '#ffee55' ? 'is-primary' : ''}" data-color="#ffee55" style="background:#ffee55;"></button>
+                <button type="button" class="character-color-item nes-btn ${currentColor === '#55ff55' ? 'is-primary' : ''}" data-color="#55ff55" style="background:#55ff55;"></button>
+                <button type="button" class="character-color-item nes-btn ${currentColor === '#55ddff' ? 'is-primary' : ''}" data-color="#55ddff" style="background:#55ddff;"></button>
+                <button type="button" class="character-color-item nes-btn ${currentColor === '#5555ff' ? 'is-primary' : ''}" data-color="#5555ff" style="background:#5555ff;"></button>
+                <button type="button" class="character-color-item nes-btn ${currentColor === '#ff55ff' ? 'is-primary' : ''}" data-color="#ff55ff" style="background:#ff55ff;"></button>
+              </div>
+            </fieldset>
+            <label class="character-settings__field">
+              <span>ユーザー名（半角英数字のみ）</span>
+              <input
+                type="text"
+                id="character-name-input"
+                class="nes-input"
+                maxlength="16"
+                value="${currentName}"
+                autocomplete="off"
+              />
+            </label>
+            <fieldset class="character-settings__field">
+              <legend>キャラクター画像</legend>
+              <div class="character-thumb-list">
+                ${characterConfigs
+                  .map(
+                    (ch) => `
+                <button type="button" class="character-thumb-item nes-btn ${
+                  currentId === ch.id ? 'is-primary' : ''
+                }" data-id="${ch.id}">
+                  <div class="character-thumb-frame">
+                    <img src="/${ch.sheetPath}" alt="${ch.label}" />
+                  </div>
+                  <div class="character-thumb-label">${ch.label}</div>
+                </button>`
+                  )
+                  .join('')}
+              </div>
+            </fieldset>
+            <p class="character-settings__note">
+              ※ キャラ画像の変更は「保存」後にページを再読み込みすると反映されます。
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" id="character-settings-save" class="nes-btn is-primary">保存</button>
+            <button type="button" id="character-settings-cancel" class="nes-btn">閉じる</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    this.characterSettingsElement = temp.firstElementChild as HTMLElement;
+    document.body.appendChild(this.characterSettingsElement);
+
+    const nameInput = document.getElementById('character-name-input') as HTMLInputElement | null;
+    const saveBtn = document.getElementById('character-settings-save');
+    const closeBtn = document.getElementById('character-settings-close');
+    const cancelBtn = document.getElementById('character-settings-cancel');
+    const thumbButtons = Array.from(
+      this.characterSettingsElement.querySelectorAll<HTMLButtonElement>('.character-thumb-item')
+    );
+    const colorButtons = Array.from(
+      this.characterSettingsElement.querySelectorAll<HTMLButtonElement>('.character-color-item')
+    );
+
+    // ユーザー名: 半角英数字のみ許可
+    if (nameInput) {
+      nameInput.addEventListener('input', () => {
+        const raw = nameInput.value;
+        const sanitized = raw.replace(/[^0-9a-zA-Z]/g, '');
+        if (raw !== sanitized) {
+          nameInput.value = sanitized;
+        }
+      });
+    }
+
+    // サムネイル選択（ボタンの見た目だけ切り替え + プレビュー更新）
+    thumbButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        thumbButtons.forEach(b => b.classList.remove('is-primary'));
+        btn.classList.add('is-primary');
+        const id = btn.getAttribute('data-id');
+        if (id) this.startCharacterPreview(id, this.characterColorTemp);
+      });
+    });
+
+    // カラー選択（ボタンの見た目 + 一時色 + プレビュー更新）
+    colorButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        colorButtons.forEach(b => b.classList.remove('is-primary'));
+        btn.classList.add('is-primary');
+        this.characterColorTemp = btn.getAttribute('data-color') ?? '#ffffff';
+
+        const selectedBtn =
+          thumbButtons.find(b => b.classList.contains('is-primary')) ?? thumbButtons[0] ?? null;
+        const selectedId = selectedBtn?.getAttribute('data-id') ?? getDefaultCharacterId();
+        this.startCharacterPreview(selectedId, this.characterColorTemp);
+      });
+    });
+
+    saveBtn?.addEventListener('click', () => {
+      const selectedBtn =
+        thumbButtons.find(b => b.classList.contains('is-primary')) ?? thumbButtons[0] ?? null;
+      const selectedId = selectedBtn?.getAttribute('data-id') ?? getDefaultCharacterId();
+
+      const name = nameInput?.value ?? '';
+      this.saveCharacterSettings(selectedId, name, this.characterColorTemp);
+      alert('設定を保存しました。\nキャラクター画像の変更を反映するにはページを再読み込みしてください。');
+    });
+
+    const handleClose = () => this.closeCharacterSettings();
+    closeBtn?.addEventListener('click', handleClose);
+    cancelBtn?.addEventListener('click', handleClose);
+
+    // サムネイル：スプライトシートの1コマ目（24x24）だけ表示するよう拡大してクリップ
+    const frameSize = 24;
+    const thumbSize = 48;
+    const scale = thumbSize / frameSize;
+    this.characterSettingsElement.querySelectorAll<HTMLImageElement>('.character-thumb-frame img').forEach(img => {
+      const applyClip = () => {
+        img.style.width = `${img.naturalWidth * scale}px`;
+        img.style.height = `${img.naturalHeight * scale}px`;
+      };
+      if (img.complete) applyClip();
+      else img.addEventListener('load', applyClip);
+    });
+  }
+
+  private stopCharacterPreview() {
+    if (this.characterPreviewIntervalId != null) {
+      clearInterval(this.characterPreviewIntervalId);
+      this.characterPreviewIntervalId = null;
+    }
+  }
+
+  private startCharacterPreview(characterId: string, colorHex?: string) {
+    const canvas = this.characterSettingsElement?.querySelector('#character-preview-canvas') as HTMLCanvasElement | null;
+    if (!canvas) return;
+
+    this.stopCharacterPreview();
+
+    const character = getCharacterById(characterId);
+    if (!character) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const frameSize = 24;
+    const scale = 4;
+    const displaySize = frameSize * scale; // 96
+    const idleFrameCount = 8; // アイドル 0-7
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = '/' + character.sheetPath;
+
+    img.onload = () => {
+      let frame = 0;
+      const tintColor = (colorHex ?? this.characterColorTemp ?? this.getSelectedColor()).toLowerCase();
+      const draw = () => {
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, displaySize, displaySize);
+
+        const sx = frame * frameSize;
+        const sy = 0;
+        ctx.drawImage(img, sx, sy, frameSize, frameSize, 0, 0, displaySize, displaySize);
+
+        // Phaser の setTint に近い挙動: 各ピクセルに乗算
+        if (tintColor && tintColor !== '#ffffff') {
+          const m = tintColor.match(/^#([0-9a-f]{6})$/);
+          if (m) {
+            const tint = parseInt(m[1], 16);
+            const tr = (tint >> 16) & 0xff;
+            const tg = (tint >> 8) & 0xff;
+            const tb = tint & 0xff;
+            const rf = tr / 255;
+            const gf = tg / 255;
+            const bf = tb / 255;
+
+            const imageData = ctx.getImageData(0, 0, displaySize, displaySize);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+              const alpha = data[i + 3];
+              if (alpha === 0) continue; // 完全透明は無視
+              data[i] = data[i] * rf;
+              data[i + 1] = data[i + 1] * gf;
+              data[i + 2] = data[i + 2] * bf;
+            }
+            ctx.putImageData(imageData, 0, 0);
+          }
+        }
+      };
+      draw();
+      this.characterPreviewIntervalId = window.setInterval(() => {
+        frame = (frame + 1) % idleFrameCount;
+        draw();
+      }, 100);
+    };
+  }
+
+  openCharacterSettings() {
+    if (!this.characterSettingsElement) return;
+    this.openModal(this.MODAL_IDS.CHARACTER);
+    this.characterColorTemp = this.getSelectedColor();
+    this.startCharacterPreview(this.getSelectedCharacterId(), this.characterColorTemp);
+  }
+
+  closeCharacterSettings() {
+    if (!this.characterSettingsElement) return;
+    this.stopCharacterPreview();
+    this.closeModal(this.MODAL_IDS.CHARACTER);
   }
 
   openAchievementModal() {
