@@ -18,13 +18,16 @@ enum FishingState {
 }
 
 export default class GameScene extends Phaser.Scene {
-  private player!: Phaser.GameObjects.Rectangle;
+  private player!: Phaser.Physics.Arcade.Sprite;
+  private playerShadow!: Phaser.GameObjects.Image;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private fishingRod!: Phaser.GameObjects.Line;
   private float!: Phaser.GameObjects.Arc;
   
   // プレイヤーの向き（'up', 'down', 'left', 'right'）
   private playerFacing: 'up' | 'down' | 'left' | 'right' = 'up';
+  // 上下移動時も維持する左右の向き（スプライトの反転用）
+  private lastHorizontalFacing: 'left' | 'right' = 'right';
   
   private state: FishingState = FishingState.IDLE;
   private biteTimer?: Phaser.Time.TimerEvent;
@@ -168,6 +171,16 @@ export default class GameScene extends Phaser.Scene {
   }
 
   preload() {
+    // プレイヤーキャラクターのスプライトシート
+    // 1行目: アイドル, 2行目: 移動（1コマ24x24）
+    this.load.spritesheet('player', 'images/character/Basic character v2.png', {
+      frameWidth: 24,
+      frameHeight: 24
+    });
+
+    // プレイヤーの足元の影
+    this.load.image('player-shadow', 'images/character/Shadow.png');
+
     // 魚の画像を読み込み（IDと日本語ファイル名のマッピング）
     const fishImages: { [id: string]: string } = {
       // COMMON
@@ -426,17 +439,43 @@ export default class GameScene extends Phaser.Scene {
     // プレイヤー
     // ============================================
     const playerSize = mainCfg['1-1_プレイヤーサイズ'];
-    this.player = this.add.rectangle(600, 500, playerSize, playerSize, 0xffe0bd);
-    this.physics.add.existing(this.player);
+    const baseFrameHeight = 24;
+    const playerScale = (playerSize / baseFrameHeight) * 2;
+
+    this.player = this.physics.add
+      .sprite(600, 500, 'player', 0)
+      .setScale(playerScale);
+
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     body.setCollideWorldBounds(true);
-    
-    // 服を追加（プレイヤーに追従）
-    const shirt = this.add.rectangle(0, 0, playerSize, playerSize / 2, 0xd32f2f).setDepth(10);
     this.player.setDepth(10);
+
+    // 足元の影（プレイヤーに追従）
+    const shadowOffsetY = playerSize * playerScale * 0.38;
+    this.playerShadow = this.add
+      .image(this.player.x, this.player.y + shadowOffsetY, 'player-shadow')
+      .setDepth(this.player.depth - 1)
+      .setScale(playerScale*0.85);
+
     this.events.on('update', () => {
-        shirt.setPosition(this.player.x, this.player.y + 5);
+      this.playerShadow.setPosition(this.player.x, this.player.y + shadowOffsetY);
     });
+
+    // プレイヤーアニメーション（1行目=アイドル 0-7, 2行目=移動 10-12）
+    this.anims.create({
+      key: 'player-idle',
+      frames: this.anims.generateFrameNumbers('player', { start: 0, end: 7 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-walk',
+      frames: this.anims.generateFrameNumbers('player', { start: 9, end: 12 }),
+      frameRate: 8,
+      repeat: -1
+    });
+
+    this.player.anims.play('player-idle');
 
     // 合わせヒント用テキスト
     this.hintText = this.add.text(0, 0, '', { 
@@ -1166,23 +1205,39 @@ export default class GameScene extends Phaser.Scene {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     body.setVelocity(0);
 
-    // 左右移動と向きの更新
+    let moving = false;
+
+    // 左右移動と向きの更新（左右を押したときだけ向きを更新）
     if (this.cursors.left.isDown) {
       body.setVelocityX(-speed);
       this.playerFacing = 'left';
+      this.lastHorizontalFacing = 'left';
+      moving = true;
     } else if (this.cursors.right.isDown) {
       body.setVelocityX(speed);
       this.playerFacing = 'right';
+      this.lastHorizontalFacing = 'right';
+      moving = true;
     }
 
-    // 上下移動と向きの更新
+    // 上下移動（向きは変えず、最後の左右の向きを維持）
     if (this.cursors.up.isDown) {
       body.setVelocityY(-speed);
       this.playerFacing = 'up';
+      moving = true;
     } else if (this.cursors.down.isDown) {
       body.setVelocityY(speed);
       this.playerFacing = 'down';
+      moving = true;
     }
+
+    // アニメーションの更新（1行目=アイドル, 2行目=移動）
+    const animKey = moving ? 'player-walk' : 'player-idle';
+    if (this.player.anims.currentAnim?.key !== animKey) {
+      this.player.anims.play(animKey, true);
+    }
+    // 最後に向いていた左右で反転（上下移動中も維持）
+    this.player.setFlipX(this.lastHorizontalFacing === 'left');
   }
 
   // --- 水辺判定 ---
