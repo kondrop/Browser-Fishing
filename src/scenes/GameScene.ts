@@ -3,7 +3,7 @@ import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
 import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, type RarityBonuses, Habitat } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
-import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize, checkAchievements, getAchievementProgress, incrementConsecutiveSuccess, resetConsecutiveSuccess } from '../data/inventory';
+import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize, checkAchievements, getAchievementProgress, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp } from '../data/inventory';
 import { achievementConfigs, getAllCategories, getAchievementsByCategory, type AchievementConfig } from '../data/achievementConfig';
 import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, getRodById, getBaitById, getLureById, getNextRod, getNextInventoryUpgrade } from '../data/shopConfig';
 import { characterConfigs, getCharacterById, getDefaultCharacterId } from '../data/characterConfig';
@@ -112,6 +112,11 @@ export default class GameScene extends Phaser.Scene {
   private unifiedBookOpen: boolean = false;
   private unifiedBookTab: 'inventory' | 'pedia' | 'achievement' = 'inventory';
   private unifiedBookSelectedId: string | null = null;
+  private unifiedBookSelectedIndex: number | null = null;
+  private unifiedBookNavRepeatDir: 'up' | 'down' | 'left' | 'right' | null = null;
+  private unifiedBookNavNextMoveAt: number = 0; // Phaser time (ms)
+  private unifiedBookNavInitialDelayMs: number = 220;
+  private unifiedBookNavRepeatIntervalMs: number = 70;
   private unifiedBookListItems: HTMLElement[] = [];
   private unifiedBookListScrollElement!: HTMLElement;
   private unifiedBookDetailElement!: HTMLElement;
@@ -172,6 +177,16 @@ export default class GameScene extends Phaser.Scene {
   private characterSettingsElement!: HTMLElement;
   private characterPreviewIntervalId: number | null = null;
   private characterColorTemp: string = '#ffffff';
+  private readonly CHARACTER_COLORS: { value: string; label?: string }[] = [
+    { value: '#ffffff', label: 'なし' },
+    { value: '#F27F7F' },
+    { value: '#F8AB63' },
+    { value: '#F7D764' },
+    { value: '#C5E178' },
+    { value: '#789FD9' },
+    { value: '#B28CDB' },
+    { value: '#E087AE' },
+  ];
 
   constructor() {
     super('GameScene');
@@ -1016,23 +1031,63 @@ export default class GameScene extends Phaser.Scene {
 
   createStatusUI() {
     // HTML/CSSでステータスUIを作成（画面固定）
+    const characterId = this.getSelectedCharacterId();
+    const character = getCharacterById(characterId);
+    const characterSheetPath = character?.sheetPath ?? characterConfigs[0]?.sheetPath ?? 'images/character/Basic character v1.png';
+    const playerName = this.getSelectedPlayerName() || 'Player';
     const statusHTML = `
       <div id="status-ui" style="position: fixed; pointer-events: none; z-index: 1000; top: 0; left: 0; width: 100%; height: 100%;">
-        <!-- 左上: レベルと経験値 -->
-        <div id="level-section" style="position: absolute; top: 10px; left: 10px;">
-          <div id="level-text" class="stat-item ui-frame-box">⭐ Lv.1</div>
-          <div id="exp-bar-bg" class="ui-frame-box">
-            <div id="exp-bar-fill"></div>
+        <!-- 上部UI（重なり防止のため2段構成） -->
+        <div id="top-ui">
+          <div id="top-row">
+            <div id="level-section">
+              <div id="level-text" class="level-label-box">
+                <div class="level-character-icon" aria-hidden="true">
+                  <div class="level-character-icon__inner">
+                    <img class="level-character-icon__image" alt="" src="${characterSheetPath.startsWith('/') ? characterSheetPath : `/${characterSheetPath}`}" />
+                  </div>
+                </div>
+                <div class="level-info">
+                  <div id="player-name" class="player-name">${playerName}</div>
+                  <div class="level-row" aria-label="level">
+                    <span class="level-label-prefix">Lv.</span>
+                    <span class="level-label-value">1</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="exp-bar-bg" aria-label="exp">
+              <div id="exp-bar-ticks" aria-hidden="true">
+                <div class="exp-tick exp-tick--thick"></div>
+                <div class="exp-tick exp-tick--thin"></div>
+                <div class="exp-tick exp-tick--thick"></div>
+                <div class="exp-tick exp-tick--thin"></div>
+                <div class="exp-tick exp-tick--thick"></div>
+                <div class="exp-tick exp-tick--thin"></div>
+                <div class="exp-tick exp-tick--thick"></div>
+                <div class="exp-tick exp-tick--thin"></div>
+                <div class="exp-tick exp-tick--thick"></div>
+                <div class="exp-tick exp-tick--thin"></div>
+                <div class="exp-tick exp-tick--thick"></div>
+                <div class="exp-tick exp-tick--thin"></div>
+                <div class="exp-tick exp-tick--thick"></div>
+                <div class="exp-tick exp-tick--thin"></div>
+                <div class="exp-tick exp-tick--thick"></div>
+                <div class="exp-tick exp-tick--thin"></div>
+              </div>
+              <div id="exp-bar-fill"></div>
+              <div id="exp-bar-text"></div>
+            </div>
+          </div>
+
+          <div id="stats-section">
+            <div id="money-text" class="stat-item ui-frame-box">💰 0 G</div>
+            <div id="inventory-text" class="stat-item ui-frame-box">🎒 0/9</div>
+            <div id="collection-text" class="stat-item ui-frame-box">📖 図鑑 0/0</div>
           </div>
         </div>
         
-        <!-- 右上: 所持金、インベントリ、図鑑 -->
-        <div id="stats-section" style="position: absolute; top: 10px; right: 10px;">
-          <div id="money-text" class="stat-item ui-frame-box">💰 0 G</div>
-          <div id="inventory-text" class="stat-item ui-frame-box">🎒 0/9</div>
-          <div id="collection-text" class="stat-item ui-frame-box">📖 図鑑 0/0</div>
-        </div>
-
         <!-- 左下: キャラクター設定ボタン（デバッグ用） -->
         <div id="character-settings-btn-wrap" style="position: absolute; bottom: 16px; left: 16px; pointer-events: auto;">
           <button type="button" id="character-settings-btn" class="nes-btn is-small">キャラ設定</button>
@@ -1068,6 +1123,7 @@ export default class GameScene extends Phaser.Scene {
   private lastCaughtCount: number = -1;
   private lastLevel: number = -1;
   private lastExpProgress: number = -1;
+  private lastPlayerName: string = '';
 
   updateStatusUI() {
     if (!this.statusUIElement) return;
@@ -1102,9 +1158,23 @@ export default class GameScene extends Phaser.Scene {
     // レベル（変更時のみ更新）
     const level = this.playerData.level;
     if (level !== this.lastLevel) {
-      const levelEl = this.statusUIElement.querySelector('#level-text');
-      if (levelEl) levelEl.textContent = `⭐ Lv.${level}`;
+      const levelContainer = this.statusUIElement.querySelector('#level-text');
+      const levelValueEl = this.statusUIElement.querySelector('#level-text .level-label-value');
+      if (levelValueEl) {
+        levelValueEl.textContent = String(level);
+      } else if (levelContainer) {
+        // フォールバック（古いマークアップ向け）
+        (levelContainer as HTMLElement).textContent = `Lv. ${level}`;
+      }
       this.lastLevel = level;
+    }
+
+    // プレイヤー名（変更時のみ更新）
+    const playerName = this.getSelectedPlayerName() || 'Player';
+    if (playerName !== this.lastPlayerName) {
+      const nameEl = this.statusUIElement.querySelector('#player-name');
+      if (nameEl) (nameEl as HTMLElement).textContent = playerName;
+      this.lastPlayerName = playerName;
     }
     
     // 経験値バー（変更時のみ更新）
@@ -1113,6 +1183,18 @@ export default class GameScene extends Phaser.Scene {
       const expBarFill = this.statusUIElement.querySelector('#exp-bar-fill') as HTMLElement;
       if (expBarFill) expBarFill.style.width = `${expProgress * 100}%`;
       this.lastExpProgress = expProgress;
+    }
+
+    // 経験値テキスト（常に最新を表示）
+    const expBarText = this.statusUIElement.querySelector('#exp-bar-text') as HTMLElement | null;
+    if (expBarText) {
+      const currentLevelExp = getRequiredExp(this.playerData.level);
+      const nextLevelExp = getRequiredExp(this.playerData.level + 1);
+      const expInCurrentLevel = Math.max(0, this.playerData.exp - currentLevelExp);
+      const expNeededForNextLevel = Math.max(1, nextLevelExp - currentLevelExp);
+      const currentDisplay = Math.floor(expInCurrentLevel);
+      const nextDisplay = Math.floor(expNeededForNextLevel);
+      expBarText.textContent = `${currentDisplay} / ${nextDisplay}`;
     }
   }
 
@@ -1203,6 +1285,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.unifiedBookOpen) {
       this.updateUnifiedBookList();
       this.unifiedBookSelectedId = null;
+      this.unifiedBookSelectedIndex = null;
       this.updateUnifiedBookDetail();
     }
     
@@ -2480,24 +2563,23 @@ export default class GameScene extends Phaser.Scene {
     const bookHTML = `
       <div id="book-ui" class="book-ui">
         <div class="book-container ui-frame-box">
-          <button class="book-close ui-frame-box" onclick="window.gameScene?.closeUnifiedBook()">✕</button>
-          <div class="book-header">
-            <h2 class="book-title"></h2>
-            <div class="book-tabs">
-              <button class="book-tab-button active ui-frame-box" data-tab="inventory">バッグ</button>
-              <button class="book-tab-button ui-frame-box" data-tab="pedia">図鑑</button>
-              <button class="book-tab-button ui-frame-box" data-tab="achievement">実績</button>
-            </div>
-          </div>
           <div class="book-content">
             <div class="book-left-pane">
+              <div class="book-header">
+                <h2 class="book-title"></h2>
+                <div class="book-tabs">
+                  <button class="book-tab-button active ui-frame-box" data-tab="inventory">バッグ</button>
+                  <button class="book-tab-button ui-frame-box" data-tab="pedia">図鑑</button>
+                  <button class="book-tab-button ui-frame-box" data-tab="achievement">実績</button>
+                </div>
+              </div>
               <div class="book-list-header ui-frame-box" id="book-list-header">所持品一覧</div>
               <div class="book-list-scroll" id="book-list-scroll"></div>
             </div>
             <div class="book-right-pane">
               <div class="book-right-pane-inner ui-frame-box">
                 <div class="book-detail-placeholder" id="book-detail-placeholder">
-                  左のリストから選択してください
+                  魚を釣り上げよう！
                 </div>
                 <div class="book-detail-content" id="book-detail-content">
                 <!-- ヘッダー: 魚名 + レアリティバッジ -->
@@ -2589,6 +2671,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.unifiedBookTab = tab;
     this.unifiedBookSelectedId = null;
+    this.unifiedBookSelectedIndex = null;
 
     // タブボタンのアクティブ状態を更新
     const tabButtons = this.unifiedBookUIElement.querySelectorAll('.book-tab-button');
@@ -2651,6 +2734,7 @@ export default class GameScene extends Phaser.Scene {
         }
       }
 
+      let createdFishCount = 0;
       flatInventory.forEach(({ fishId, size }, index) => {
         const fish = getFishById(fishId);
         if (!fish) return;
@@ -2658,7 +2742,15 @@ export default class GameScene extends Phaser.Scene {
         const item = this.createUnifiedBookListItem(fish, index, true, size);
         this.unifiedBookListScrollElement.appendChild(item);
         this.unifiedBookListItems.push(item);
+        createdFishCount++;
       });
+
+      // バッグの容量（最大スロット数）ぶん、空のカードも表示する
+      const remainingSlots = Math.max(0, this.playerData.maxInventorySlots - createdFishCount);
+      for (let i = 0; i < remainingSlots; i++) {
+        const emptySlot = this.createUnifiedBookEmptySlotItem();
+        this.unifiedBookListScrollElement.appendChild(emptySlot);
+      }
     } else if (this.unifiedBookTab === 'pedia') {
       // 図鑑タブ
       const fishList = this.getRealFishList();
@@ -2692,6 +2784,17 @@ export default class GameScene extends Phaser.Scene {
       this.unifiedBookListScrollElement.style.gridTemplateRows = '';
       this.unifiedBookListScrollElement.style.gap = '';
       this.unifiedBookListScrollElement.style.padding = '';
+    }
+
+    // 初期状態では1つ目を選択状態にする（ホバーでは切り替えない方針）
+    if (this.unifiedBookListItems.length > 0 && this.unifiedBookSelectedIndex === null) {
+      if (this.unifiedBookTab === 'achievement') {
+        const firstCategory = this.unifiedBookListItems[0]?.getAttribute('data-category');
+        if (firstCategory) this.selectAchievementCategory(firstCategory, 0);
+      } else {
+        const firstFishId = this.unifiedBookListItems[0]?.getAttribute('data-fish-id');
+        if (firstFishId) this.selectUnifiedBookItem(firstFishId, 0);
+      }
     }
   }
 
@@ -2766,7 +2869,9 @@ export default class GameScene extends Phaser.Scene {
       meta.textContent = `${sizeText}💰 ${displayPrice}G`;
     } else {
       if (isCaught) {
-        meta.textContent = `💰 ${fish.price}G | ${rarityStars[fish.rarity]}`;
+        // `fish.rarity` は内部的に `Rarity` だが型推論上 `any` 扱いになりがちなので、キー型に合わせてキャストする
+        const rarityKey = fish.rarity as keyof typeof rarityStars;
+        meta.textContent = `💰 ${fish.price}G | ${rarityStars[rarityKey]}`;
       } else {
         meta.textContent = '未発見';
       }
@@ -2783,9 +2888,17 @@ export default class GameScene extends Phaser.Scene {
       this.selectUnifiedBookItem(fish.id, index);
     });
 
-    item.addEventListener('mouseenter', () => {
-      this.selectUnifiedBookItem(fish.id, index);
-    });
+    return item;
+  }
+
+  createUnifiedBookEmptySlotItem(): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'book-list-item ui-frame-box empty-slot';
+
+    // 空スロットは枠だけ（魚画像・名前を描画しない）
+    const icon = document.createElement('div');
+    icon.className = 'book-list-item-icon';
+    item.appendChild(icon);
 
     return item;
   }
@@ -2801,6 +2914,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.unifiedBookSelectedId = fishId;
+    this.unifiedBookSelectedIndex = index;
 
     // 選択状態を更新
     this.unifiedBookListItems.forEach((item, i) => {
@@ -3218,6 +3332,7 @@ export default class GameScene extends Phaser.Scene {
 
   selectAchievementCategory(category: string, index: number) {
     this.unifiedBookSelectedId = category;
+    this.unifiedBookSelectedIndex = index;
 
     // 選択状態を更新
     this.unifiedBookListItems.forEach((item, i) => {
@@ -3298,6 +3413,7 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookOpen = true;
     this.unifiedBookTab = tab;
     this.unifiedBookSelectedId = null;
+    this.unifiedBookSelectedIndex = null;
 
     // モーダルスタックに追加してオーバーレイを表示（updateModalStatesでis-openクラスが追加される）
     this.openModal(this.MODAL_IDS.UNIFIED_BOOK);
@@ -3310,6 +3426,8 @@ export default class GameScene extends Phaser.Scene {
   closeUnifiedBook() {
     this.unifiedBookOpen = false;
     this.unifiedBookSelectedId = null;
+    this.unifiedBookSelectedIndex = null;
+    this.unifiedBookNavRepeatDir = null;
 
     // モーダルスタックから削除してオーバーレイを非表示（updateModalStatesでis-openクラスが削除される）
     this.closeModal(this.MODAL_IDS.UNIFIED_BOOK);
@@ -3327,8 +3445,10 @@ export default class GameScene extends Phaser.Scene {
     if (!this.unifiedBookOpen) return;
 
     // タブ切替（Q, E）
-    const qKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
-    const eKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    const keyboard = this.input?.keyboard;
+    if (!keyboard) return;
+    const qKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    const eKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     
     if (Phaser.Input.Keyboard.JustDown(qKey)) {
       this.switchUnifiedBookTab('inventory');
@@ -3342,34 +3462,90 @@ export default class GameScene extends Phaser.Scene {
     // リストが空の場合は何もしない
     if (this.unifiedBookListItems.length === 0) return;
 
-    // 現在の選択インデックスを取得
-    let currentIndex = -1;
-    if (this.unifiedBookSelectedId) {
-      currentIndex = this.unifiedBookListItems.findIndex(item => 
-        item.getAttribute('data-fish-id') === this.unifiedBookSelectedId
-      );
-    }
-    if (currentIndex === -1) {
-      currentIndex = 0;
+    const now = this.time.now;
+
+    // 現在の矢印方向（複数押しの場合は優先度を固定）
+    const dir =
+      this.cursors.up.isDown ? 'up' :
+      this.cursors.down.isDown ? 'down' :
+      this.cursors.left.isDown ? 'left' :
+      this.cursors.right.isDown ? 'right' :
+      null;
+
+    // 入力が途切れたらリピート状態をリセット
+    if (!dir) {
+      this.unifiedBookNavRepeatDir = null;
+      this.unifiedBookNavNextMoveAt = 0;
+      return;
     }
 
+    // リピート制御:
+    // - 方向が変わったときは、そのキーの「初回押下（JustDown）」で即移動
+    // - 同じ方向は `unifiedBookNavNextMoveAt` に達したら移動
+    const justDown =
+      (dir === 'up' && Phaser.Input.Keyboard.JustDown(this.cursors.up)) ||
+      (dir === 'down' && Phaser.Input.Keyboard.JustDown(this.cursors.down)) ||
+      (dir === 'left' && Phaser.Input.Keyboard.JustDown(this.cursors.left)) ||
+      (dir === 'right' && Phaser.Input.Keyboard.JustDown(this.cursors.right));
+
+    const isRepeatMoveDue = this.unifiedBookNavRepeatDir === dir && now >= this.unifiedBookNavNextMoveAt;
+    const isInitialMove = this.unifiedBookNavRepeatDir !== dir && justDown;
+    const shouldMove = isInitialMove || isRepeatMoveDue;
+
+    if (!shouldMove) return;
+
+    // 現在の選択インデックスを取得（インベントリは同じ `fish.id` が複数枚あり得るため index 基準）
+    let currentIndex = this.unifiedBookSelectedIndex ?? 0;
+    const lastIndex = this.unifiedBookListItems.length - 1;
+    if (currentIndex < 0 || currentIndex > lastIndex) currentIndex = 0;
+
+    const columns = this.unifiedBookTab === 'achievement' ? 2 : 3;
+
+    // 矢印キーで選択移動（グリッド基準）
     let newIndex = currentIndex;
-
-    // 矢印キーで選択移動
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
-      newIndex = Math.max(0, currentIndex - 1);
-    } else if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
-      newIndex = Math.min(this.unifiedBookListItems.length - 1, currentIndex + 1);
+    if (dir === 'up') {
+      newIndex = Math.max(0, currentIndex - columns);
+    } else if (dir === 'down') {
+      newIndex = Math.min(lastIndex, currentIndex + columns);
+    } else if (dir === 'left') {
+      if (currentIndex % columns !== 0) newIndex = currentIndex - 1;
+    } else if (dir === 'right') {
+      if (currentIndex % columns !== columns - 1 && currentIndex + 1 <= lastIndex) newIndex = currentIndex + 1;
     }
 
-    if (newIndex !== currentIndex && newIndex >= 0 && newIndex < this.unifiedBookListItems.length) {
-      const item = this.unifiedBookListItems[newIndex];
-      const fishId = item.getAttribute('data-fish-id');
-      if (fishId) {
-        this.selectUnifiedBookItem(fishId, newIndex);
-        // スクロールして表示範囲内に
-        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // 次回移動タイミング更新
+    if (this.unifiedBookNavRepeatDir !== dir) {
+      this.unifiedBookNavRepeatDir = dir;
+      this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+    } else {
+      this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavRepeatIntervalMs;
+    }
+
+    // 端まで到達しているなら、左右入力で隣のタブへ遷移
+    if (newIndex === currentIndex && (dir === 'left' || dir === 'right')) {
+      const tabs: Array<'inventory' | 'pedia' | 'achievement'> = ['inventory', 'pedia', 'achievement'];
+      const currentTabIdx = tabs.indexOf(this.unifiedBookTab);
+      const nextTabIdx = dir === 'left' ? currentTabIdx - 1 : currentTabIdx + 1;
+      if (nextTabIdx >= 0 && nextTabIdx < tabs.length) {
+        this.switchUnifiedBookTab(tabs[nextTabIdx]);
+        // タブ移動直後は、同じキーで即連打しない
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
       }
+      return;
+    }
+
+    if (newIndex === currentIndex) return;
+
+    const item = this.unifiedBookListItems[newIndex];
+    // スクロールして表示範囲内に
+    item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    if (this.unifiedBookTab === 'achievement') {
+      const category = item.getAttribute('data-category');
+      if (category) this.selectAchievementCategory(category, newIndex);
+    } else {
+      const fishId = item.getAttribute('data-fish-id');
+      if (fishId) this.selectUnifiedBookItem(fishId, newIndex);
     }
   }
 
@@ -3890,6 +4066,15 @@ export default class GameScene extends Phaser.Scene {
     const currentColor = this.getSelectedColor();
     this.characterColorTemp = currentColor;
 
+    const colorButtonsHTML = this.CHARACTER_COLORS.map(c => `
+                <button type="button"
+                        class="character-color-item nes-btn ${currentColor === c.value ? 'is-primary' : ''}"
+                        data-color="${c.value}"
+                        style="background:${c.value};">
+                  ${c.label ?? ''}
+                </button>
+    `).join('');
+
     const html = `
       <div id="character-modal" class="modal" style="display: none;" aria-hidden="true">
         <div class="modal-content character-modal nes-container with-rounded ui-frame-box" style="max-width: 520px;">
@@ -3904,15 +4089,7 @@ export default class GameScene extends Phaser.Scene {
             <fieldset class="character-settings__field">
               <legend>キャラカラー</legend>
               <div class="character-color-list">
-                <!-- なし(白) + 7色 -->
-                <button type="button" class="character-color-item nes-btn ${currentColor === '#ffffff' ? 'is-primary' : ''}" data-color="#ffffff" style="background:#ffffff;">なし</button>
-                <button type="button" class="character-color-item nes-btn ${currentColor === '#ff5555' ? 'is-primary' : ''}" data-color="#ff5555" style="background:#ff5555;"></button>
-                <button type="button" class="character-color-item nes-btn ${currentColor === '#ffb347' ? 'is-primary' : ''}" data-color="#ffb347" style="background:#ffb347;"></button>
-                <button type="button" class="character-color-item nes-btn ${currentColor === '#ffee55' ? 'is-primary' : ''}" data-color="#ffee55" style="background:#ffee55;"></button>
-                <button type="button" class="character-color-item nes-btn ${currentColor === '#55ff55' ? 'is-primary' : ''}" data-color="#55ff55" style="background:#55ff55;"></button>
-                <button type="button" class="character-color-item nes-btn ${currentColor === '#55ddff' ? 'is-primary' : ''}" data-color="#55ddff" style="background:#55ddff;"></button>
-                <button type="button" class="character-color-item nes-btn ${currentColor === '#5555ff' ? 'is-primary' : ''}" data-color="#5555ff" style="background:#5555ff;"></button>
-                <button type="button" class="character-color-item nes-btn ${currentColor === '#ff55ff' ? 'is-primary' : ''}" data-color="#ff55ff" style="background:#ff55ff;"></button>
+                ${colorButtonsHTML}
               </div>
             </fieldset>
             <label class="character-settings__field">

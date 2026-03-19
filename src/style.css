@@ -133,9 +133,13 @@ img {
 .shop-item.selected .ui-frame-box::before,
 .achievement-category-grid-item.achievement-category-selected.ui-frame-box::before,
 .achievement-category-list-item.achievement-category-selected.ui-frame-box::before,
-.book-tab-button.active.ui-frame-box::before,
-.book-list-item.selected.ui-frame-box::before {
+.book-tab-button.active.ui-frame-box::before {
   --frame-fill-color: #f7d51d;
+}
+
+/* 統合BookUI（左リスト）の選択は黄色塗りを使わず border.png 枠だけにする */
+.book-list-item.selected.ui-frame-box::before {
+  --frame-fill-color: #e8cfa6;
 }
 
 /* 閉じるボタン押下時は少し暗く */
@@ -179,42 +183,243 @@ img {
   font-family: 'DotGothic16', sans-serif !important;
 }
 
-#stats-section {
+/* ===== レベル + EXP（Figmaのオートレイアウト構造に合わせたUI） ===== */
+
+/* 上部UI: レベル(左) + EXPバー(中央) + ステータス(右) */
+#top-ui {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+#top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+/* Lv.表示（左） */
+#level-section {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   gap: 12px;
+}
+
+#level-text.level-label-box {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  background: unset;
+  box-shadow: none;
+  color: #ffffff;
+  border-style: none;
+  border-width: 0px;
+  border-color: rgba(0, 0, 0, 0);
+  border-image: none;
+}
+
+.level-character-icon {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  position: relative;
+  border: 4px solid #5f2d1d;
+  border-radius: 999px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.level-character-icon__inner {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.level-character-icon__image {
+  position: absolute;
+  width: 927.94%;
+  height: 515.52%;
+  left: 1.18%;
+  top: -6.09%;
+  max-width: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+}
+
+.level-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 48px;
+  font-family: "Jersey 10" !important;
+  font-style: normal;
+  color: #ffffff;
+}
+
+.player-name {
+  width: fit-content;
+  font-family: "Jersey 10" !important;
+  font-size: 24px;
+  line-height: 1;
+  margin: 0;
+  text-shadow:
+    -3px 0 #5f2d1d,
+    3px 0 #5f2d1d,
+    0 -3px #5f2d1d,
+    0 3px #5f2d1d,
+    -3px -3px #5f2d1d,
+    -3px 3px #5f2d1d,
+    3px -3px #5f2d1d,
+    3px 3px #5f2d1d;
+}
+
+.level-row {
+  position: relative;
+  width: 100%;
+  height: 33px;
+  line-height: normal;
+  white-space: nowrap;
+}
+
+span.level-label-prefix {
+  font-family: "Jersey 10" !important;
+  font-size: 24px;
+  border-style: none;
+  border-width: 0px;
+  border-color: rgba(0, 0, 0, 0);
+  border-image: none;
+  text-shadow:
+    -3px 0 #5f2d1d,
+    3px 0 #5f2d1d,
+    0 -3px #5f2d1d,
+    0 3px #5f2d1d,
+    -3px -3px #5f2d1d,
+    -3px 3px #5f2d1d,
+    3px -3px #5f2d1d,
+    3px 3px #5f2d1d;
+}
+
+span.level-label-value {
+  font-family: "Jersey 10" !important;
+  font-size: 32px;
+  text-shadow:
+    -4px 0 #5f2d1d,
+    4px 0 #5f2d1d,
+    0 -4px #5f2d1d,
+    0 4px #5f2d1d,
+    -4px -4px #5f2d1d,
+    -4px 4px #5f2d1d,
+    4px -4px #5f2d1d,
+    4px 4px #5f2d1d;
+}
+
+/* Figma: Lv. (14px) / value (22px) の配置 */
+.level-row .level-label-prefix {
+  position: absolute;
+  left: 3px;
+  top: 7px;
+  font-size: 21px;
+  line-height: 1;
+}
+
+.level-row .level-label-value {
+  position: absolute;
+  left: 26px;
+  top: -3px;
+  font-size: 33px;
+  line-height: 1;
+}
+
+/* EXPバー（右側） */
+#exp-bar-bg {
+  flex: 1 1 auto;
+  min-width: 140px;
+  height: 36px;
+  background: #5a3d2e;
+  border-style: solid;
+  border-width: 4px;
+  border-color: rgba(95, 45, 29, 1);
+  border-radius: 0px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* EXPバーの目盛り（実体DOMで均等分布させる） */
+#exp-bar-ticks {
+  position: absolute;
+  /* 枠線(4px)の内側 + 親の横幅の80%をセンター揃えで使用 */
+  top: 4px;
+  bottom: 4px;
+  left: 5%;
+  right: 5%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.exp-tick {
+  background-color: rgba(232, 207, 166, 0.2);
+}
+
+.exp-tick--thick {
+  width: 4px;
+  height: 16px;
+  background-color: rgba(232, 207, 166, 0.2);
+}
+
+.exp-tick--thin {
+  width: 3px;
+  height: 10px;
+}
+
+#exp-bar-fill {
+  height: 100%;
+  margin: 0;
+  background: linear-gradient(90deg, rgba(121, 228, 75, 1) 0%, rgba(81, 245, 169, 1) 100%);
+  box-shadow: inset 0px 4px 0px 0px rgba(255, 255, 255, 0.3), inset 4px 0px 0px 0px rgba(255, 255, 255, 0.3), inset 0px -4px 0px 0px rgba(0, 0, 0, 0.2), inset -4px 0px 0px 0px rgba(0, 0, 0, 0.2);
+  width: 0%;
+  transition: width 0.3s;
+  position: relative;
+  z-index: 1;
+}
+
+#stats-section {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  align-self: flex-end;
 }
 
 #stats-section .stat-item {
   margin-bottom: 0;
 }
 
-#level-section {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
+/* 旧: #level-section / #exp-bar-bg / #exp-bar-fill の重複定義は上の統一設定に集約 */
 
-#exp-bar-bg {
-  width: 150px;
-  height: 16px;
-  border: none;
-  overflow: hidden;
-  position: relative;
-}
-
-#exp-bar-fill {
-  height: 100%;
-  background: #209cee;
-  width: 0%;
-  transition: width 0.3s;
-  box-shadow: 
-    4px 0 #006bb3,
-    -4px 0 #006bb3,
-    0 4px #006bb3,
-    0 -4px #006bb3,
-    inset -4px 0 #006bb3,
-    inset 0 -4px #006bb3;
+#exp-bar-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  text-align: center;
+  font-family: "Micro 5" !important;
+  font-size: 24px;
+  color: #ffffff;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 3;
 }
 
 /* モーダル共通スタイル */
@@ -947,6 +1152,26 @@ img {
   transition: visibility 0s 0.3s, opacity 0.3s ease-out;
 }
 
+/* 図鑑/統合BookUIは枠が窮屈に見えるため、9スライス枠の倍率を少し下げる */
+#book-ui .ui-frame-box {
+  --frame-scale: 3;
+}
+
+/* #book-list-scroll 配下の9スライス枠素材だけ差し替え（他は元に戻す） */
+#book-ui #book-list-scroll .ui-frame-box::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* 画像側の塗り（中心色）に合わせる */
+#book-ui #book-list-scroll .ui-frame-box {
+  --frame-fill-color: #CBB792;
+}
+
+/* 統合BookUI（左リスト）の選択枠だけ border.png を使う */
+#book-ui #book-list-scroll .book-list-item.selected.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
 #book-ui.is-open.is-topmost {
   pointer-events: auto;
   visibility: visible;
@@ -1071,6 +1296,7 @@ img {
   border-right: none;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   background: transparent;
 }
 
@@ -1109,6 +1335,17 @@ img {
 .book-list-item:hover {
   transform: scale(1.05);
   filter: brightness(0.95);
+}
+
+.book-list-item.empty-slot {
+  cursor: default;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.book-list-item.empty-slot:hover {
+  transform: none;
+  filter: none;
 }
 
 .book-list-item.selected {
@@ -1183,7 +1420,7 @@ img {
   display: flex;
   flex-direction: column;
   background: transparent;
-  padding: 4px 8px 16px 16px;
+  padding: 16px 10px 16px 16px;
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
@@ -1225,6 +1462,10 @@ img {
   flex-direction: column;
   gap: 12px;
   width: 100%;
+}
+
+#book-detail-content {
+  gap: 10px;
 }
 
 .book-detail-content.active {
@@ -1438,6 +1679,7 @@ img {
 /* Noteセクション */
 .book-detail-note {
   padding: 10px;
+  padding-top: 4px;
   display: flex;
   flex-direction: column;
   gap: 4px;
