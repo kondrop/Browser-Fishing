@@ -126,18 +126,9 @@ img {
   -ms-interpolation-mode: nearest-neighbor;
 }
 
-/* 選択・アクティブ時は黄色 */
-.inventory-slot.selected .ui-frame-box::before,
-.book-slot.selected .ui-frame-box::before,
-.shop-tab-button.active.ui-frame-box::before,
-.shop-item.selected .ui-frame-box::before,
-.achievement-category-grid-item.achievement-category-selected.ui-frame-box::before,
-.achievement-category-list-item.achievement-category-selected.ui-frame-box::before,
-.book-tab-button.active.ui-frame-box::before {
-  --frame-fill-color: #f7d51d;
-}
+/* 選択・タブアクティブ時の黄色塗りは廃止。枠は uiframe.png ↔ border.png、塗りは #CBB792 ↔ #e8cfa6（各セクションで指定） */
 
-/* 統合BookUI（左リスト）の選択は黄色塗りを使わず border.png 枠だけにする */
+/* 統合BookUI（左リスト）選択中: 塗りはクリーム（枠は下の #book-ui #book-list-scroll で border.png） */
 .book-list-item.selected.ui-frame-box::before {
   --frame-fill-color: #e8cfa6;
 }
@@ -474,7 +465,7 @@ span.level-label-value {
   pointer-events: auto;
   visibility: visible;
   opacity: 1;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(146, 138, 124, 0.95);
   transition: visibility 0s 0s, opacity 0.3s ease-out, background 0.3s ease-out;
 }
 
@@ -610,6 +601,28 @@ span.level-label-value {
   padding: 2px 4px;
   border: none;
   z-index: 3;
+}
+
+/* レガシー インベントリ/図鑑モーダル: スロット背景だけ統合BookUI左リストと同じ枠切り替え（名称・価格ラベルは対象外） */
+#inventory-modal .inventory-slot .slot-bg.ui-frame-box,
+#book-modal .book-slot .slot-bg.ui-frame-box {
+  --frame-scale: 3;
+  --frame-fill-color: #CBB792;
+}
+
+#inventory-modal .inventory-slot .slot-bg.ui-frame-box::after,
+#book-modal .book-slot .slot-bg.ui-frame-box::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#inventory-modal .inventory-slot.selected .slot-bg.ui-frame-box::before,
+#book-modal .book-slot.selected .slot-bg.ui-frame-box::before {
+  --frame-fill-color: #e8cfa6;
+}
+
+#inventory-modal .inventory-slot.selected .slot-bg.ui-frame-box::after,
+#book-modal .book-slot.selected .slot-bg.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 /* 詳細モーダル（Figmaデザインに基づく） */
@@ -899,9 +912,11 @@ span.level-label-value {
   font-weight: normal;
   cursor: pointer;
   font-family: 'DotGothic16', sans-serif;
+  transition: transform 0.1s, filter 0.1s;
 }
 
 .shop-tab-button:hover {
+  transform: scale(1.05);
   filter: brightness(0.95);
 }
 
@@ -915,12 +930,13 @@ span.level-label-value {
 .shop-item {
   position: relative;
   cursor: pointer;
-  transition: transform 0.1s;
+  transition: transform 0.1s, filter 0.1s;
   box-sizing: border-box;
 }
 
 .shop-item:hover {
-  transform: translateY(-2px);
+  transform: scale(1.02);
+  filter: brightness(0.95);
 }
 
 .shop-item.selected .shop-item-content {
@@ -935,7 +951,8 @@ span.level-label-value {
   gap: 15px;
 }
 
-.shop-item-icon-container {
+.shop-item-icon-container,
+.shop-item-icon {
   width: 60px;
   height: 60px;
   display: flex;
@@ -960,17 +977,24 @@ span.level-label-value {
   flex: 1;
 }
 
+.shop-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .shop-item-name {
   font-size: 28px;
   font-weight: normal;
   color: #320e0e;
-  margin-bottom: 5px;
+  margin-bottom: 0;
 }
 
-.shop-item-info {
+.shop-item-desc {
   font-size: 18px;
   color: #320e0e;
-  margin-bottom: 5px;
+  margin-bottom: 0;
 }
 
 .shop-item-price {
@@ -994,6 +1018,41 @@ span.level-label-value {
   color: #320e0e;
   font-size: 18px;
   margin-top: 10px;
+}
+
+/* ショップ: タブ / 商品行の枠を統合BookUIと同じ uiframe（非選択）↔ border（選択・アクティブ） */
+#shop-modal .shop-tab-button.ui-frame-box {
+  --frame-scale: 3;
+  --frame-fill-color: #CBB792;
+}
+
+#shop-modal .shop-tab-button.ui-frame-box::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#shop-modal .shop-tab-button.active.ui-frame-box::before {
+  --frame-fill-color: #e8cfa6;
+}
+
+#shop-modal .shop-tab-button.active.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#shop-modal .shop-item .shop-item-content.ui-frame-box {
+  --frame-scale: 3;
+  --frame-fill-color: #CBB792;
+}
+
+#shop-modal .shop-item .shop-item-content.ui-frame-box::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#shop-modal .shop-item.selected .shop-item-content.ui-frame-box::before {
+  --frame-fill-color: #e8cfa6;
+}
+
+#shop-modal .shop-item.selected .shop-item-content.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 /* 閉じるボタン */
@@ -1143,6 +1202,7 @@ span.level-label-value {
   width: 100%;
   height: 100%;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   z-index: 2000;
@@ -1157,6 +1217,30 @@ span.level-label-value {
   --frame-scale: 3;
 }
 
+/* 統合BookUI 上部タブ: 非アクティブ=uiframe + 薄ベージュ塗り / アクティブ=border + クリーム塗り
+ * 9スライスはフル表示（clip-path で下端だけ切ると左右ボーダーが途切れて見える）。
+ * タブ行は overflow で隠さず、ラベルはボタン内で上寄せ。 */
+#book-ui .book-tab-button.ui-frame-box {
+  --frame-fill-color: #CBB792;
+}
+
+#book-ui .book-tab-button.active.ui-frame-box::before {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui .book-tab-button.ui-frame-box::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui .book-tab-button.active.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* 選択タブより手前に見せる：非選択だけ少し下げる */
+#book-ui .book-tab-button.ui-frame-box:not(.active) {
+  transform: translateY(6px);
+}
+
 /* #book-list-scroll 配下の9スライス枠素材だけ差し替え（他は元に戻す） */
 #book-ui #book-list-scroll .ui-frame-box::after {
   border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
@@ -1169,6 +1253,17 @@ span.level-label-value {
 
 /* 統合BookUI（左リスト）の選択枠だけ border.png を使う */
 #book-ui #book-list-scroll .book-list-item.selected.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* 実績カテゴリ（左リスト）選択も同じ枠・塗り切り替え */
+#book-ui #book-list-scroll .achievement-category-list-item.achievement-category-selected.ui-frame-box::before,
+#book-ui #book-list-scroll .achievement-category-grid-item.achievement-category-selected.ui-frame-box::before {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui #book-list-scroll .achievement-category-list-item.achievement-category-selected.ui-frame-box::after,
+#book-ui #book-list-scroll .achievement-category-grid-item.achievement-category-selected.ui-frame-box::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
@@ -1193,6 +1288,7 @@ span.level-label-value {
   max-height: 800px;
   display: flex;
   flex-direction: column;
+  gap: 0;
   font-family: 'DotGothic16', sans-serif !important;
   position: relative;
   transform: translateY(50px);
@@ -1208,11 +1304,6 @@ span.level-label-value {
   background-size: auto;
 }
 
-.book-container .book-content {
-  flex: 1;
-  min-height: 0;
-}
-
 /* 統合BookUIが開いている時：下から50pxの位置からスライドイン */
 #book-ui.is-open.is-topmost .book-container {
   transform: translateY(0);
@@ -1225,36 +1316,69 @@ span.level-label-value {
   opacity: 0;
 }
 
-.book-header {
+/* タブ行：#book-ui 直下（枠の外）で book-container の上に置く */
+#book-ui > .book-header {
+  overflow: hidden;
+  flex-shrink: 0;
+  height: 42px;
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: flex-start;
-  padding: 15px 20px;
+  gap: 0;
+  width: 90%;
+  max-width: 800px;
+  box-sizing: border-box;
+  padding: 0 14px 0 20px;
+  margin: 0;
   border-bottom: none;
   background: unset;
 }
 
-.book-title {
-  font-size: 28px;
-  color: #320e0e;
-  font-weight: normal;
-  margin: 0;
-}
-
 .book-tabs {
   display: flex;
-  gap: 12px;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 0;
+  width: 100%;
+  height: 42px;
 }
 
 .book-tab-button {
   border: none;
-  padding: 12px 16px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 10px 16px 24px 14px;
+  height: fit-content;
   color: #320e0e;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: normal;
   cursor: pointer;
   font-family: 'DotGothic16', sans-serif;
-  transition: filter 0.1s;
+  transition: filter 0.1s, transform 0.12s ease;
+}
+
+.book-tab-button-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+}
+
+.book-tab-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  object-fit: contain;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.book-tab-label {
+  line-height: 1.2;
 }
 
 .book-tab-button:hover {
@@ -1287,8 +1411,12 @@ span.level-label-value {
 .book-content {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   gap: 8px;
+  margin: 0;
+  padding: 4px 4px 16px 8px;
+  box-sizing: border-box;
 }
 
 .book-left-pane {
@@ -1313,11 +1441,11 @@ span.level-label-value {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 4px 8px 16px 16px;
+  padding: 4px 8px 16px 4px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  column-gap: 8px;
-  row-gap: 8px;
+  column-gap: 2px;
+  row-gap: 2px;
   align-content: start;
 }
 
@@ -1420,7 +1548,7 @@ span.level-label-value {
   display: flex;
   flex-direction: column;
   background: transparent;
-  padding: 16px 10px 16px 16px;
+  padding: 4px 6px 10px 16px;
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
@@ -1440,7 +1568,8 @@ span.level-label-value {
 
 /* 右ペイン内側に9スライス枠＋インセット塗り */
 .book-right-pane-inner.ui-frame-box {
-  padding: calc(var(--frame-slice) * var(--frame-scale) * 1px);
+  padding: 14px calc(var(--frame-slice) * var(--frame-scale) * 1px) 18px
+    calc(var(--frame-slice) * var(--frame-scale) * 1px);
 }
 /* 他UIと同じデフォルト枠塗り色 (#e8cfa6) に合わせる */
 .book-right-pane-inner.ui-frame-box::before {
@@ -1728,8 +1857,42 @@ span.level-label-value {
 
 .achievement-tab {
   padding: 8px 16px;
-  font-size: 14px;
+  font-size: 18px;
   cursor: pointer;
+  color: #320e0e;
+  transition: transform 0.1s, filter 0.1s;
+}
+
+.achievement-tab:hover {
+  transform: scale(1.05);
+  filter: brightness(0.95);
+}
+
+/* 実績モーダル: カテゴリタブもショップ／Book と同じ枠切り替え */
+#achievement-modal .achievement-tab.ui-frame-box {
+  --frame-scale: 3;
+  --frame-fill-color: #CBB792;
+}
+
+#achievement-modal .achievement-tab.ui-frame-box::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#achievement-modal .achievement-tab.active.ui-frame-box::before {
+  --frame-fill-color: #e8cfa6;
+}
+
+#achievement-modal .achievement-tab.active.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* 実績モーダル: 一覧カードの枠線素材（塗りは unlocked / locked で別指定） */
+#achievement-modal .achievement-item.ui-frame-box {
+  --frame-scale: 3;
+}
+
+#achievement-modal .achievement-item.ui-frame-box::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 .achievement-list {
@@ -1740,20 +1903,94 @@ span.level-label-value {
 
 .achievement-item {
   padding: 15px;
-  border-radius: 8px;
-  transition: all 0.3s;
+  border-radius: 0;
+  transition: transform 0.1s, filter 0.1s, opacity 0.2s;
+}
+
+.achievement-item:hover {
+  transform: scale(1.01);
+  filter: brightness(0.95);
 }
 
 .achievement-item.unlocked {
-  border: 2px solid #4CAF50;
-  background: rgba(76, 175, 80, 0.1);
   opacity: 1;
 }
 
 .achievement-item.locked {
-  border: 2px solid #666;
-  background: rgba(0, 0, 0, 0.3);
   opacity: 0.7;
+}
+
+.achievement-item.unlocked.ui-frame-box::before {
+  --frame-fill-color: #2e7d32;
+}
+
+.achievement-item.locked.ui-frame-box::before {
+  --frame-fill-color: #4a4a4a;
+}
+
+.achievement-item-main {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.achievement-item-emoji {
+  font-size: 48px;
+  flex-shrink: 0;
+}
+
+.achievement-item-body {
+  flex: 1;
+}
+
+.achievement-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.achievement-item-title {
+  font-size: 20px;
+  color: #212121;
+}
+
+.achievement-item-unlocked {
+  color: #ffffff;
+}
+
+.achievement-item-description {
+  font-size: 14px;
+  color: #212121;
+  margin-bottom: 10px;
+}
+
+.achievement-item-progress-wrap {
+  margin-top: 10px;
+}
+
+.achievement-item-progress-bar {
+  background: rgba(0, 0, 0, 0.35);
+  height: 20px;
+  overflow: hidden;
+}
+
+.achievement-item-progress-fill {
+  background: linear-gradient(90deg, #66bb6a 0%, #43a047 100%);
+  height: 100%;
+  transition: width 0.3s;
+}
+
+.achievement-item-progress-text {
+  font-size: 12px;
+  color: #212121;
+  margin-top: 5px;
+}
+
+.achievement-item-reward {
+  font-size: 12px;
+  color: #ffd700;
+  margin-top: 5px;
 }
 
 #achievement-notification {
@@ -1937,6 +2174,240 @@ span.level-label-value {
 .book-ui[data-tab="achievement"] .book-detail-image-container-new,
 .book-ui[data-tab="achievement"] .book-detail-sections {
   display: none;
+}
+
+/* 統合BookUI - ステータスタブ */
+.book-ui[data-tab="status"] #book-list-header {
+  display: none !important;
+}
+
+.book-ui[data-tab="status"] #book-list-scroll {
+  display: none !important;
+}
+
+/* タブを上に出したあとも、ステータス時は左カラムごと非表示 */
+.book-ui[data-tab="status"] .book-left-pane {
+  display: none;
+}
+
+.book-ui[data-tab="status"] .book-right-pane {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.book-status-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-height: min(72vh, 640px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 2px 0;
+  box-sizing: border-box;
+}
+
+.book-status-panel .ui-frame-box::before {
+  --frame-fill-color: #e0d2b8;
+}
+
+.book-status-hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 14px 16px;
+}
+
+.book-status-hero-main {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.book-status-name {
+  font-size: 22px;
+  color: #320e0e;
+  margin: 0 0 8px 0;
+}
+
+.book-status-level-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 18px;
+  color: #320e0e;
+}
+
+.book-status-level-num {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.book-status-exp-summary {
+  font-size: 15px;
+  opacity: 0.88;
+}
+
+.book-status-panel .book-status-label {
+  font-size: 15px;
+  color: #5c4030;
+}
+
+.book-status-exp-bar-wrap {
+  margin-top: 10px;
+}
+
+.book-status-exp-bar {
+  height: 14px;
+  background: #b9a67e;
+  border: 2px solid #704A2B;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.25),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.08);
+}
+
+.book-status-exp-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(180deg, #7cb86c 0%, #4e8a42 100%);
+  transition: width 0.2s ease-out;
+}
+
+.book-status-hero-side {
+  flex: 0 1 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 15px;
+  color: #320e0e;
+}
+
+.book-status-side-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.book-status-section {
+  padding: 14px 16px;
+}
+
+.book-status-section .book-status-section-title {
+  margin: 0 0 10px 0;
+  font-size: 18px;
+  font-weight: normal;
+  color: #320e0e;
+}
+
+.book-status-hint {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  line-height:1.45;
+  color: #5c4030;
+}
+
+.book-status-stat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.book-status-stat-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.book-stat-name {
+  font-size: 15px;
+  color: #320e0e;
+}
+
+.book-stat-val {
+  font-size: 16px;
+  font-weight: bold;
+  color: #2d6b2d;
+  font-variant-numeric: tabular-nums;
+}
+
+.book-status-line-strong {
+  font-size: 17px;
+  margin: 0 0 10px 0;
+  color: #320e0e;
+}
+
+.book-status-inline-effects {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px 14px;
+}
+
+.book-status-inline-effects li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  color: #320e0e;
+  border-bottom: 1px dashed rgba(112, 74, 43, 0.45);
+  padding-bottom: 6px;
+}
+
+.book-status-bait-lure-block {
+  margin-bottom: 12px;
+}
+
+.book-status-equip-line {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+  font-size: 15px;
+  color: #320e0e;
+}
+
+.book-status-equip-label {
+  flex: 0 0 3.2em;
+  opacity: 0.75;
+}
+
+.book-status-rarity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  color: #320e0e;
+}
+
+.book-status-rarity-table th,
+.book-status-rarity-table td {
+  padding: 8px 6px;
+  text-align: left;
+  border-bottom: 1px solid rgba(112, 74, 43, 0.35);
+}
+
+.book-status-rarity-table th {
+  background: rgba(112, 74, 43, 0.1);
+  font-weight: normal;
+}
+
+.book-status-rarity-table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.book-status-eff {
+  font-weight: bold;
+  color: #2d6b2d;
 }
 
 /* キャラクター設定パネル（デバッグ用） */
