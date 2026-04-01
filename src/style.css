@@ -10,6 +10,11 @@ html, body {
   font-family: 'DotGothic16', sans-serif !important;
 }
 
+/* ゲーム内では常にデフォルトカーソルを維持（hover時の pointer 変化を無効化） */
+body * {
+  cursor: inherit !important;
+}
+
 /* #app の width/height は削除（これが原因でした） */
 
 canvas {
@@ -32,6 +37,54 @@ img {
  * インセットは :root の --frame-fill-inset 一つで全体のサイズ感を統一
  */
 :root {
+  /* Figma sync tokens */
+  --space-4: 4px;
+  --space-2: 2px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --bg-panel-inner: #f2e2b6;
+  --color-semantic-bg-book-container: #f2e2b6;
+  --color-semantic-border-book: #5e2e1c;
+  --color-semantic-border-soft: #704a2b;
+  --color-semantic-text-muted: #8a7060;
+  --color-semantic-bg-nonactive: #d3cfbe;
+  --color-primitive-gray-700: #4a4a4a;
+  --color-primitive-green-600: #4e8a42;
+
+  --font-family-body: 'DotGothic16', sans-serif;
+  --font-family-display-numeric: 'Jersey 10', 'DotGothic16', sans-serif;
+
+  --font-size-status-stat-name: 14px;
+  --font-size-status-stat-value: 25px;
+  --font-size-detail-note-body: 16px;
+  --font-size-detail-stat-value: 28px;
+  --font-size-achievement-item-title: 20px;
+  --font-size-achievement-item-desc: 14px;
+  --font-size-achievement-category-count: 14px;
+  --font-size-achievement-category-name: 18px;
+  --font-size-achievement-reward-label: 14px;
+
+  --color-primitive-brown-400: #4a3020;
+  --color-primitive-orange-600: #c2681f;
+  --color-primitive-natural-sand-300: #b9a67e;
+  --color-primitive-natural-sand-400: #ecd5ab;
+  --color-primitive-white: #ffffff;
+  --color-semantic-text-primary: #320e0e;
+  --color-semantic-text-white: #ffffff;
+  --color-semantic-text-stat-value: #2d6b2d;
+  --color-semantic-text-detail: #212121;
+  --color-semantic-bg-active: #7cb86c;
+
+  /* color.rarity group */
+  --color-rarity-common: #b29a8c;
+  --color-rarity-uncommon: #60ca60;
+  --color-rarity-rare: #4599ff;
+  --color-rarity-epic: #aa55ff;
+  --color-rarity-legendary: #ffaa00;
+
   --frame-fill-inset: 4px;
 }
 
@@ -155,9 +208,9 @@ img {
   --frame-fill-color: #d3c4a7;
 }
 
-/* 実績: 解除済みは緑 */
-.achievement-detail-item.unlocked.ui-frame-box::before {
-  --frame-fill-color: #2e7d32;
+/* 実績詳細カード: デフォルト sand-400（未達成ダークは下で上書き） */
+.achievement-detail-item.ui-frame-box::before {
+  --frame-fill-color: var(--color-primitive-natural-sand-400);
 }
 
 /* ステータスUI */
@@ -232,6 +285,16 @@ img {
   inset: 0;
   border-radius: 999px;
   overflow: hidden;
+}
+
+.level-character-icon__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
 }
 
 .level-character-icon__image {
@@ -1238,7 +1301,7 @@ span.level-label-value {
 
 /* 選択タブより手前に見せる：非選択だけ少し下げる */
 #book-ui .book-tab-button.ui-frame-box:not(.active) {
-  transform: translateY(6px);
+  transform: translateY(4px);
 }
 
 /* #book-list-scroll 配下の9スライス枠素材だけ差し替え（他は元に戻す） */
@@ -1256,15 +1319,11 @@ span.level-label-value {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-/* 実績カテゴリ（左リスト）選択も同じ枠・塗り切り替え */
-#book-ui #book-list-scroll .achievement-category-list-item.achievement-category-selected.ui-frame-box::before,
-#book-ui #book-list-scroll .achievement-category-grid-item.achievement-category-selected.ui-frame-box::before {
-  --frame-fill-color: #e8cfa6;
-}
-
-#book-ui #book-list-scroll .achievement-category-list-item.achievement-category-selected.ui-frame-box::after,
-#book-ui #book-list-scroll .achievement-category-grid-item.achievement-category-selected.ui-frame-box::after {
-  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+/* 実績カテゴリ（Figma: フラットリスト、選択はアウトライン） */
+#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.achievement-category-selected {
+  outline: 2px solid var(--color-primitive-orange-600);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 #book-ui.is-open.is-topmost {
@@ -1287,21 +1346,30 @@ span.level-label-value {
   height: 85%;
   max-height: 800px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 0;
   font-family: 'DotGothic16', sans-serif !important;
   position: relative;
   transform: translateY(50px);
   opacity: 0;
   transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+  min-height: 0;
+  overflow: hidden;
+  gap: var(--space-8);
+  margin: 0;
+  padding: var(--space-12);
+  box-sizing: border-box;
 }
 
-/* 大枠の塗りはペーパー風テクスチャ */
+/* Figma .book-container: 平坦塗り + 2px ダークブラウン枠（9スライス枠は使わない） */
 .book-container.ui-frame-box::before {
-  background-color: #e8dcc8;
-  background-image: url('/images/ui/book-texture.png');
-  background-repeat: repeat;
-  background-size: auto;
+  --frame-fill-color: var(--color-semantic-bg-book-container);
+  inset: 0;
+}
+
+.book-container.ui-frame-box::after {
+  border-image: none !important;
+  border: 2px solid var(--color-semantic-border-book) !important;
 }
 
 /* 統合BookUIが開いている時：下から50pxの位置からスライドイン */
@@ -1368,8 +1436,8 @@ span.level-label-value {
 }
 
 .book-tab-icon {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
   object-fit: contain;
   display: block;
@@ -1379,6 +1447,11 @@ span.level-label-value {
 
 .book-tab-label {
   line-height: 1.2;
+}
+
+/* 選択中タブのみラベルを表示（非選択はアイコンのみ） */
+#book-ui .book-tab-button:not(.active) .book-tab-label {
+  display: none;
 }
 
 .book-tab-button:hover {
@@ -1406,17 +1479,6 @@ span.level-label-value {
 
 .book-close:hover {
   filter: brightness(0.95);
-}
-
-.book-content {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  gap: 8px;
-  margin: 0;
-  padding: 4px 4px 16px 8px;
-  box-sizing: border-box;
 }
 
 .book-left-pane {
@@ -1548,11 +1610,46 @@ span.level-label-value {
   display: flex;
   flex-direction: column;
   background: transparent;
-  padding: 4px 6px 10px 16px;
+  padding: 4px 6px 10px 8px;
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
   gap: 10px;
+}
+
+/* 実績タブ: Figma 19:241 左右比率・スクロール */
+#book-ui[data-tab="achievement"] .book-left-pane {
+  width: 240px;
+  flex: 0 0 240px;
+  min-width: 0;
+}
+
+#book-ui[data-tab="achievement"] .book-right-pane {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  gap: 0;
+}
+
+#book-ui[data-tab="achievement"] #book-list-scroll {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px 8px 16px 4px;
+  width: 100%;
+  box-sizing: border-box;
+  grid-template-columns: unset;
+  grid-template-rows: unset;
+}
+
+#book-ui[data-tab="achievement"] .book-right-pane-inner {
+  padding: var(--space-8);
+  gap: var(--space-16);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
 }
 
 .book-right-pane-inner {
@@ -1668,21 +1765,21 @@ span.level-label-value {
   width: 100%;
   height: 165px;
   position: relative;
-  background: #DBC299;
+  background: var(--frame-fill-color);
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   border-style: solid;
   border-width: 6px;
-  border-color: rgba(219, 194, 153, 1);
+  border-color: var(--frame-fill-color);
 }
 
 .book-detail-image-container-new::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: #DBC299;
+  background: var(--frame-fill-color);
   opacity: 0.6;
   z-index: 1;
 }
@@ -1717,7 +1814,7 @@ span.level-label-value {
   align-items: center;
   gap: 2px;
   height: 42px;
-  background-color: rgba(219, 194, 153, 1);
+  background-color: var(--frame-fill-color);
 }
 
 
@@ -1780,7 +1877,7 @@ span.level-label-value {
   gap: 4px;
   width: 100%;
   align-items: stretch;
-  background: #DBC299;
+  background: var(--frame-fill-color);
 }
 
 .book-detail-habitat {
@@ -1813,7 +1910,7 @@ span.level-label-value {
   flex-direction: column;
   gap: 4px;
   width: 100%;
-  background: #DBC299;
+  background: var(--frame-fill-color);
 }
 
 .book-detail-note-header {
@@ -1902,7 +1999,7 @@ span.level-label-value {
 }
 
 .achievement-item {
-  padding: 15px;
+  padding: 0;
   border-radius: 0;
   transition: transform 0.1s, filter 0.1s, opacity 0.2s;
 }
@@ -1917,15 +2014,13 @@ span.level-label-value {
 }
 
 .achievement-item.locked {
-  opacity: 0.7;
+  opacity: 1;
 }
 
-.achievement-item.unlocked.ui-frame-box::before {
-  --frame-fill-color: #2e7d32;
-}
-
+/* モーダル実績カード: 進行中・達成とも sand-400 + 同一 uiframe 枠 */
+.achievement-item.unlocked.ui-frame-box::before,
 .achievement-item.locked.ui-frame-box::before {
-  --frame-fill-color: #4a4a4a;
+  --frame-fill-color: var(--color-primitive-natural-sand-400);
 }
 
 .achievement-item-main {
@@ -2012,70 +2107,66 @@ span.level-label-value {
    統合BookUI - 実績タブ
    ============================================ */
 
-/* 実績リストコンテナ */
-.achievement-list-container {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(4, 1fr);
-  gap: 14px;
-  padding: 14px;
-  flex: none;
-  height: fit-content;
+/* 実績カテゴリ（Figma #book-list-scroll 内・フラット） */
+.achievement-category-item {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8px 8px 8px 8px;
+  margin: 0;
+  background: var(--color-semantic-bg-book-container);
+  box-sizing: border-box;
+  width: 100%;
+  transition: filter 0.1s, transform 0.1s;
+  font-family: var(--font-family-body);
 }
 
-/* 実績カテゴリリストアイテム（縦積み） */
-.achievement-category-list-item {
-  cursor: pointer;
-  transition: transform 0.1s, filter 0.1s;
-  border: none;
-  padding: 15px 15px;
+.achievement-category-item:hover {
+  filter: brightness(0.97);
+}
+
+.achievement-category-item__head {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 10px;
-  position: relative;
-  height: 80px;
-  font-family: 'DotGothic16', sans-serif;
+  gap: 8px;
+  white-space: nowrap;
+  line-height: normal;
 }
 
-.achievement-category-list-item:hover {
-  transform: scale(1.02);
-  filter: brightness(0.95);
+.achievement-category-item__name {
+  font-size: var(--font-size-achievement-category-name);
+  color: var(--color-semantic-text-primary);
 }
 
-.achievement-category-list-item.achievement-category-selected {
-  border: none;
+.achievement-category-item__count {
+  font-size: var(--font-size-achievement-category-count);
+  color: var(--color-semantic-text-muted);
 }
 
-.achievement-category-list-icon {
-  font-size: 32px;
+.achievement-category-item__segments {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 50px;
-  height: 50px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.achievement-category-seg {
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
 }
 
-.achievement-category-list-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  line-height: 16px;
+.achievement-category-seg--on {
+  background: var(--color-semantic-bg-active);
 }
 
-.achievement-category-list-name {
-  font-size: 18px;
-  font-weight: bold;
-  color: #320e0e;
-  text-align: left;
-}
-
-.achievement-category-list-count {
-  font-size: 14px;
-  color: #320e0e;
-  opacity: 0.8;
+.achievement-category-seg--off {
+  background: var(--color-semantic-bg-nonactive);
 }
 
 /* 実績カテゴリグリッドアイテム（グリッド形式用 - 現在は未使用） */
@@ -2133,18 +2224,24 @@ span.level-label-value {
   font-weight: bold;
 }
 
-/* 実績詳細リスト */
+/* 実績詳細リスト（Figma .achievement-detail-list: gap 8, p 10） */
 .achievement-detail-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-8);
   padding: 10px;
   max-height: 100%;
   overflow-y: auto;
 }
 
+/* Book / モーダル: 実績カード内側 ≒ Figma space/16 */
+#book-ui .achievement-detail-item.ui-frame-box,
+#achievement-modal .achievement-item.ui-frame-box {
+  --frame-scale: 4;
+}
+
 .achievement-detail-item {
-  padding: 15px;
+  padding: 0;
   border-radius: 0;
   transition: opacity 0.3s;
 }
@@ -2153,102 +2250,328 @@ span.level-label-value {
   opacity: 1;
 }
 
-.achievement-detail-item.unlocked.ui-frame-box::before {
-  --frame-fill-color: #2e7d32;
-}
-
 .achievement-detail-item.locked {
-  opacity: 0.7;
+  opacity: 1;
 }
 
-.achievement-detail-item.locked.ui-frame-box::before {
-  --frame-fill-color: #4a4a4a;
+/* 達成済み: ui-frame の塗り・9スライス枠も本文に合わせて半透明（疑似要素は行の子ではないため個別指定） */
+.achievement-detail-item.unlocked.ui-frame-box::before,
+.achievement-detail-item.unlocked.ui-frame-box::after {
+  opacity: 0.5;
+}
+
+#achievement-modal .achievement-item.unlocked.ui-frame-box::before,
+#achievement-modal .achievement-item.unlocked.ui-frame-box::after {
+  opacity: 0.5;
+}
+
+/* 進行中・達成とも sand + 通常 ui-frame（本文の薄さは .achievement-detail-item__row--cleared 側） */
+
+/* 実績カード共通レイアウト（Book・モーダル） */
+.achievement-detail-item__inner {
+  position: relative;
+  width: 100%;
+  min-height: 1px;
+  /* 達成スタンプ（兄弟）と行の重なりを安定させる */
+  isolation: isolate;
+}
+
+.achievement-detail-item__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 24px 20px;
+}
+
+/*
+ * 達成済み本文の薄さ（Figma opacity-50）。
+ * 行にだけ opacity を掛けると環境によっては薄さが目立たないことがあるため、
+ * テキストは rgba、絵文字・報酬・バーは子 opacity で同系の見え方にそろえる（行自体は 1 のまま）。
+ */
+.achievement-detail-item__row--cleared {
+  opacity: 1;
+}
+
+.achievement-detail-item__row--cleared .achievement-detail-item__title,
+.achievement-detail-item__row--cleared .achievement-detail-item__desc {
+  color: rgba(50, 14, 14, 0.5);
+}
+
+.achievement-detail-item__row--cleared .achievement-detail-item__meta,
+.achievement-detail-item__row--cleared .achievement-detail-item__meta span {
+  color: rgba(50, 14, 14, 0.5);
+}
+
+.achievement-detail-item__row--cleared .achievement-detail-item__emoji {
+  opacity: 0.5;
+}
+
+.achievement-detail-item__row--cleared .achievement-detail-reward {
+  opacity: 0.5;
+}
+
+.achievement-detail-item__row--cleared .achievement-detail-item__progress {
+  opacity: 0.5;
+}
+
+.achievement-detail-item__emoji {
+  flex-shrink: 0;
+  width: 28px;
+  font-size: var(--font-size-detail-stat-value);
+  line-height: 1;
+  text-align: center;
+  color: var(--color-primitive-white);
+}
+
+.achievement-detail-item__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+
+.achievement-detail-item__top {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.achievement-detail-item__textcol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.achievement-detail-item__title {
+  font-size: var(--font-size-achievement-item-title);
+  color: var(--color-semantic-text-primary);
+  line-height: normal;
+}
+
+.achievement-detail-item__desc {
+  margin: 0;
+  font-size: var(--font-size-achievement-item-desc);
+  color: var(--color-semantic-text-primary);
+  line-height: normal;
+}
+
+.achievement-detail-reward {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 0;
+  padding: var(--space-6) var(--space-8);
+  background: var(--color-primitive-natural-sand-300);
+  font-size: var(--font-size-achievement-reward-label);
+  color: var(--color-semantic-text-white);
+  line-height: normal;
+}
+
+.achievement-detail-reward__label {
+  white-space: nowrap;
+}
+
+.achievement-detail-reward__values {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 42px;
+}
+
+.achievement-detail-reward__line {
+  display: block;
+  width: 100%;
+}
+
+.achievement-detail-item__progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.achievement-detail-item__track {
+  height: 20px;
+  border-radius: 5px;
+  background: var(--color-semantic-text-detail);
+  overflow: hidden;
+  width: 100%;
+}
+
+.achievement-detail-item__fill {
+  height: 100%;
+  background: var(--color-semantic-bg-active);
+  transition: width 0.3s;
+  border-radius: 5px 0 0 5px;
+  max-width: 100%;
+}
+
+.achievement-detail-item__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+  font-size: var(--font-size-achievement-category-count);
+  color: var(--color-semantic-text-primary);
+  white-space: nowrap;
+}
+
+.achievement-detail-stamp {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-4deg);
+  pointer-events: none;
+  z-index: 2;
+  width: 203px;
+  max-width: calc(100% - 24px);
+}
+
+.achievement-detail-stamp__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 /* 実績タブの詳細エリアのスタイル調整 */
-.book-ui[data-tab="achievement"] .book-detail-content {
+#book-ui[data-tab="achievement"] .book-detail-content {
   padding: 0;
 }
 
-.book-ui[data-tab="achievement"] .book-detail-header-new,
-.book-ui[data-tab="achievement"] .book-detail-image-container-new,
-.book-ui[data-tab="achievement"] .book-detail-sections {
+#book-ui[data-tab="achievement"] .book-detail-header-new,
+#book-ui[data-tab="achievement"] .book-detail-image-container-new,
+#book-ui[data-tab="achievement"] .book-detail-sections {
   display: none;
 }
 
 /* 統合BookUI - ステータスタブ */
-.book-ui[data-tab="status"] #book-list-header {
+#book-ui[data-tab="status"] #book-list-header {
   display: none !important;
 }
 
-.book-ui[data-tab="status"] #book-list-scroll {
+#book-ui[data-tab="status"] #book-list-scroll {
   display: none !important;
 }
 
 /* タブを上に出したあとも、ステータス時は左カラムごと非表示 */
-.book-ui[data-tab="status"] .book-left-pane {
+#book-ui[data-tab="status"] .book-left-pane {
   display: none;
 }
 
-.book-ui[data-tab="status"] .book-right-pane {
+#book-ui[data-tab="status"] .book-right-pane {
   flex: 1;
   min-width: 0;
   width: 100%;
 }
 
+/* ============================================
+   ステータスパネル（RPG風レイアウト）
+   ============================================ */
 .book-status-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 0;
   width: 100%;
   max-height: min(72vh, 640px);
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 2px 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
-.book-status-panel .ui-frame-box::before {
-  --frame-fill-color: #e0d2b8;
+/* ステータス画面内は英数字を Jersey 10 で表示（和文はフォールバック） */
+#book-status-panel,
+#book-status-panel * {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
 }
 
+/* ── ヒーローセクション（プレイヤー情報） ── */
 .book-status-hero {
   display: flex;
-  flex-wrap: wrap;
   gap: 16px;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 14px 16px;
+  align-items: stretch;
+  padding: 16px 18px 14px;
+  background: rgba(92, 64, 48, 0.08);
 }
 
 .book-status-hero-main {
-  flex: 1 1 220px;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.book-status-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
 }
 
+.book-status-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.book-status-character-icon {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.book-status-character-icon__inner {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.book-status-character-icon__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+}
+
 .book-status-name {
-  font-size: 22px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 26px;
   color: #320e0e;
-  margin: 0 0 8px 0;
+  margin: 0;
+  line-height: 1.2;
 }
 
 .book-status-level-row {
+  flex: 0 0 auto;
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 18px;
-  color: #320e0e;
+  gap: 4px;
+  font-size: 15px;
+  color: #5c4030;
 }
 
 .book-status-level-num {
-  font-size: 26px;
+  font-size: 40px;
+  font-family: 'Jersey 10', 'DotGothic16', sans-serif;
+  color: #320e0e;
   line-height: 1;
-}
-
-.book-status-exp-summary {
-  font-size: 15px;
-  opacity: 0.88;
 }
 
 .book-status-panel .book-status-label {
@@ -2257,11 +2580,17 @@ span.level-label-value {
 }
 
 .book-status-exp-bar-wrap {
-  margin-top: 10px;
+  flex: 1 1 auto;
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .book-status-exp-bar {
-  height: 14px;
+  flex: 1;
+  height: 12px;
   background: #b9a67e;
   border: 2px solid #704A2B;
   box-shadow:
@@ -2276,47 +2605,98 @@ span.level-label-value {
   transition: width 0.2s ease-out;
 }
 
-.book-status-hero-side {
-  flex: 0 1 180px;
+.book-status-exp-summary {
+  font-size: 21px;
+  color: #5c4030;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── カウンター（バッグ / 図鑑） ── */
+.book-status-hero-counters {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  font-size: 15px;
-  color: #320e0e;
-}
-
-.book-status-side-line {
-  display: flex;
-  flex-wrap: wrap;
   gap: 6px;
+  justify-content: center;
+}
+
+.book-status-counter {
+  display: flex;
   align-items: baseline;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(112, 74, 43, 0.10);
+  border: 1px solid rgba(112, 74, 43, 0.18);
 }
 
-.book-status-section {
-  padding: 14px 16px;
-}
-
-.book-status-section .book-status-section-title {
-  margin: 0 0 10px 0;
-  font-size: 18px;
-  font-weight: normal;
-  color: #320e0e;
-}
-
-.book-status-hint {
-  margin: 0 0 12px 0;
+.book-status-counter-label {
   font-size: 13px;
-  line-height:1.45;
   color: #5c4030;
 }
 
+.book-status-counter-value {
+  font-size: 26px;
+  font-family: 'Jersey 10', 'DotGothic16', sans-serif;
+  color: #320e0e;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── セクション区切り線 ── */
+.book-status-divider {
+  height: 1px;
+  margin: 0 16px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(112, 74, 43, 0.35) 15%,
+    rgba(112, 74, 43, 0.35) 85%,
+    transparent 100%
+  );
+}
+
+/* ── 各セクション共通 ── */
+.book-status-section {
+  padding: 14px 18px;
+}
+
+.book-status-two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.book-status-section-title {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: normal;
+  color: #704A2B;
+  padding: 0 0 4px 8px;
+  border-bottom: 2px solid rgba(112, 74, 43, 0.20);
+  border-left: 3px solid #704A2B;
+}
+
+.book-status-hint {
+  margin: 4px 0 10px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8a7060;
+}
+
+#book-status-panel .book-status-section-title,
+#book-status-panel .book-status-hint {
+  display: none;
+}
+
+/* ── ステータスリスト（補正値） ── */
 .book-status-stat-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
 }
 
 .book-status-stat-list li {
@@ -2324,34 +2704,108 @@ span.level-label-value {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
+  padding: 10px 10px;
+  min-height: 42px;
+  cursor: inherit;
+  transition: transform 0.1s, filter 0.1s;
+  position: relative;
+  border: none;
+  --frame-fill-color: #CBB792;
+}
+
+.book-status-stat-list li.ui-frame-box::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+.book-status-stat-list li:hover {
+  transform: scale(1.02);
+  filter: brightness(0.97);
+}
+
+.book-status-stat-list li:focus-visible {
+  outline: 2px solid rgba(194, 104, 31, 0.7);
+  outline-offset: -2px;
+}
+
+.book-status-stat-list li.is-selected {
+  --frame-fill-color: #e8cfa6;
+  padding-left: 28px;
+}
+
+.book-status-stat-list li.is-selected.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+.book-status-stat-list li.is-selected::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 12px;
+  height: 16px;
+  transform: translateY(-50%);
+  background: url(/images/ui/point.png) center / contain no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
 }
 
 .book-stat-name {
-  font-size: 15px;
-  color: #320e0e;
+  font-size: var(--font-size-status-stat-name);
+  color: var(--color-primitive-brown-400);
 }
 
 .book-stat-val {
-  font-size: 16px;
-  font-weight: bold;
-  color: #2d6b2d;
+  font-size: var(--font-size-status-stat-value);
+  font-weight: 400;
+  color: var(--color-semantic-text-stat-value);
   font-variant-numeric: tabular-nums;
+  font-synthesis: none;
+  line-height: 1;
+  font-family: var(--font-family-display-numeric);
 }
 
+#book-status-power {
+  font-family: "Jersey 10" !important;
+}
+
+.book-status-detail-note {
+  background: var(--color-primitive-natural-sand-400);
+  color: var(--color-semantic-text-detail);
+  min-height: 100%;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+.book-status-detail-note-title {
+  margin: 0 0 4px;
+  font-size: var(--font-size-status-stat-name);
+  line-height: 1.2;
+  color: var(--color-primitive-orange-600);
+}
+
+.book-status-detail-note-text {
+  margin: 0;
+  font-size: var(--font-size-detail-note-body);
+  line-height: 1.45;
+  color: var(--color-semantic-text-detail);
+}
+
+/* ── 装備名（竿名など） ── */
 .book-status-line-strong {
-  font-size: 17px;
-  margin: 0 0 10px 0;
+  font-size: 16px;
+  margin: 0 0 8px 0;
   color: #320e0e;
 }
 
+/* ── 装備効果リスト ── */
 .book-status-inline-effects {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .book-status-inline-effects li {
@@ -2359,50 +2813,73 @@ span.level-label-value {
   justify-content: space-between;
   gap: 8px;
   font-size: 14px;
-  color: #320e0e;
-  border-bottom: 1px dashed rgba(112, 74, 43, 0.45);
-  padding-bottom: 6px;
+  color: #4a3020;
+  padding: 5px 8px;
 }
 
+.book-status-inline-effects li:nth-child(odd) {
+  background: rgba(112, 74, 43, 0.05);
+}
+
+.book-status-inline-effects li span:last-child {
+  font-weight: bold;
+  color: #2d6b2d;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Jersey 10', 'DotGothic16', sans-serif;
+}
+
+/* ── エサ・ルアー装備 ── */
 .book-status-bait-lure-block {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .book-status-equip-line {
   display: flex;
   gap: 10px;
   align-items: baseline;
-  margin-bottom: 8px;
-  font-size: 15px;
-  color: #320e0e;
+  padding: 4px 8px;
+  font-size: 14px;
+  color: #4a3020;
+}
+
+.book-status-equip-line:nth-child(odd) {
+  background: rgba(112, 74, 43, 0.05);
 }
 
 .book-status-equip-label {
-  flex: 0 0 3.2em;
-  opacity: 0.75;
+  flex: 0 0 3.5em;
+  color: #704A2B;
+  font-size: 13px;
 }
 
+/* ── レアリティテーブル ── */
 .book-status-rarity-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
-  color: #320e0e;
+  font-size: 13px;
+  color: #4a3020;
 }
 
 .book-status-rarity-table th,
 .book-status-rarity-table td {
-  padding: 8px 6px;
+  padding: 6px 6px;
   text-align: left;
-  border-bottom: 1px solid rgba(112, 74, 43, 0.35);
+  border-bottom: 1px solid rgba(112, 74, 43, 0.18);
 }
 
 .book-status-rarity-table th {
-  background: rgba(112, 74, 43, 0.1);
+  background: rgba(112, 74, 43, 0.10);
   font-weight: normal;
+  color: #704A2B;
+  font-size: 12px;
 }
 
 .book-status-rarity-table td {
   font-variant-numeric: tabular-nums;
+}
+
+.book-status-rarity-table tbody tr:nth-child(odd) {
+  background: rgba(112, 74, 43, 0.04);
 }
 
 .book-status-eff {

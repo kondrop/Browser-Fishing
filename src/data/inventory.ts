@@ -4,9 +4,7 @@ import type { FishConfig } from './fishConfig';
 import { getFishById, getRealFishCount } from './fish';
 import type { AchievementConfig, AchievementCondition } from './achievementConfig';
 import { achievementConfigs } from './achievementConfig';
-import { Rarity } from './fishTypes';
 import { fishConfigs } from './fishConfig';
-import { rodConfigs, baitConfigs, lureConfigs } from './shopConfig';
 
 export interface InventoryItem {
   fishId: string;
@@ -511,6 +509,45 @@ export function getAchievementProgress(playerData: PlayerData, achievement: Achi
   // targetValueが0または未定義の場合は1.0を返す
   if (!targetValue || targetValue === 0) return 1.0;
   return Math.min(1.0, currentValue / targetValue);
+}
+
+/** UI用: 進捗の分子・分母と単位（実績タブの「6 / 10 匹」表示互換） */
+export function getAchievementProgressDisplay(
+  playerData: PlayerData,
+  achievement: AchievementConfig
+): { current: number; target: number; unit: string } {
+  const c = achievement.condition;
+  if (c.type === 'all_collection') {
+    const totalFishCount = Math.max(1, getRealFishCount());
+    const caughtCount = Array.from(playerData.caughtFishIds).filter((id) => !id.startsWith('junk_')).length;
+    return { current: caughtCount, target: totalFishCount, unit: '種' };
+  }
+  if (c.type === 'first_rarity') {
+    const v = checkCondition(playerData, c);
+    return { current: v, target: 1, unit: '' };
+  }
+  if (c.type === 'all_rarity' && c.rarity) {
+    const fishOfRarity = fishConfigs.filter((f) => f.rarity === c.rarity && !f.id.startsWith('junk_'));
+    const target = Math.max(1, fishOfRarity.length);
+    const current = Math.min(target, checkCondition(playerData, c));
+    return { current, target, unit: '種' };
+  }
+  const currentRaw = checkCondition(playerData, c);
+  const target = c.target && c.target > 0 ? c.target : 1;
+  const current = Math.min(currentRaw, target);
+  const unitMap: Record<string, string> = {
+    total_caught: '匹',
+    junk_caught: '匹',
+    level: '',
+    total_money_earned: 'G',
+    collection_count: '種',
+    all_rods: '種',
+    all_baits: '種',
+    all_lures: '種',
+    all_equipment: '種',
+    consecutive_success: '回',
+  };
+  return { current, target, unit: unitMap[c.type] ?? '' };
 }
 
 // 条件をチェックして進捗を更新

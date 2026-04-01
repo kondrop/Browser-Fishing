@@ -3,8 +3,14 @@ import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
 import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, type RarityBonuses, Habitat } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
-import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize, checkAchievements, getAchievementProgress, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp } from '../data/inventory';
-import { achievementConfigs, getAllCategories, getAchievementsByCategory, type AchievementConfig } from '../data/achievementConfig';
+import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp } from '../data/inventory';
+import {
+  achievementConfigs,
+  displayAchievementEmoji,
+  getAllCategories,
+  getAchievementsByCategory,
+  type AchievementConfig,
+} from '../data/achievementConfig';
 import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, getRodById, getBaitById, getLureById, getNextRod, getNextInventoryUpgrade } from '../data/shopConfig';
 import { characterConfigs, getCharacterById, getDefaultCharacterId } from '../data/characterConfig';
 
@@ -121,6 +127,8 @@ export default class GameScene extends Phaser.Scene {
   private unifiedBookListScrollElement!: HTMLElement;
   private unifiedBookDetailElement!: HTMLElement;
   private unifiedBookDetailPlaceholderElement!: HTMLElement;
+  private selectedStatusStatKey: 'power' | 'speed' | 'control' | 'rare-hunt' = 'power';
+  private readonly statusStatOrder: Array<'power' | 'speed' | 'control' | 'rare-hunt'> = ['power', 'speed', 'control', 'rare-hunt'];
 
   // ショップUI（HTML/CSS）
   private shopUIElement!: HTMLElement;
@@ -177,6 +185,7 @@ export default class GameScene extends Phaser.Scene {
   private characterSettingsElement!: HTMLElement;
   private characterPreviewIntervalId: number | null = null;
   private characterColorTemp: string = '#ffffff';
+  private nextStatusIconRefreshAt: number = 0;
   private readonly CHARACTER_COLORS: { value: string; label?: string }[] = [
     { value: '#ffffff', label: 'なし' },
     { value: '#F27F7F' },
@@ -209,6 +218,114 @@ export default class GameScene extends Phaser.Scene {
   private getSelectedColor(): string {
     if (typeof window === 'undefined') return '#ffffff';
     return window.localStorage.getItem('bf_character_color') ?? '#ffffff';
+  }
+
+  private renderStatusCharacterIcon(characterId?: string, colorHex?: string) {
+    if (!this.statusUIElement) return;
+    const canvas = this.statusUIElement.querySelector('#status-character-icon-canvas') as HTMLCanvasElement | null;
+    if (!canvas) return;
+    this.renderCharacterIconToCanvas(canvas, characterId, colorHex);
+  }
+
+  private renderCharacterIconToCanvas(canvas: HTMLCanvasElement, characterId?: string, colorHex?: string) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const tintColor = (colorHex ?? this.getSelectedColor()).toLowerCase();
+    const displaySize = canvas.width;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, displaySize, displaySize);
+
+    // メインcanvas上のプレイヤーと同じ見た目に寄せるため、
+    // 可能なら現在のプレイヤーフレームを直接転写する。
+    let drewFromPlayerFrame = false;
+    if (this.player?.frame && this.player.texture?.key) {
+      const frame = this.player.frame;
+      const sourceImage = frame.source.image as CanvasImageSource | undefined;
+      if (sourceImage) {
+        ctx.drawImage(
+          sourceImage,
+          frame.cutX,
+          frame.cutY,
+          frame.cutWidth,
+          frame.cutHeight,
+          0,
+          0,
+          displaySize,
+          displaySize
+        );
+        drewFromPlayerFrame = true;
+      }
+    }
+
+    // 初期化直後などで player が未生成の場合は、従来どおりスプライト先頭フレームでフォールバック。
+    if (!drewFromPlayerFrame) {
+      const id = characterId ?? this.getSelectedCharacterId();
+      const character = getCharacterById(id);
+      if (!character) return;
+      const frameSize = 24;
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = '/' + character.sheetPath;
+      img.onload = () => {
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, displaySize, displaySize);
+        ctx.drawImage(img, 0, 0, frameSize, frameSize, 0, 0, displaySize, displaySize);
+        this.applyStatusIconTint(ctx, displaySize, tintColor);
+      };
+      return;
+    }
+
+    this.applyStatusIconTint(ctx, displaySize, tintColor);
+  }
+
+  private applyStatusIconTint(ctx: CanvasRenderingContext2D, size: number, tintColor: string) {
+    // Phaser の setTint に近い挙動: 各ピクセルに乗算
+    if (!tintColor || tintColor === '#ffffff') return;
+    const m = tintColor.match(/^#([0-9a-f]{6})$/);
+    if (!m) return;
+    const tint = parseInt(m[1], 16);
+    const tr = (tint >> 16) & 0xff;
+    const tg = (tint >> 8) & 0xff;
+    const tb = tint & 0xff;
+    const rf = tr / 255;
+    const gf = tg / 255;
+    const bf = tb / 255;
+
+    const imageData = ctx.getImageData(0, 0, size, size);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const alpha = data[i + 3];
+      if (alpha === 0) continue;
+      data[i] = data[i] * rf;
+      data[i + 1] = data[i + 1] * gf;
+      data[i + 2] = data[i + 2] * bf;
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  private refreshStatusCharacterIconThrottled(nowMs: number) {
+    if (!this.statusUIElement) return;
+    if (!this.player) return;
+    if (nowMs < this.nextStatusIconRefreshAt) return;
+    this.nextStatusIconRefreshAt = nowMs + 250;
+    this.renderStatusCharacterIcon(undefined, this.getSelectedColor());
+  }
+
+  private getRarityColorCssValue(rarity: string): string {
+    switch (rarity) {
+      case 'common':
+        return 'var(--color-rarity-common)';
+      case 'uncommon':
+        return 'var(--color-rarity-uncommon)';
+      case 'rare':
+        return 'var(--color-rarity-rare)';
+      case 'epic':
+        return 'var(--color-rarity-epic)';
+      case 'legendary':
+        return 'var(--color-rarity-legendary)';
+      default:
+        return 'var(--color-rarity-common)';
+    }
   }
 
   private saveCharacterSettings(id: string, name: string, color: string) {
@@ -1033,7 +1150,7 @@ export default class GameScene extends Phaser.Scene {
     // HTML/CSSでステータスUIを作成（画面固定）
     const characterId = this.getSelectedCharacterId();
     const character = getCharacterById(characterId);
-    const characterSheetPath = character?.sheetPath ?? characterConfigs[0]?.sheetPath ?? 'images/character/Basic character v1.png';
+    if (!character) return;
     const playerName = this.getSelectedPlayerName() || 'Player';
     const statusHTML = `
       <div id="status-ui" style="position: fixed; pointer-events: none; z-index: 1000; top: 0; left: 0; width: 100%; height: 100%;">
@@ -1044,7 +1161,7 @@ export default class GameScene extends Phaser.Scene {
               <div id="level-text" class="level-label-box">
                 <div class="level-character-icon" aria-hidden="true">
                   <div class="level-character-icon__inner">
-                    <img class="level-character-icon__image" alt="" src="${characterSheetPath.startsWith('/') ? characterSheetPath : `/${characterSheetPath}`}" />
+                    <canvas id="status-character-icon-canvas" width="56" height="56" class="level-character-icon__canvas"></canvas>
                   </div>
                 </div>
                 <div class="level-info">
@@ -1113,7 +1230,8 @@ export default class GameScene extends Phaser.Scene {
         }
       });
     }
-    
+
+    this.renderStatusCharacterIcon(characterId, this.getSelectedColor());
     this.updateStatusUI();
   }
 
@@ -1300,6 +1418,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
+    this.refreshStatusCharacterIconThrottled(time);
+
     // FPS表示を更新
     if (this.debugFpsElement) {
       const fpsValue = this.debugFpsElement.querySelector('#fps-value');
@@ -1572,7 +1692,9 @@ export default class GameScene extends Phaser.Scene {
     const minDist = waitCfg['3-3_最小投擲距離'];
     const maxDist = waitCfg['3-4_最大投擲距離'];
     const baseDistance = minDist + (this.castPower * (maxDist - minDist));
-    const distance = baseDistance * castDistanceBonus;
+    const distanceSpan = Math.max(0, maxDist - minDist);
+    const castDistanceAdd = distanceSpan * (castDistanceBonus - 1.0);
+    const distance = baseDistance + castDistanceAdd;
     
     // 向きに応じた終点座標を計算
     let endX = this.player.x;
@@ -1627,14 +1749,18 @@ export default class GameScene extends Phaser.Scene {
     const bait = this.playerData.equippedBaitId ? getBaitById(this.playerData.equippedBaitId) : null;
     const lure = this.playerData.equippedLureId ? getLureById(this.playerData.equippedLureId) : null;
 
-    // 竿のレアボーナス + エサのボーナス + ルアーのボーナスを組み合わせ
+    // 装備ボーナスは乗算ではなく加算で合成する
     const rareChanceBonus = equippedRod?.rareChanceBonus || 1.0;
+    const addBonus = (a: number, b: number, c: number = 1.0) => {
+      const combined = 1.0 + (a - 1.0) + (b - 1.0) + (c - 1.0);
+      return Math.max(0.05, combined);
+    };
     const bonuses = {
-      commonBonus: (bait?.commonBonus || 1.0) * (lure?.commonBonus || 1.0),
-      uncommonBonus: (bait?.uncommonBonus || 1.0) * (lure?.uncommonBonus || 1.0),
-      rareBonus: (bait?.rareBonus || 1.0) * (lure?.rareBonus || 1.0) * rareChanceBonus,
-      epicBonus: (bait?.epicBonus || 1.0) * (lure?.epicBonus || 1.0) * rareChanceBonus,
-      legendaryBonus: (bait?.legendaryBonus || 1.0) * (lure?.legendaryBonus || 1.0) * rareChanceBonus,
+      commonBonus: addBonus(bait?.commonBonus || 1.0, lure?.commonBonus || 1.0),
+      uncommonBonus: addBonus(bait?.uncommonBonus || 1.0, lure?.uncommonBonus || 1.0),
+      rareBonus: addBonus(bait?.rareBonus || 1.0, lure?.rareBonus || 1.0, rareChanceBonus),
+      epicBonus: addBonus(bait?.epicBonus || 1.0, lure?.epicBonus || 1.0, rareChanceBonus),
+      legendaryBonus: addBonus(bait?.legendaryBonus || 1.0, lure?.legendaryBonus || 1.0, rareChanceBonus),
     };
 
     // どの魚が釣れるか決定（ボーナス適用）
@@ -1804,11 +1930,12 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (isCatching) {
-        // 全体設定 × 魚ごとの捕まえやすさ（サイズ調整済み） × 竿のボーナス × レベルボーナス
+        // レベル由来は倍率に巻き込まず、最後に加算して効かせる
         const baseGaugeSpeed = cfg['5-10_ゲージ増加速度'];
         const levelGaugeBonus = getLevelGaugeSpeedBonus(this.playerData.level);
-        const gaugeSpeed = baseGaugeSpeed + levelGaugeBonus;
-        this.catchProgress += gaugeSpeed * adjustedCatchRate * rodCatchBonus * dt;
+        const rodCatchAdd = baseGaugeSpeed * (rodCatchBonus - 1.0);
+        const equipAndFishGain = (baseGaugeSpeed * adjustedCatchRate) + rodCatchAdd;
+        this.catchProgress += (equipAndFishGain + levelGaugeBonus) * dt;
         this.uiPlayerBar.setFillStyle(0x00ff00);
     } else {
         // 全体設定 × 魚ごとの逃げやすさ
@@ -2279,8 +2406,7 @@ export default class GameScene extends Phaser.Scene {
                 slotPrice.textContent = sizeText ? `${sizeText} / ${displayPrice}G` : `${displayPrice}G`;
                 
                 // レア度に応じた背景色
-                const rarityColor = rarityColors[fish.rarity];
-                const colorHex = `#${rarityColor.toString(16).padStart(6, '0')}`;
+                const colorHex = this.getRarityColorCssValue(fish.rarity);
                 slotBg.style.backgroundColor = colorHex;
                 slotBg.style.opacity = '0.4';
                 slotBg.style.borderColor = colorHex;
@@ -2390,9 +2516,7 @@ export default class GameScene extends Phaser.Scene {
     
     // レアリティスター表示
     const starCount = rarityStarCount[fish.rarity];
-    const color = rarityColors[fish.rarity];
-    // レアリティ1（COMMON）のアクティブな星の色を特別に設定
-    const colorHex = fish.rarity === 'common' ? '#aa8783' : `#${color.toString(16).padStart(6, '0')}`;
+    const colorHex = this.getRarityColorCssValue(fish.rarity);
     let starsHTML = '';
     for (let i = 0; i < 5; i++) {
       if (i < starCount) {
@@ -2571,25 +2695,25 @@ export default class GameScene extends Phaser.Scene {
       <div id="book-ui" class="book-ui">
         <div class="book-header">
           <div class="book-tabs">
-            <button class="book-tab-button active ui-frame-box" data-tab="inventory">
+            <button class="book-tab-button active ui-frame-box" data-tab="inventory" aria-label="バッグ">
               <span class="book-tab-button-inner">
                 <img class="book-tab-icon" src="/images/ui/icon/icon_bag.png" alt="" aria-hidden="true" />
                 <span class="book-tab-label">バッグ</span>
               </span>
             </button>
-            <button class="book-tab-button ui-frame-box" data-tab="pedia">
+            <button class="book-tab-button ui-frame-box" data-tab="pedia" aria-label="図鑑">
               <span class="book-tab-button-inner">
                 <img class="book-tab-icon" src="/images/ui/icon/icon_encyclopedia.png" alt="" aria-hidden="true" />
                 <span class="book-tab-label">図鑑</span>
               </span>
             </button>
-            <button class="book-tab-button ui-frame-box" data-tab="achievement">
+            <button class="book-tab-button ui-frame-box" data-tab="achievement" aria-label="実績">
               <span class="book-tab-button-inner">
                 <img class="book-tab-icon" src="/images/ui/icon/icon_achievement.png" alt="" aria-hidden="true" />
                 <span class="book-tab-label">実績</span>
               </span>
             </button>
-            <button class="book-tab-button ui-frame-box" data-tab="status">
+            <button class="book-tab-button ui-frame-box" data-tab="status" aria-label="ステータス">
               <span class="book-tab-button-inner">
                 <img class="book-tab-icon" src="/images/ui/icon/icon_status.png" alt="" aria-hidden="true" />
                 <span class="book-tab-label">ステータス</span>
@@ -2598,50 +2722,54 @@ export default class GameScene extends Phaser.Scene {
           </div>
         </div>
         <div class="book-container ui-frame-box">
-          <div class="book-content">
             <div class="book-left-pane">
               <div class="book-list-header ui-frame-box" id="book-list-header">所持品一覧</div>
               <div class="book-list-scroll" id="book-list-scroll"></div>
             </div>
             <div class="book-right-pane">
-              <div class="book-right-pane-inner ui-frame-box">
+              <div class="book-right-pane-inner">
                 <div id="book-status-panel" class="book-status-panel" style="display: none;">
-                  <div class="book-status-hero ui-frame-box">
+                  <div class="book-status-hero">
                     <div class="book-status-hero-main">
-                      <div id="book-status-player-name" class="book-status-name"></div>
-                      <div class="book-status-level-row">
-                        <span class="book-status-label">Lv.</span><span id="book-status-level" class="book-status-level-num"></span>
-                        <span id="book-status-exp-summary" class="book-status-exp-summary"></span>
+                      <div class="book-status-name-row">
+                        <div class="book-status-character-icon" aria-hidden="true">
+                          <div class="book-status-character-icon__inner">
+                            <canvas id="book-status-character-icon-canvas" width="56" height="56" class="book-status-character-icon__canvas"></canvas>
+                          </div>
+                        </div>
+                        <div id="book-status-player-name" class="book-status-name"></div>
                       </div>
-                      <div class="book-status-exp-bar-wrap">
-                        <div class="book-status-exp-bar"><div id="book-status-exp-fill" class="book-status-exp-fill"></div></div>
+                      <div class="book-status-meta-row">
+                        <div class="book-status-level-row">
+                          <span class="book-status-label">Lv.</span><span id="book-status-level" class="book-status-level-num"></span>
+                        </div>
+                        <div class="book-status-exp-bar-wrap">
+                          <div class="book-status-exp-bar"><div id="book-status-exp-fill" class="book-status-exp-fill"></div></div>
+                          <span id="book-status-exp-summary" class="book-status-exp-summary"></span>
+                        </div>
                       </div>
                     </div>
-                    <div class="book-status-hero-side">
-                      <div class="book-status-side-line"><span class="book-status-label">バッグ</span> <span id="book-status-bag-slots"></span></div>
-                      <div class="book-status-side-line"><span class="book-status-label">図鑑</span> <span id="book-status-pedia-count"></span></div>
+                    <div class="book-status-hero-counters">
+                      <div class="book-status-counter"><span class="book-status-counter-label">バッグ</span><span id="book-status-bag-slots" class="book-status-counter-value"></span></div>
+                      <div class="book-status-counter"><span class="book-status-counter-label">図鑑</span><span id="book-status-pedia-count" class="book-status-counter-value"></span></div>
                     </div>
                   </div>
-                  <section class="book-status-section ui-frame-box">
-                    <h3 class="book-status-section-title">レベルによる補正</h3>
-                    <p class="book-status-hint">ファイト中のミニゲームに効く、成長による素の補正です（竿の倍率とは別枠で乗算されます）。</p>
-                    <ul class="book-status-stat-list">
-                      <li><span class="book-stat-name">バー判定ゾーンへの加算</span><span id="book-status-bar-bonus" class="book-stat-val"></span></li>
-                      <li><span class="book-stat-name">命中時ゲージ速度への加算</span><span id="book-status-gauge-bonus" class="book-stat-val"></span></li>
-                    </ul>
-                  </section>
-                  <section class="book-status-section ui-frame-box">
-                    <h3 class="book-status-section-title">装備：竿</h3>
-                    <div id="book-status-rod-block" class="book-status-rod-block"></div>
-                  </section>
-                  <section class="book-status-section ui-frame-box">
-                    <h3 class="book-status-section-title">装備：エサ・ルアー・狙いのレア度</h3>
-                    <div id="book-status-bait-lure-block" class="book-status-bait-lure-block"></div>
-                    <p class="book-status-hint">待機中に決まる「どのレア度が出やすいか」の倍率です。レア以上では竿のレア補正も掛かります。</p>
-                    <table class="book-status-rarity-table">
-                      <thead><tr><th>レア度</th><th>エサ×ルアー</th><th>竿（レア帯）</th><th>実効</th></tr></thead>
-                      <tbody id="book-status-rarity-tbody"></tbody>
-                    </table>
+                  <div class="book-status-divider"></div>
+                  <section class="book-status-section">
+                    <h3 class="book-status-section-title">現在の能力値</h3>
+                    <p class="book-status-hint">いまの装備とレベルを合算した、実戦での性能です。</p>
+                    <div class="book-status-two-col">
+                      <ul class="book-status-stat-list">
+                        <li class="ui-frame-box" data-stat-key="power" role="button" tabindex="0" aria-selected="true"><span class="book-stat-name">パワー</span><span id="book-status-power" class="book-stat-val"></span></li>
+                        <li class="ui-frame-box" data-stat-key="speed" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">スピード</span><span id="book-status-speed" class="book-stat-val"></span></li>
+                        <li class="ui-frame-box" data-stat-key="control" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">コントロール</span><span id="book-status-control" class="book-stat-val"></span></li>
+                        <li class="ui-frame-box" data-stat-key="rare-hunt" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">ラック</span><span id="book-status-rare-hunt" class="book-stat-val"></span></li>
+                      </ul>
+                      <div class="book-status-detail-note">
+                        <p id="book-status-detail-title" class="book-status-detail-note-title"></p>
+                        <p id="book-status-detail-text" class="book-status-detail-note-text"></p>
+                      </div>
+                    </div>
                   </section>
                 </div>
                 <div class="book-detail-placeholder" id="book-detail-placeholder">
@@ -2701,7 +2829,6 @@ export default class GameScene extends Phaser.Scene {
               </div>
               </div>
             </div>
-          </div>
         </div>
       </div>
     `;
@@ -2781,6 +2908,11 @@ export default class GameScene extends Phaser.Scene {
     const nameEl = panel.querySelector('#book-status-player-name');
     if (nameEl) nameEl.textContent = displayName;
 
+    const iconCanvas = panel.querySelector('#book-status-character-icon-canvas') as HTMLCanvasElement | null;
+    if (iconCanvas) {
+      this.renderCharacterIconToCanvas(iconCanvas, this.getSelectedCharacterId(), this.getSelectedColor());
+    }
+
     const levelEl = panel.querySelector('#book-status-level');
     if (levelEl) levelEl.textContent = String(level);
 
@@ -2807,67 +2939,116 @@ export default class GameScene extends Phaser.Scene {
       pediaEl.textContent = `${caughtNonJunk} / ${total}`;
     }
 
-    const fmtAdd = (v: number) => (v > 0 ? `+${v.toFixed(3)}` : v.toFixed(3));
-    const barB = panel.querySelector('#book-status-bar-bonus');
-    if (barB) barB.textContent = fmtAdd(barBonus);
-    const gaugeB = panel.querySelector('#book-status-gauge-bonus');
-    if (gaugeB) gaugeB.textContent = fmtAdd(gaugeBonus);
-
     const rod = getRodById(pd.equippedRodId);
-    const rodBlock = panel.querySelector('#book-status-rod-block');
-    if (rodBlock) {
-      const fmtMul = (m: number) => `×${m.toFixed(2)}`;
-      rodBlock.innerHTML = `
-        <div class="book-status-line-strong">${rod ? `${rod.icon} ${rod.name}` : '（不明な竿）'}</div>
-        <ul class="book-status-inline-effects">
-          <li><span>投擲距離</span><span>${fmtMul(rod?.castDistanceBonus ?? 1)}</span></li>
-          <li><span>命中中ゲージ上昇</span><span>${fmtMul(rod?.catchRateBonus ?? 1)}</span></li>
-          <li><span>レア帯（レア〜伝説）出現</span><span>${fmtMul(rod?.rareChanceBonus ?? 1)}</span></li>
-        </ul>
-      `;
-    }
-
     const bait = pd.equippedBaitId ? getBaitById(pd.equippedBaitId) : null;
     const lure = pd.equippedLureId ? getLureById(pd.equippedLureId) : null;
-    const bl = panel.querySelector('#book-status-bait-lure-block');
-    if (bl) {
-      const baitLine = bait
-        ? `${bait.icon} ${bait.name}（所持 ${getBaitCount(pd, bait.id)}）`
-        : 'なし';
-      const lureLine = lure ? `${lure.icon} ${lure.name}` : 'なし';
-      bl.innerHTML = `
-        <div class="book-status-equip-line"><span class="book-status-equip-label">エサ</span><span>${baitLine}</span></div>
-        <div class="book-status-equip-line"><span class="book-status-equip-label">ルアー</span><span>${lureLine}</span></div>
-      `;
+    const addBonus = (a: number, b: number, c: number = 1.0) => {
+      const combined = 1.0 + (a - 1.0) + (b - 1.0) + (c - 1.0);
+      return Math.max(0.05, combined);
+    };
+    const fmtStat = (v: number, digits: number = 3) => v.toFixed(digits);
+
+    // 実効能力（装備+レベル）
+    const fightCfg = config.fighting;
+
+    const baseGaugeSpeed = fightCfg['5-10_ゲージ増加速度'];
+    const rodCatchAdd = baseGaugeSpeed * ((rod?.catchRateBonus ?? 1) - 1.0);
+
+    const baseBarHeight = fightCfg['5-9_バー判定範囲'];
+    const effectiveBarHeight = Math.min(1.0, baseBarHeight + barBonus);
+
+    const rareRod = rod?.rareChanceBonus ?? 1;
+    const rareEff = addBonus(bait?.rareBonus ?? 1, lure?.rareBonus ?? 1, rareRod);
+    const epicEff = addBonus(bait?.epicBonus ?? 1, lure?.epicBonus ?? 1, rareRod);
+    const legEff = addBonus(bait?.legendaryBonus ?? 1, lure?.legendaryBonus ?? 1, rareRod);
+    const rareHuntScore = ((rareEff + epicEff + legEff) / 3 - 1) * 100;
+
+    const powerEl = panel.querySelector('#book-status-power');
+    if (powerEl) powerEl.textContent = fmtStat(rod?.castDistanceBonus ?? 1, 3);
+    const speedEl = panel.querySelector('#book-status-speed');
+    if (speedEl) speedEl.textContent = fmtStat(1 + (rodCatchAdd + gaugeBonus) / Math.max(0.0001, baseGaugeSpeed), 3);
+    const controlEl = panel.querySelector('#book-status-control');
+    if (controlEl) controlEl.textContent = fmtStat(effectiveBarHeight, 3);
+    const rareHuntEl = panel.querySelector('#book-status-rare-hunt');
+    if (rareHuntEl) rareHuntEl.textContent = fmtStat(1 + (rareHuntScore / 100), 3);
+
+    this.setupStatusStatSelector(panel);
+
+    // 詳細項目（キャスト/ファイト/装備）は非表示運用のため、ここでは更新しない
+  }
+
+  private setupStatusStatSelector(panel: HTMLElement) {
+    const items = Array.from(panel.querySelectorAll('.book-status-stat-list li')) as HTMLElement[];
+    if (!items.length) return;
+
+    const detailTitleEl = panel.querySelector('#book-status-detail-title') as HTMLElement | null;
+    const detailTextEl = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
+    if (!detailTitleEl || !detailTextEl) return;
+
+    const statDetails: Record<'power' | 'speed' | 'control' | 'rare-hunt', { title: string; text: string }> = {
+      'power': {
+        title: 'パワー',
+        text: '遠くまで投げるための能力。陸地から遠いほど大きい魚が釣れる。',
+      },
+      'speed': {
+        title: 'スピード',
+        text: 'ヒット時にゲージを伸ばす速さ。高いほど捕獲を安定させやすい。',
+      },
+      'control': {
+        title: 'コントロール',
+        text: 'ファイト中の判定ゾーンの広さ。高いほど操作ミスの影響を受けにくい。',
+      },
+      'rare-hunt': {
+        title: 'ラック',
+        text: 'レア魚と出会う総合力。エサ・ルアー・竿の効果で上昇する。',
+      },
+    };
+
+    const applySelection = (nextKey: 'power' | 'speed' | 'control' | 'rare-hunt') => {
+      this.selectedStatusStatKey = nextKey;
+      items.forEach((item) => {
+        const isSelected = item.dataset.statKey === nextKey;
+        item.classList.toggle('is-selected', isSelected);
+        item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      });
+      const detail = statDetails[nextKey];
+      detailTitleEl.textContent = detail.title;
+      detailTextEl.textContent = detail.text;
+    };
+
+    items.forEach((item) => {
+      if (item.dataset.statBound === '1') return;
+      item.dataset.statBound = '1';
+      item.addEventListener('click', () => {
+        const key = item.dataset.statKey as 'power' | 'speed' | 'control' | 'rare-hunt' | undefined;
+        if (!key) return;
+        applySelection(key);
+      });
+      item.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        const key = item.dataset.statKey as 'power' | 'speed' | 'control' | 'rare-hunt' | undefined;
+        if (!key) return;
+        applySelection(key);
+      });
+    });
+
+    applySelection(this.selectedStatusStatKey);
+  }
+
+  private moveStatusStatSelection(panel: HTMLElement, delta: number) {
+    const items = Array.from(panel.querySelectorAll('.book-status-stat-list li')) as HTMLElement[];
+    if (!items.length) return;
+    const currentIndex = Math.max(0, this.statusStatOrder.indexOf(this.selectedStatusStatKey));
+    const nextIndex = Math.max(0, Math.min(items.length - 1, currentIndex + delta));
+    const nextItem = items[nextIndex];
+    if (!nextItem) return;
+    const nextKey = nextItem.dataset.statKey as 'power' | 'speed' | 'control' | 'rare-hunt' | undefined;
+    if (!nextKey) return;
+    if (nextKey !== this.selectedStatusStatKey) {
+      nextItem.click();
     }
-
-    const rodRare = rod?.rareChanceBonus ?? 1;
-    const bCommon = (bait?.commonBonus ?? 1) * (lure?.commonBonus ?? 1);
-    const bUncommon = (bait?.uncommonBonus ?? 1) * (lure?.uncommonBonus ?? 1);
-    const bRare = (bait?.rareBonus ?? 1) * (lure?.rareBonus ?? 1);
-    const bEpic = (bait?.epicBonus ?? 1) * (lure?.epicBonus ?? 1);
-    const bLeg = (bait?.legendaryBonus ?? 1) * (lure?.legendaryBonus ?? 1);
-
-    const rows: { label: string; baitLure: number; rodPart: string | number; eff: number }[] = [
-      { label: 'コモン', baitLure: bCommon, rodPart: '—', eff: bCommon },
-      { label: 'アンコモン', baitLure: bUncommon, rodPart: '—', eff: bUncommon },
-      { label: 'レア', baitLure: bRare, rodPart: rodRare, eff: bRare * rodRare },
-      { label: 'エピック', baitLure: bEpic, rodPart: rodRare, eff: bEpic * rodRare },
-      { label: 'レジェンダリー', baitLure: bLeg, rodPart: rodRare, eff: bLeg * rodRare },
-    ];
-
-    const fmtMul2 = (m: number) => `×${m.toFixed(2)}`;
-    const tbody = panel.querySelector('#book-status-rarity-tbody');
-    if (tbody) {
-      tbody.innerHTML = rows.map(r => `
-        <tr>
-          <td>${r.label}</td>
-          <td>${fmtMul2(r.baitLure)}</td>
-          <td>${typeof r.rodPart === 'number' ? fmtMul2(r.rodPart) : r.rodPart}</td>
-          <td class="book-status-eff">${fmtMul2(r.eff)}</td>
-        </tr>
-      `).join('');
-    }
+    nextItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   updateUnifiedBookList() {
@@ -2877,7 +3058,7 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookListScrollElement.innerHTML = '';
     this.unifiedBookListItems = [];
 
-    // 実績タブ以外の場合は、実績タブ用のスタイルをリセット
+    // 実績タブ以外の場合は、実績タブ用のインラインをリセット
     if (this.unifiedBookTab !== 'achievement') {
       this.unifiedBookListScrollElement.classList.remove('achievement-list-container');
       this.unifiedBookListScrollElement.style.display = '';
@@ -2886,6 +3067,8 @@ export default class GameScene extends Phaser.Scene {
       this.unifiedBookListScrollElement.style.gridTemplateRows = '';
       this.unifiedBookListScrollElement.style.gap = '';
       this.unifiedBookListScrollElement.style.padding = '';
+      this.unifiedBookListScrollElement.style.width = '';
+      this.unifiedBookListScrollElement.style.alignItems = '';
     }
 
     if (this.unifiedBookTab === 'status') {
@@ -2928,15 +3111,7 @@ export default class GameScene extends Phaser.Scene {
         this.unifiedBookListItems.push(item);
       });
     } else if (this.unifiedBookTab === 'achievement') {
-      // 実績タブ - グリッド形式で表示
       const categories = getAllCategories();
-      this.unifiedBookListScrollElement.classList.add('achievement-list-container');
-      this.unifiedBookListScrollElement.style.display = 'grid';
-      this.unifiedBookListScrollElement.style.gridTemplateColumns = 'repeat(2, 1fr)';
-      this.unifiedBookListScrollElement.style.gridTemplateRows = 'repeat(4, 1fr)';
-      this.unifiedBookListScrollElement.style.gap = '14px';
-      this.unifiedBookListScrollElement.style.padding = '14px';
-      
       categories.forEach((category, index) => {
         const achievements = getAchievementsByCategory(category);
         const categoryItem = this.createAchievementCategoryItem(category, achievements.length, index);
@@ -3236,9 +3411,7 @@ export default class GameScene extends Phaser.Scene {
       
       // レアリティスター表示
       const starCount = rarityStarCount[fish.rarity];
-      const color = rarityColors[fish.rarity];
-      // レアリティ1（COMMON）のアクティブな星の色を特別に設定
-      const colorHex = fish.rarity === 'common' ? '#aa8783' : `#${color.toString(16).padStart(6, '0')}`;
+      const colorHex = this.getRarityColorCssValue(fish.rarity);
       let starsHTML = '';
       for (let i = 0; i < 5; i++) {
         if (i < starCount) {
@@ -3364,7 +3537,7 @@ export default class GameScene extends Phaser.Scene {
       name.textContent = '？？？';
       const starCount = rarityStarCount[fish.rarity];
       // レアリティ1（COMMON）のアクティブな星の色を特別に設定（未捕獲の場合も）
-      const inactiveStarColor = fish.rarity === 'common' ? '#aa8783' : '#666666';
+      const inactiveStarColor = this.getRarityColorCssValue(fish.rarity);
       let starsHTML = '';
       for (let i = 0; i < 5; i++) {
         if (i < starCount) {
@@ -3476,8 +3649,7 @@ export default class GameScene extends Phaser.Scene {
 
   createAchievementCategoryItem(category: string, count: number, index: number): HTMLElement {
     const item = document.createElement('div');
-    // 実績タブ用のクラス名（リスト形式）
-    item.className = 'achievement-category-list-item ui-frame-box';
+    item.className = 'achievement-category-item';
     item.setAttribute('data-category', category);
     item.setAttribute('data-index', index.toString());
 
@@ -3492,16 +3664,25 @@ export default class GameScene extends Phaser.Scene {
     };
 
     const data = categoryData[category] || { name: category, emoji: '⭐', char: category[0] };
-    const unlockedCount = getAchievementsByCategory(category).filter(a => 
+    const unlockedCount = getAchievementsByCategory(category).filter((a) =>
       this.playerData.achievements.has(a.id)
     ).length;
 
-    // リスト形式のレイアウト
+    const segments: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const on = i < unlockedCount;
+      segments.push(
+        `<span class="achievement-category-seg ${on ? 'achievement-category-seg--on' : 'achievement-category-seg--off'}" aria-hidden="true"></span>`
+      );
+    }
+
     item.innerHTML = `
-      <div class="achievement-category-list-icon">${data.emoji}</div>
-      <div class="achievement-category-list-info">
-        <div class="achievement-category-list-name">${data.name}</div>
-        <div class="achievement-category-list-count">${unlockedCount}/${count} 達成</div>
+      <div class="achievement-category-item__head">
+        <span class="achievement-category-item__name">${displayAchievementEmoji(data.emoji)} ${data.name}</span>
+        <span class="achievement-category-item__count">${unlockedCount}/${count} 達成</span>
+      </div>
+      <div class="achievement-category-item__segments" role="img" aria-label="カテゴリ達成 ${unlockedCount} / ${count}">
+        ${segments.join('')}
       </div>
     `;
 
@@ -3530,6 +3711,64 @@ export default class GameScene extends Phaser.Scene {
     this.updateUnifiedBookDetail();
   }
 
+  /**
+   * Figma 47:175 達成（橙枠・半透明行・CLEAR）/ 47:633 進行中（sand・報酬ボックス・分割メタ）
+   */
+  private buildAchievementCardHTML(achievement: AchievementConfig, isUnlocked: boolean): string {
+    const progress = getAchievementProgress(this.playerData, achievement);
+    const progressPercent = Math.round(progress * 100);
+    const prog = getAchievementProgressDisplay(this.playerData, achievement);
+    const dispCur = isUnlocked ? prog.target : prog.current;
+    const dispTgt = prog.target;
+    const unitPart = prog.unit ? ` ${prog.unit}` : '';
+    const progressLabel = `${dispCur} / ${dispTgt}${unitPart}`;
+    const reward = achievement.reward;
+    const rewardBlock = reward
+      ? `
+      <div class="achievement-detail-reward">
+        <span class="achievement-detail-reward__label">報酬</span>
+        <div class="achievement-detail-reward__values">
+          ${reward.money ? `<span class="achievement-detail-reward__line">💰${reward.money}G</span>` : ''}
+          ${reward.exp ? `<span class="achievement-detail-reward__line">⭐${reward.exp}EXP</span>` : ''}
+        </div>
+      </div>`
+      : '';
+    const rowClass = isUnlocked ? ' achievement-detail-item__row--cleared' : '';
+    const stamp = isUnlocked
+      ? `
+      <div class="achievement-detail-stamp" aria-hidden="true">
+        <img class="achievement-detail-stamp__img" src="/images/ui/Book%20UI/clear.png" alt="" width="203" height="94" decoding="async" />
+      </div>`
+      : '';
+    const fillW = isUnlocked ? 100 : progressPercent;
+    const pctLabel = isUnlocked ? 100 : progressPercent;
+    return `
+      <div class="achievement-detail-item__inner">
+        <div class="achievement-detail-item__row${rowClass}">
+          <div class="achievement-detail-item__emoji">${displayAchievementEmoji(achievement.emoji)}</div>
+          <div class="achievement-detail-item__body">
+            <div class="achievement-detail-item__top">
+              <div class="achievement-detail-item__textcol">
+                <div class="achievement-detail-item__title">${achievement.name}</div>
+                <p class="achievement-detail-item__desc">${achievement.description}</p>
+              </div>
+              ${rewardBlock}
+            </div>
+            <div class="achievement-detail-item__progress">
+              <div class="achievement-detail-item__track">
+                <div class="achievement-detail-item__fill" style="width: ${fillW}%;"></div>
+              </div>
+              <div class="achievement-detail-item__meta">
+                <span>${progressLabel}</span>
+                <span>${pctLabel}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        ${stamp}
+      </div>`;
+  }
+
   updateAchievementDetail(category: string) {
     if (!this.unifiedBookDetailElement || !this.unifiedBookDetailPlaceholderElement) return;
 
@@ -3539,52 +3778,18 @@ export default class GameScene extends Phaser.Scene {
 
     // 実績一覧を表示
     const achievements = getAchievementsByCategory(category);
-    
-    // 詳細エリアをクリアして実績一覧用のHTMLに変更
-    this.unifiedBookDetailElement.innerHTML = `
-      <div class="achievement-detail-list" style="
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        padding: 10px;
-        max-height: 100%;
-        overflow-y: auto;
-      ">
-        ${achievements.map(achievement => {
-          const isUnlocked = this.playerData.achievements.has(achievement.id);
-          const progress = getAchievementProgress(this.playerData, achievement);
-          const progressPercent = Math.round(progress * 100);
 
-          return `
-            <div class="achievement-detail-item ui-frame-box ${isUnlocked ? 'unlocked' : 'locked'}" style="
-              padding: 15px;
-              opacity: ${isUnlocked ? '1' : '0.7'};
-            ">
-              <div style="display: flex; align-items: center; gap: 15px;">
-                <div style="font-size: 48px;">${achievement.emoji}</div>
-                <div style="flex: 1;">
-                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
-                    <span style="font-size: 20px; font-weight: bold;">${achievement.name}</span>
-                    ${isUnlocked ? '<span style="color: #4CAF50;">✅</span>' : ''}
-                  </div>
-                  <div style="font-size: 14px; color: #ccc; margin-bottom: 10px;">${achievement.description}</div>
-                  ${!isUnlocked ? `
-                    <div style="margin-top: 10px;">
-                      <div style="background: #333; border-radius: 5px; height: 20px; overflow: hidden;">
-                        <div style="background: #4CAF50; height: 100%; width: ${progressPercent}%; transition: width 0.3s;"></div>
-                      </div>
-                      <div style="font-size: 12px; color: #aaa; margin-top: 5px;">進捗: ${progressPercent}%</div>
-                    </div>
-                  ` : achievement.reward ? `
-                    <div style="font-size: 12px; color: #ffd700; margin-top: 5px;">
-                      報酬: ${achievement.reward.money ? `💰 ${achievement.reward.money}G` : ''} ${achievement.reward.exp ? `⭐ ${achievement.reward.exp}EXP` : ''}
-                    </div>
-                  ` : ''}
-                </div>
-              </div>
-            </div>
-          `;
-        }).join('')}
+    this.unifiedBookDetailElement.innerHTML = `
+      <div class="achievement-detail-list">
+        ${achievements
+          .map((achievement) => {
+            const isUnlocked = this.playerData.achievements.has(achievement.id);
+            return `
+            <div class="achievement-detail-item ui-frame-box ${isUnlocked ? 'unlocked' : 'locked'}">
+              ${this.buildAchievementCardHTML(achievement, isUnlocked)}
+            </div>`;
+          })
+          .join('')}
       </div>
     `;
   }
@@ -3647,22 +3852,6 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // リストが空（ステータスタブなど）のときは、左右の初回押下だけで隣タブへ
-    if (this.unifiedBookListItems.length === 0) {
-      if (this.unifiedBookTab === 'status') {
-        const edgeTabs: Array<'inventory' | 'pedia' | 'achievement' | 'status'> = [
-          'inventory', 'pedia', 'achievement', 'status',
-        ];
-        const ti = edgeTabs.indexOf(this.unifiedBookTab);
-        if (ti >= 0 && Phaser.Input.Keyboard.JustDown(this.cursors.left) && ti > 0) {
-          this.switchUnifiedBookTab(edgeTabs[ti - 1]);
-        }
-        if (ti >= 0 && Phaser.Input.Keyboard.JustDown(this.cursors.right) && ti < edgeTabs.length - 1) {
-          this.switchUnifiedBookTab(edgeTabs[ti + 1]);
-        }
-      }
-      return;
-    }
-
     const now = this.time.now;
 
     // 現在の矢印方向（複数押しの場合は優先度を固定）
@@ -3695,12 +3884,43 @@ export default class GameScene extends Phaser.Scene {
 
     if (!shouldMove) return;
 
+    // 次回移動タイミング更新
+    if (this.unifiedBookNavRepeatDir !== dir) {
+      this.unifiedBookNavRepeatDir = dir;
+      this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+    } else {
+      this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavRepeatIntervalMs;
+    }
+
+    if (this.unifiedBookListItems.length === 0) {
+      if (this.unifiedBookTab === 'status') {
+        const statusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
+        if (statusPanel && (dir === 'up' || dir === 'down')) {
+          this.moveStatusStatSelection(statusPanel, dir === 'up' ? -1 : 1);
+          return;
+        }
+        if (dir === 'left' || dir === 'right') {
+          const edgeTabs: Array<'inventory' | 'pedia' | 'achievement' | 'status'> = [
+            'inventory', 'pedia', 'achievement', 'status',
+          ];
+          const ti = edgeTabs.indexOf(this.unifiedBookTab);
+          if (ti >= 0 && dir === 'left' && ti > 0) {
+            this.switchUnifiedBookTab(edgeTabs[ti - 1]);
+          }
+          if (ti >= 0 && dir === 'right' && ti < edgeTabs.length - 1) {
+            this.switchUnifiedBookTab(edgeTabs[ti + 1]);
+          }
+        }
+      }
+      return;
+    }
+
     // 現在の選択インデックスを取得（インベントリは同じ `fish.id` が複数枚あり得るため index 基準）
     let currentIndex = this.unifiedBookSelectedIndex ?? 0;
     const lastIndex = this.unifiedBookListItems.length - 1;
     if (currentIndex < 0 || currentIndex > lastIndex) currentIndex = 0;
 
-    const columns = this.unifiedBookTab === 'achievement' ? 2 : 3;
+    const columns = this.unifiedBookTab === 'achievement' ? 1 : 3;
 
     // 矢印キーで選択移動（グリッド基準）
     let newIndex = currentIndex;
@@ -3712,14 +3932,6 @@ export default class GameScene extends Phaser.Scene {
       if (currentIndex % columns !== 0) newIndex = currentIndex - 1;
     } else if (dir === 'right') {
       if (currentIndex % columns !== columns - 1 && currentIndex + 1 <= lastIndex) newIndex = currentIndex + 1;
-    }
-
-    // 次回移動タイミング更新
-    if (this.unifiedBookNavRepeatDir !== dir) {
-      this.unifiedBookNavRepeatDir = dir;
-      this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
-    } else {
-      this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavRepeatIntervalMs;
     }
 
     // 端まで到達しているなら、左右入力で隣のタブへ遷移
@@ -3897,8 +4109,7 @@ export default class GameScene extends Phaser.Scene {
                 slotName.textContent = fish.name;
                 slotRarity.textContent = rarityStars[fish.rarity];
                 
-                const color = rarityColors[fish.rarity];
-                const colorHex = `#${color.toString(16).padStart(6, '0')}`;
+                const colorHex = this.getRarityColorCssValue(fish.rarity);
                 slotBg.style.backgroundColor = colorHex;
                 slotBg.style.opacity = '0.3';
                 slotBg.style.borderColor = colorHex;
@@ -4040,9 +4251,7 @@ export default class GameScene extends Phaser.Scene {
 
         nameText.textContent = fish.name;
         const starCount = rarityStarCount[fish.rarity];
-        const color = rarityColors[fish.rarity];
-        // レアリティ1（COMMON）のアクティブな星の色を特別に設定
-        const colorHex = fish.rarity === 'common' ? '#aa8783' : `#${color.toString(16).padStart(6, '0')}`;
+        const colorHex = this.getRarityColorCssValue(fish.rarity);
         rarityText.innerHTML = '';
         rarityText.style.color = colorHex;
         for (let i = 0; i < 5; i++) {
@@ -4074,8 +4283,8 @@ export default class GameScene extends Phaser.Scene {
         nameText.textContent = '？？？';
         const starCount = rarityStarCount[fish.rarity];
         rarityText.innerHTML = '';
-        // レアリティ1（COMMON）のアクティブな星の色を特別に設定（未捕獲の場合も）
-        rarityText.style.color = fish.rarity === 'common' ? '#aa8783' : '#666666';
+        // 未捕獲時もレアリティトークンの色を使用
+        rarityText.style.color = this.getRarityColorCssValue(fish.rarity);
         for (let i = 0; i < 5; i++) {
           const star = document.createElement('span');
           star.className = 'star';
@@ -4396,6 +4605,8 @@ export default class GameScene extends Phaser.Scene {
 
       const name = nameInput?.value ?? '';
       this.saveCharacterSettings(selectedId, name, this.characterColorTemp);
+      this.renderStatusCharacterIcon(selectedId, this.characterColorTemp);
+      this.updateStatusUI();
       alert('設定を保存しました。\nキャラクター画像の変更を反映するにはページを再読み込みしてください。');
     });
 
@@ -4439,52 +4650,44 @@ export default class GameScene extends Phaser.Scene {
     const frameSize = 24;
     const scale = 4;
     const displaySize = frameSize * scale; // 96
-    const idleFrameCount = 8; // アイドル 0-7
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = '/' + character.sheetPath;
 
     img.onload = () => {
-      let frame = 0;
       const tintColor = (colorHex ?? this.characterColorTemp ?? this.getSelectedColor()).toLowerCase();
-      const draw = () => {
-        ctx.imageSmoothingEnabled = false;
-        ctx.clearRect(0, 0, displaySize, displaySize);
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, displaySize, displaySize);
 
-        const sx = frame * frameSize;
-        const sy = 0;
-        ctx.drawImage(img, sx, sy, frameSize, frameSize, 0, 0, displaySize, displaySize);
+      // レベルアイコンと同じく、1コマ目の静止画像を描画
+      const sx = 0;
+      const sy = 0;
+      ctx.drawImage(img, sx, sy, frameSize, frameSize, 0, 0, displaySize, displaySize);
 
-        // Phaser の setTint に近い挙動: 各ピクセルに乗算
-        if (tintColor && tintColor !== '#ffffff') {
-          const m = tintColor.match(/^#([0-9a-f]{6})$/);
-          if (m) {
-            const tint = parseInt(m[1], 16);
-            const tr = (tint >> 16) & 0xff;
-            const tg = (tint >> 8) & 0xff;
-            const tb = tint & 0xff;
-            const rf = tr / 255;
-            const gf = tg / 255;
-            const bf = tb / 255;
+      // Phaser の setTint に近い挙動: 各ピクセルに乗算
+      if (tintColor && tintColor !== '#ffffff') {
+        const m = tintColor.match(/^#([0-9a-f]{6})$/);
+        if (m) {
+          const tint = parseInt(m[1], 16);
+          const tr = (tint >> 16) & 0xff;
+          const tg = (tint >> 8) & 0xff;
+          const tb = tint & 0xff;
+          const rf = tr / 255;
+          const gf = tg / 255;
+          const bf = tb / 255;
 
-            const imageData = ctx.getImageData(0, 0, displaySize, displaySize);
-            const data = imageData.data;
-            for (let i = 0; i < data.length; i += 4) {
-              const alpha = data[i + 3];
-              if (alpha === 0) continue; // 完全透明は無視
-              data[i] = data[i] * rf;
-              data[i + 1] = data[i + 1] * gf;
-              data[i + 2] = data[i + 2] * bf;
-            }
-            ctx.putImageData(imageData, 0, 0);
+          const imageData = ctx.getImageData(0, 0, displaySize, displaySize);
+          const data = imageData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const alpha = data[i + 3];
+            if (alpha === 0) continue; // 完全透明は無視
+            data[i] = data[i] * rf;
+            data[i + 1] = data[i + 1] * gf;
+            data[i + 2] = data[i + 2] * bf;
           }
+          ctx.putImageData(imageData, 0, 0);
         }
-      };
-      draw();
-      this.characterPreviewIntervalId = window.setInterval(() => {
-        frame = (frame + 1) % idleFrameCount;
-        draw();
-      }, 100);
+      }
     };
   }
 
@@ -4524,38 +4727,11 @@ export default class GameScene extends Phaser.Scene {
     const achievements = getAchievementsByCategory(category);
     listElement.innerHTML = '';
 
-    achievements.forEach(achievement => {
+    achievements.forEach((achievement) => {
       const isUnlocked = this.playerData.achievements.has(achievement.id);
-      const progress = getAchievementProgress(this.playerData, achievement);
-      const progressPercent = Math.round(progress * 100);
-
-      const rewardText = achievement.reward
-        ? `報酬: ${achievement.reward.money ? `💰 ${achievement.reward.money}G` : ''} ${achievement.reward.exp ? `⭐ ${achievement.reward.exp}EXP` : ''}`.trim()
-        : '';
       const itemHTML = `
         <div class="achievement-item ui-frame-box ${isUnlocked ? 'unlocked' : 'locked'}">
-          <div class="achievement-item-main">
-            <div class="achievement-item-emoji">${achievement.emoji}</div>
-            <div class="achievement-item-body">
-              <div class="achievement-item-title-row">
-                <span class="achievement-item-title">${achievement.name}</span>
-                ${isUnlocked ? '<span class="achievement-item-unlocked">✅</span>' : ''}
-              </div>
-              <div class="achievement-item-description">${achievement.description}</div>
-              ${!isUnlocked ? `
-                <div class="achievement-item-progress-wrap">
-                  <div class="achievement-item-progress-bar">
-                    <div class="achievement-item-progress-fill" style="width: ${progressPercent}%;"></div>
-                  </div>
-                  <div class="achievement-item-progress-text">進捗: ${progressPercent}%</div>
-                </div>
-              ` : rewardText ? `
-                <div class="achievement-item-reward">
-                  ${rewardText}
-                </div>
-              ` : ''}
-            </div>
-          </div>
+          ${this.buildAchievementCardHTML(achievement, isUnlocked)}
         </div>
       `;
 
@@ -4571,7 +4747,7 @@ export default class GameScene extends Phaser.Scene {
     const descEl = notification.querySelector('#achievement-notification-desc') as HTMLElement;
     const rewardEl = notification.querySelector('#achievement-notification-reward') as HTMLElement;
 
-    if (nameEl) nameEl.textContent = `${achievement.emoji} ${achievement.name}`;
+    if (nameEl) nameEl.textContent = `${displayAchievementEmoji(achievement.emoji)} ${achievement.name}`;
     if (descEl) descEl.textContent = achievement.description;
     
     if (achievement.reward) {
