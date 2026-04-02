@@ -45,6 +45,7 @@ img {
   --space-10: 10px;
   --space-12: 12px;
   --space-16: 16px;
+  --space-20: 20px;
   --bg-panel-inner: #f2e2b6;
   --color-semantic-bg-book-container: #f2e2b6;
   --color-semantic-border-book: #5e2e1c;
@@ -66,6 +67,7 @@ img {
   --font-size-achievement-category-count: 14px;
   --font-size-achievement-category-name: 18px;
   --font-size-achievement-reward-label: 14px;
+  --font-size-achievement-reward-line: 16px;
 
   --color-primitive-brown-400: #4a3020;
   --color-primitive-orange-600: #c2681f;
@@ -258,7 +260,7 @@ img {
 #level-text.level-label-box {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 0;
   background: unset;
   box-shadow: none;
@@ -1266,6 +1268,9 @@ span.level-label-value {
   height: 100%;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  /* body overflow:hidden 下で縦センター時に上端が欠けないよう余白 + 溢れ時は上寄せ */
+  padding-block: var(--space-16);
   justify-content: center;
   align-items: center;
   z-index: 2000;
@@ -1273,6 +1278,16 @@ span.level-label-value {
   visibility: hidden;
   opacity: 0;
   transition: visibility 0s 0.3s, opacity 0.3s ease-out;
+  /* 上部タブ: 行の最小高さ（各ボタン min-height と揃える） */
+  --book-tab-row-min-height: 72px;
+  --book-tab-button-min-height: 72px;
+  --book-tab-icon-size: 30px;
+}
+
+@supports (justify-content: safe center) {
+  #book-ui {
+    justify-content: safe center;
+  }
 }
 
 /* 図鑑/統合BookUIは枠が窮屈に見えるため、9スライス枠の倍率を少し下げる */
@@ -1282,7 +1297,7 @@ span.level-label-value {
 
 /* 統合BookUI 上部タブ: 非アクティブ=uiframe + 薄ベージュ塗り / アクティブ=border + クリーム塗り
  * 9スライスはフル表示（clip-path で下端だけ切ると左右ボーダーが途切れて見える）。
- * タブ行は overflow で隠さず、ラベルはボタン内で上寄せ。 */
+ * ヘッダーは min-height + overflow: visible。ラベル有り無しで高さが変わらないようボタンに min-height。 */
 #book-ui .book-tab-button.ui-frame-box {
   --frame-fill-color: #CBB792;
 }
@@ -1299,9 +1314,20 @@ span.level-label-value {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-/* 選択タブより手前に見せる：非選択だけ少し下げる */
-#book-ui .book-tab-button.ui-frame-box:not(.active) {
-  transform: translateY(4px);
+/* アクティブタブだけ少し上げる（非選択は translateY(0) でトランジション） */
+#book-ui .book-tab-button {
+  transform: translateY(0);
+}
+
+#book-ui .book-tab-button.active {
+  transform: translateY(-6px);
+}
+
+/* nes.css reboot の button:focus リング（オレンジの枠）を出さない。選択状態は .active の枠で示す */
+#book-ui .book-tab-button:focus,
+#book-ui .book-tab-button:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 /* #book-list-scroll 配下の9スライス枠素材だけ差し替え（他は元に戻す） */
@@ -1315,15 +1341,14 @@ span.level-label-value {
 }
 
 /* 統合BookUI（左リスト）の選択枠だけ border.png を使う */
-#book-ui #book-list-scroll .book-list-item.selected.ui-frame-box::after {
+#book-ui #book-list-scroll .book-list-item.selected.ui-frame-box::after,
+#book-ui #book-list-scroll .achievement-category-item.achievement-category-selected.ui-frame-box::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-/* 実績カテゴリ（Figma: フラットリスト、選択はアウトライン） */
-#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.achievement-category-selected {
-  outline: 2px solid var(--color-primitive-orange-600);
-  outline-offset: 2px;
-  border-radius: 2px;
+/* 実績カテゴリ選択中の塗りは他タブのカード選択と統一 */
+#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.achievement-category-selected.ui-frame-box::before {
+  --frame-fill-color: #e8cfa6;
 }
 
 #book-ui.is-open.is-topmost {
@@ -1342,7 +1367,7 @@ span.level-label-value {
 .book-container {
   border: none;
   width: 90%;
-  max-width: 800px;
+  max-width: 740px;
   height: 85%;
   max-height: 800px;
   display: flex;
@@ -1357,7 +1382,7 @@ span.level-label-value {
   overflow: hidden;
   gap: var(--space-8);
   margin: 0;
-  padding: var(--space-12);
+  padding: var(--space-20);
   box-sizing: border-box;
 }
 
@@ -1386,18 +1411,19 @@ span.level-label-value {
 
 /* タブ行：#book-ui 直下（枠の外）で book-container の上に置く */
 #book-ui > .book-header {
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
-  height: 42px;
+  min-height: var(--book-tab-row-min-height);
+  height: auto;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
   gap: 0;
   width: 90%;
-  max-width: 800px;
+  max-width: 740px;
   box-sizing: border-box;
-  padding: 0 14px 0 20px;
+  padding: 0 var(--space-16) 0 var(--space-16);
   margin: 0;
   border-bottom: none;
   background: unset;
@@ -1407,10 +1433,13 @@ span.level-label-value {
   display: flex;
   flex-wrap: nowrap;
   justify-content: flex-start;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 0;
   width: 100%;
-  height: 42px;
+  max-width: 740px;
+  padding-top: 20px;
+  min-height: 0;
+  height: 70px;
 }
 
 .book-tab-button {
@@ -1418,26 +1447,27 @@ span.level-label-value {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: 10px 16px 24px 14px;
+  min-height: var(--book-tab-button-min-height);
+  padding: var(--space-12) 18px 28px var(--space-16);
   height: fit-content;
   color: #320e0e;
-  font-size: 18px;
+  font-size: var(--font-size-achievement-item-title);
   font-weight: normal;
   cursor: pointer;
-  font-family: 'DotGothic16', sans-serif;
-  transition: filter 0.1s, transform 0.12s ease;
+  font-family: var(--font-family-body);
+  transition: filter 0.1s ease, transform 0.18s ease-out;
 }
 
 .book-tab-button-inner {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 2px;
+  gap: var(--space-4);
 }
 
-.book-tab-icon {
-  width: 26px;
-  height: 26px;
+#book-ui .book-tab-icon {
+  width: var(--book-tab-icon-size);
+  height: var(--book-tab-icon-size);
   flex-shrink: 0;
   object-fit: contain;
   display: block;
@@ -1499,8 +1529,17 @@ span.level-label-value {
   display: none;
 }
 
+.book-list-scroll-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
 .book-list-scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 8px 16px 4px;
@@ -1509,6 +1548,52 @@ span.level-label-value {
   column-gap: 2px;
   row-gap: 2px;
   align-content: start;
+}
+
+/* 左リスト: バー非表示。下に続きがあるときだけグラデで示す（JS で .is-visible） */
+#book-ui #book-list-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+#book-ui #book-list-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.book-list-scroll-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 52px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+/* 本の内側（.book-container 塗り）と同じトークンで馴染ませる */
+.book-list-scroll-fade--bottom {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--color-semantic-bg-book-container) 94%, transparent) 0%,
+    color-mix(in srgb, var(--color-semantic-bg-book-container) 52%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+.book-list-scroll-fade--top {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--color-semantic-bg-book-container) 94%, transparent) 0%,
+    color-mix(in srgb, var(--color-semantic-bg-book-container) 52%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+.book-list-scroll-fade.is-visible {
+  opacity: 1;
 }
 
 .book-list-item {
@@ -1611,10 +1696,34 @@ span.level-label-value {
   flex-direction: column;
   background: transparent;
   padding: 4px 6px 10px 8px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible;
   min-height: 0;
   gap: 10px;
+}
+
+.book-right-pane-scroll-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.book-right-pane-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 右ペイン本文エリア: バー非表示＋上下グラデは #book-right-pane-fade-* */
+#book-ui .book-right-pane-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+#book-ui .book-right-pane-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 /* 実績タブ: Figma 19:241 左右比率・スクロール */
@@ -1645,7 +1754,7 @@ span.level-label-value {
 }
 
 #book-ui[data-tab="achievement"] .book-right-pane-inner {
-  padding: var(--space-8);
+  padding: var(--space-4) var(--space-8);
   gap: var(--space-16);
   box-sizing: border-box;
   width: 100%;
@@ -1653,7 +1762,7 @@ span.level-label-value {
 }
 
 .book-right-pane-inner {
-  padding: 16px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
@@ -1701,7 +1810,7 @@ span.level-label-value {
 .book-detail-sections {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   width: 100%;
 }
 
@@ -1711,6 +1820,7 @@ span.level-label-value {
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  padding-top: 5px;
   margin-bottom: 0;
 }
 
@@ -1773,6 +1883,7 @@ span.level-label-value {
   border-style: solid;
   border-width: 6px;
   border-color: var(--frame-fill-color);
+  border-radius: 8px;
 }
 
 .book-detail-image-container-new::before {
@@ -1802,7 +1913,7 @@ span.level-label-value {
 /* 統計情報: 売値とサイズ */
 .book-detail-stats {
   display: flex;
-  gap: 4px;
+  gap: 8px;
   width: 100%;
   background: unset;
 }
@@ -1815,6 +1926,7 @@ span.level-label-value {
   gap: 2px;
   height: 42px;
   background-color: var(--frame-fill-color);
+  border-radius: 8px;
 }
 
 
@@ -1878,6 +1990,7 @@ span.level-label-value {
   width: 100%;
   align-items: stretch;
   background: var(--frame-fill-color);
+  border-radius: 8px;
 }
 
 .book-detail-habitat {
@@ -1889,6 +2002,7 @@ span.level-label-value {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 8px 0 0 8px;
 }
 
 .book-detail-catch-count {
@@ -1900,6 +2014,7 @@ span.level-label-value {
   font-size: 18px;
   color: #212121;
   font-family: 'DotGothic16', sans-serif;
+  border-radius: 8px;
 }
 
 /* Noteセクション */
@@ -1911,6 +2026,7 @@ span.level-label-value {
   gap: 4px;
   width: 100%;
   background: var(--frame-fill-color);
+  border-radius: 8px;
 }
 
 .book-detail-note-header {
@@ -2115,7 +2231,7 @@ span.level-label-value {
   gap: 8px;
   align-items: flex-start;
   justify-content: center;
-  padding: 8px 8px 8px 8px;
+  padding: 16px 16px 16px 16px;
   margin: 0;
   background: var(--color-semantic-bg-book-container);
   box-sizing: border-box;
@@ -2224,12 +2340,12 @@ span.level-label-value {
   font-weight: bold;
 }
 
-/* 実績詳細リスト（Figma .achievement-detail-list: gap 8, p 10） */
+/* 実績詳細リスト（gap 8、パディングは親レイアウトに委ねる） */
 .achievement-detail-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
-  padding: 10px;
+  padding: 0;
   max-height: 100%;
   overflow-y: auto;
 }
@@ -2365,31 +2481,51 @@ span.level-label-value {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  justify-content: center;
   align-items: flex-start;
-  gap: 0;
-  padding: var(--space-6) var(--space-8);
-  background: var(--color-primitive-natural-sand-300);
-  font-size: var(--font-size-achievement-reward-label);
-  color: var(--color-semantic-text-white);
+  font-size: 12px;
+  color: var(--color-semantic-text-primary);
   line-height: normal;
+  white-space: nowrap;
+}
+
+.achievement-detail-reward__panel {
+  position: relative;
+  align-self: flex-start;
 }
 
 .achievement-detail-reward__label {
-  white-space: nowrap;
+  position: absolute;
+  left: -6px;
+  top: -5px;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.achievement-detail-reward__label-image {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  height: 14px;
+  width: auto;
 }
 
 .achievement-detail-reward__values {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
-  gap: 8px;
-  min-width: 42px;
+  gap: var(--space-8);
+  padding: var(--space-10) var(--space-8) var(--space-8) var(--space-8);
+  background: var(--bg-panel-inner);
+  color: var(--color-primitive-orange-600);
+  border-radius: 8px;
 }
 
 .achievement-detail-reward__line {
   display: block;
-  width: 100%;
+  font-size: var(--font-size-achievement-reward-line);
 }
 
 .achievement-detail-item__progress {
@@ -2402,7 +2538,7 @@ span.level-label-value {
 .achievement-detail-item__track {
   height: 20px;
   border-radius: 5px;
-  background: var(--color-semantic-text-detail);
+  background-color: var(--color-primitive-natural-sand-300);
   overflow: hidden;
   width: 100%;
 }
@@ -2481,11 +2617,9 @@ span.level-label-value {
 .book-status-panel {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 16px;
   width: 100%;
-  max-height: min(72vh, 640px);
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: visible;
   padding: 0;
   box-sizing: border-box;
 }
@@ -2503,6 +2637,7 @@ span.level-label-value {
   align-items: stretch;
   padding: 16px 18px 14px;
   background: rgba(92, 64, 48, 0.08);
+  border-radius: 8px;
 }
 
 .book-status-hero-main {
@@ -2552,7 +2687,7 @@ span.level-label-value {
 .book-status-name {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 26px;
+  font-size: 28px;
   color: #320e0e;
   margin: 0;
   line-height: 1.2;
@@ -2562,7 +2697,7 @@ span.level-label-value {
   flex: 0 0 auto;
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 0;
   font-size: 15px;
   color: #5c4030;
 }
@@ -2575,7 +2710,8 @@ span.level-label-value {
 }
 
 .book-status-panel .book-status-label {
-  font-size: 15px;
+  font-size: 20px;
+  font-weight: 700;
   color: #5c4030;
 }
 
@@ -2642,22 +2778,9 @@ span.level-label-value {
   font-variant-numeric: tabular-nums;
 }
 
-/* ── セクション区切り線 ── */
-.book-status-divider {
-  height: 1px;
-  margin: 0 16px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(112, 74, 43, 0.35) 15%,
-    rgba(112, 74, 43, 0.35) 85%,
-    transparent 100%
-  );
-}
-
 /* ── 各セクション共通 ── */
 .book-status-section {
-  padding: 14px 18px;
+  padding: 0;
 }
 
 .book-status-two-col {
@@ -2773,13 +2896,15 @@ span.level-label-value {
   background: var(--color-primitive-natural-sand-400);
   color: var(--color-semantic-text-detail);
   min-height: 100%;
-  padding: 8px 10px;
+  padding: 10px 16px;
   box-sizing: border-box;
+  border-radius: 8px;
 }
 
 .book-status-detail-note-title {
   margin: 0 0 4px;
-  font-size: var(--font-size-status-stat-name);
+  font-family: var(--font-family-display-numeric);
+  font-size: 24px;
   line-height: 1.2;
   color: var(--color-primitive-orange-600);
 }

@@ -125,6 +125,13 @@ export default class GameScene extends Phaser.Scene {
   private unifiedBookNavRepeatIntervalMs: number = 70;
   private unifiedBookListItems: HTMLElement[] = [];
   private unifiedBookListScrollElement!: HTMLElement;
+  private unifiedBookListScrollFadeBottomElement: HTMLElement | null = null;
+  private unifiedBookListScrollFadeTopElement: HTMLElement | null = null;
+  private bookListScrollFadeObserver: ResizeObserver | null = null;
+  private unifiedBookRightPaneScrollElement!: HTMLElement;
+  private unifiedBookRightPaneFadeTopElement: HTMLElement | null = null;
+  private unifiedBookRightPaneFadeBottomElement: HTMLElement | null = null;
+  private bookRightPaneScrollFadeObserver: ResizeObserver | null = null;
   private unifiedBookDetailElement!: HTMLElement;
   private unifiedBookDetailPlaceholderElement!: HTMLElement;
   private selectedStatusStatKey: 'power' | 'speed' | 'control' | 'rare-hunt' = 'power';
@@ -2724,10 +2731,16 @@ export default class GameScene extends Phaser.Scene {
         <div class="book-container ui-frame-box">
             <div class="book-left-pane">
               <div class="book-list-header ui-frame-box" id="book-list-header">所持品一覧</div>
-              <div class="book-list-scroll" id="book-list-scroll"></div>
+              <div class="book-list-scroll-wrap">
+                <div class="book-list-scroll" id="book-list-scroll"></div>
+                <div class="book-list-scroll-fade book-list-scroll-fade--top" id="book-list-scroll-fade-top" aria-hidden="true"></div>
+                <div class="book-list-scroll-fade book-list-scroll-fade--bottom" id="book-list-scroll-fade-bottom" aria-hidden="true"></div>
+              </div>
             </div>
             <div class="book-right-pane">
-              <div class="book-right-pane-inner">
+              <div class="book-right-pane-scroll-wrap">
+                <div class="book-right-pane-scroll" id="book-right-pane-scroll">
+                  <div class="book-right-pane-inner">
                 <div id="book-status-panel" class="book-status-panel" style="display: none;">
                   <div class="book-status-hero">
                     <div class="book-status-hero-main">
@@ -2754,7 +2767,6 @@ export default class GameScene extends Phaser.Scene {
                       <div class="book-status-counter"><span class="book-status-counter-label">図鑑</span><span id="book-status-pedia-count" class="book-status-counter-value"></span></div>
                     </div>
                   </div>
-                  <div class="book-status-divider"></div>
                   <section class="book-status-section">
                     <h3 class="book-status-section-title">現在の能力値</h3>
                     <p class="book-status-hint">いまの装備とレベルを合算した、実戦での性能です。</p>
@@ -2766,7 +2778,7 @@ export default class GameScene extends Phaser.Scene {
                         <li class="ui-frame-box" data-stat-key="rare-hunt" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">ラック</span><span id="book-status-rare-hunt" class="book-stat-val"></span></li>
                       </ul>
                       <div class="book-status-detail-note">
-                        <p id="book-status-detail-title" class="book-status-detail-note-title"></p>
+                        <p id="book-status-detail-title" class="book-status-detail-note-title">Info</p>
                         <p id="book-status-detail-text" class="book-status-detail-note-text"></p>
                       </div>
                     </div>
@@ -2828,6 +2840,10 @@ export default class GameScene extends Phaser.Scene {
                 </div>
               </div>
               </div>
+              </div>
+                <div class="book-list-scroll-fade book-list-scroll-fade--top" id="book-right-pane-fade-top" aria-hidden="true"></div>
+                <div class="book-list-scroll-fade book-list-scroll-fade--bottom" id="book-right-pane-fade-bottom" aria-hidden="true"></div>
+            </div>
             </div>
         </div>
       </div>
@@ -2840,6 +2856,13 @@ export default class GameScene extends Phaser.Scene {
 
     // 要素をキャッシュ
     this.unifiedBookListScrollElement = this.unifiedBookUIElement.querySelector('#book-list-scroll') as HTMLElement;
+    this.unifiedBookListScrollFadeBottomElement = this.unifiedBookUIElement.querySelector('#book-list-scroll-fade-bottom') as HTMLElement;
+    this.unifiedBookListScrollFadeTopElement = this.unifiedBookUIElement.querySelector('#book-list-scroll-fade-top') as HTMLElement;
+    this.setupUnifiedBookListScrollFade();
+    this.unifiedBookRightPaneScrollElement = this.unifiedBookUIElement.querySelector('#book-right-pane-scroll') as HTMLElement;
+    this.unifiedBookRightPaneFadeTopElement = this.unifiedBookUIElement.querySelector('#book-right-pane-fade-top') as HTMLElement;
+    this.unifiedBookRightPaneFadeBottomElement = this.unifiedBookUIElement.querySelector('#book-right-pane-fade-bottom') as HTMLElement;
+    this.setupUnifiedBookRightPaneScrollFade();
     this.unifiedBookDetailElement = this.unifiedBookUIElement.querySelector('#book-detail-content') as HTMLElement;
     this.unifiedBookDetailPlaceholderElement = this.unifiedBookUIElement.querySelector('#book-detail-placeholder') as HTMLElement;
 
@@ -2981,25 +3004,20 @@ export default class GameScene extends Phaser.Scene {
     const items = Array.from(panel.querySelectorAll('.book-status-stat-list li')) as HTMLElement[];
     if (!items.length) return;
 
-    const detailTitleEl = panel.querySelector('#book-status-detail-title') as HTMLElement | null;
     const detailTextEl = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
-    if (!detailTitleEl || !detailTextEl) return;
+    if (!detailTextEl) return;
 
-    const statDetails: Record<'power' | 'speed' | 'control' | 'rare-hunt', { title: string; text: string }> = {
+    const statDetails: Record<'power' | 'speed' | 'control' | 'rare-hunt', { text: string }> = {
       'power': {
-        title: 'パワー',
         text: '遠くまで投げるための能力。陸地から遠いほど大きい魚が釣れる。',
       },
       'speed': {
-        title: 'スピード',
         text: 'ヒット時にゲージを伸ばす速さ。高いほど捕獲を安定させやすい。',
       },
       'control': {
-        title: 'コントロール',
         text: 'ファイト中の判定ゾーンの広さ。高いほど操作ミスの影響を受けにくい。',
       },
       'rare-hunt': {
-        title: 'ラック',
         text: 'レア魚と出会う総合力。エサ・ルアー・竿の効果で上昇する。',
       },
     };
@@ -3012,7 +3030,6 @@ export default class GameScene extends Phaser.Scene {
         item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
       });
       const detail = statDetails[nextKey];
-      detailTitleEl.textContent = detail.title;
       detailTextEl.textContent = detail.text;
     };
 
@@ -3138,6 +3155,75 @@ export default class GameScene extends Phaser.Scene {
         if (firstFishId) this.selectUnifiedBookItem(firstFishId, 0);
       }
     }
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => this.updateUnifiedBookListScrollFade());
+    });
+  }
+
+  private setupUnifiedBookListScrollFade() {
+    const el = this.unifiedBookListScrollElement;
+    if (!el || !this.unifiedBookListScrollFadeBottomElement || !this.unifiedBookListScrollFadeTopElement) return;
+
+    const update = () => this.updateUnifiedBookListScrollFade();
+    el.addEventListener('scroll', update, { passive: true });
+
+    this.bookListScrollFadeObserver = new ResizeObserver(update);
+    this.bookListScrollFadeObserver.observe(el);
+    const wrap = el.parentElement;
+    if (wrap) this.bookListScrollFadeObserver.observe(wrap);
+  }
+
+  private setupUnifiedBookRightPaneScrollFade() {
+    const el = this.unifiedBookRightPaneScrollElement;
+    if (!el || !this.unifiedBookRightPaneFadeTopElement || !this.unifiedBookRightPaneFadeBottomElement) return;
+
+    const update = () => this.updateUnifiedBookRightPaneScrollFade();
+    el.addEventListener('scroll', update, { passive: true });
+
+    this.bookRightPaneScrollFadeObserver = new ResizeObserver(update);
+    this.bookRightPaneScrollFadeObserver.observe(el);
+    const wrap = el.parentElement;
+    if (wrap) this.bookRightPaneScrollFadeObserver.observe(wrap);
+  }
+
+  private updateScrollFadeIndicators(
+    scrollEl: HTMLElement | null,
+    fadeTop: HTMLElement | null,
+    fadeBottom: HTMLElement | null,
+  ) {
+    if (!scrollEl || !fadeTop || !fadeBottom) return;
+
+    const cs = window.getComputedStyle(scrollEl);
+    if (cs.display === 'none' || cs.visibility === 'hidden') {
+      fadeBottom.classList.remove('is-visible');
+      fadeTop.classList.remove('is-visible');
+      return;
+    }
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollEl;
+    const epsilon = 3;
+    const overflowY = scrollHeight > clientHeight + epsilon;
+    const moreBelow = overflowY && scrollTop + clientHeight < scrollHeight - epsilon;
+    const moreAbove = overflowY && scrollTop > epsilon;
+    fadeBottom.classList.toggle('is-visible', moreBelow);
+    fadeTop.classList.toggle('is-visible', moreAbove);
+  }
+
+  private updateUnifiedBookListScrollFade() {
+    this.updateScrollFadeIndicators(
+      this.unifiedBookListScrollElement,
+      this.unifiedBookListScrollFadeTopElement,
+      this.unifiedBookListScrollFadeBottomElement,
+    );
+  }
+
+  private updateUnifiedBookRightPaneScrollFade() {
+    this.updateScrollFadeIndicators(
+      this.unifiedBookRightPaneScrollElement,
+      this.unifiedBookRightPaneFadeTopElement,
+      this.unifiedBookRightPaneFadeBottomElement,
+    );
   }
 
   createUnifiedBookListItem(fish: any, index: number, isCaught: boolean, size?: number): HTMLElement {
@@ -3276,6 +3362,7 @@ export default class GameScene extends Phaser.Scene {
   updateUnifiedBookDetail() {
     if (!this.unifiedBookDetailElement || !this.unifiedBookDetailPlaceholderElement) return;
 
+    try {
     const statusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
 
     if (this.unifiedBookTab === 'status') {
@@ -3579,6 +3666,11 @@ export default class GameScene extends Phaser.Scene {
 
       desc.innerHTML = 'まだ発見されていません...<br>この魚を釣って図鑑を完成させよう！';
     }
+    } finally {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => this.updateUnifiedBookRightPaneScrollFade());
+      });
+    }
   }
 
   restoreBookDetailStructure() {
@@ -3649,7 +3741,7 @@ export default class GameScene extends Phaser.Scene {
 
   createAchievementCategoryItem(category: string, count: number, index: number): HTMLElement {
     const item = document.createElement('div');
-    item.className = 'achievement-category-item';
+    item.className = 'achievement-category-item ui-frame-box';
     item.setAttribute('data-category', category);
     item.setAttribute('data-index', index.toString());
 
@@ -3726,10 +3818,14 @@ export default class GameScene extends Phaser.Scene {
     const rewardBlock = reward
       ? `
       <div class="achievement-detail-reward">
-        <span class="achievement-detail-reward__label">報酬</span>
-        <div class="achievement-detail-reward__values">
-          ${reward.money ? `<span class="achievement-detail-reward__line">💰${reward.money}G</span>` : ''}
-          ${reward.exp ? `<span class="achievement-detail-reward__line">⭐${reward.exp}EXP</span>` : ''}
+        <div class="achievement-detail-reward__panel">
+          <div class="achievement-detail-reward__label">
+            <img src="/images/ui/Book%20UI/reward-label.svg" alt="報酬" class="achievement-detail-reward__label-image" width="48" height="14" decoding="async" />
+          </div>
+          <div class="achievement-detail-reward__values">
+            ${reward.money ? `<span class="achievement-detail-reward__line">💰${reward.money}G</span>` : ''}
+            ${reward.exp ? `<span class="achievement-detail-reward__line">⭐${reward.exp}EXP</span>` : ''}
+          </div>
         </div>
       </div>`
       : '';

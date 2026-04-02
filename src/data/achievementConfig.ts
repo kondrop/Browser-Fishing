@@ -395,6 +395,23 @@ export const achievementConfigs: AchievementConfig[] = [
 // ヘルパー関数
 // ============================================
 
+/** UI では実績アイコンを 1 絵文字にそろえる（例: ⭐⭐⭐ → ⭐） */
+export function displayAchievementEmoji(emoji: string): string {
+  if (!emoji) return '';
+  try {
+    if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
+      const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+      for (const { segment } of seg.segment(emoji)) {
+        return segment;
+      }
+    }
+  } catch {
+    /* noop */
+  }
+  const first = [...emoji][0];
+  return first ?? '';
+}
+
 export function getAchievementById(id: string): AchievementConfig | undefined {
   return achievementConfigs.find(a => a.id === id);
 }

@@ -1,0 +1,14 @@
+---
+description: Book UI基準のUIスタイルを全作業で踏襲する
+alwaysApply: true
+---
+
+# Book UI Baseline
+
+- 新規UI（特にショップ/一覧/カード）は、`Book UI` タブ内デザインを既定として踏襲する。
+- 枠は `ui-frame-box` を基本にし、非選択は `uiframe.png`、選択/active は `border.png` を使う。
+- 選択状態は `outline` 単体ではなく、枠切り替え + 塗り（`--frame-fill-color`）で表現する。
+- 色・余白・文字サイズは既存 token を優先し、直値追加は最小限にする。
+- 既存ルールと矛盾する場合は、既存画面の一貫性（Book UI/Shop UI）を優先する。
+
+参照: `BOOK_UI_STYLE_GUIDE.md`, `src/style.css` の `ui-frame-box` と「統合BookUI」セクション。
