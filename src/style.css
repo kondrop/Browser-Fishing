@@ -58,8 +58,8 @@ img {
   --font-family-body: 'DotGothic16', sans-serif;
   --font-family-display-numeric: 'Jersey 10', 'DotGothic16', sans-serif;
 
-  --font-size-status-stat-name: 14px;
-  --font-size-status-stat-value: 25px;
+  --font-size-status-stat-name: 18px;
+  --font-size-status-stat-value: 28px;
   --font-size-detail-note-body: 16px;
   --font-size-detail-stat-value: 28px;
   --font-size-achievement-item-title: 20px;
@@ -1437,7 +1437,7 @@ span.level-label-value {
   gap: 0;
   width: 100%;
   max-width: 740px;
-  padding-top: 20px;
+  padding-top: 26px;
   min-height: 0;
   height: 70px;
 }
@@ -2827,7 +2827,7 @@ span.level-label-value {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 10px 10px;
+  padding: 12px 10px;
   min-height: 42px;
   cursor: inherit;
   transition: transform 0.1s, filter 0.1s;

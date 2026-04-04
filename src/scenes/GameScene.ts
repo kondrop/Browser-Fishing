@@ -2769,7 +2769,7 @@ export default class GameScene extends Phaser.Scene {
                   </div>
                   <section class="book-status-section">
                     <h3 class="book-status-section-title">現在の能力値</h3>
-                    <p class="book-status-hint">いまの装備とレベルを合算した、実戦での性能です。</p>
+                    <p class="book-status-hint">いまの装備とレベルを反映した実戦性能を、基準100の整数で示しています（100が標準）。</p>
                     <div class="book-status-two-col">
                       <ul class="book-status-stat-list">
                         <li class="ui-frame-box" data-stat-key="power" role="button" tabindex="0" aria-selected="true"><span class="book-stat-name">パワー</span><span id="book-status-power" class="book-stat-val"></span></li>
@@ -2969,7 +2969,8 @@ export default class GameScene extends Phaser.Scene {
       const combined = 1.0 + (a - 1.0) + (b - 1.0) + (c - 1.0);
       return Math.max(0.05, combined);
     };
-    const fmtStat = (v: number, digits: number = 3) => v.toFixed(digits);
+    // 表示専用: 内部の倍率・0〜1比率を「基準100」の整数に（例 1.25→125、判定幅0.25→25）
+    const fmtBookStatIndex = (v: number) => String(Math.round(Math.max(0, v) * 100));
 
     // 実効能力（装備+レベル）
     const fightCfg = config.fighting;
@@ -2987,13 +2988,13 @@ export default class GameScene extends Phaser.Scene {
     const rareHuntScore = ((rareEff + epicEff + legEff) / 3 - 1) * 100;
 
     const powerEl = panel.querySelector('#book-status-power');
-    if (powerEl) powerEl.textContent = fmtStat(rod?.castDistanceBonus ?? 1, 3);
+    if (powerEl) powerEl.textContent = fmtBookStatIndex(rod?.castDistanceBonus ?? 1);
     const speedEl = panel.querySelector('#book-status-speed');
-    if (speedEl) speedEl.textContent = fmtStat(1 + (rodCatchAdd + gaugeBonus) / Math.max(0.0001, baseGaugeSpeed), 3);
+    if (speedEl) speedEl.textContent = fmtBookStatIndex(1 + (rodCatchAdd + gaugeBonus) / Math.max(0.0001, baseGaugeSpeed));
     const controlEl = panel.querySelector('#book-status-control');
-    if (controlEl) controlEl.textContent = fmtStat(effectiveBarHeight, 3);
+    if (controlEl) controlEl.textContent = fmtBookStatIndex(effectiveBarHeight);
     const rareHuntEl = panel.querySelector('#book-status-rare-hunt');
-    if (rareHuntEl) rareHuntEl.textContent = fmtStat(1 + (rareHuntScore / 100), 3);
+    if (rareHuntEl) rareHuntEl.textContent = fmtBookStatIndex(1 + (rareHuntScore / 100));
 
     this.setupStatusStatSelector(panel);
 
