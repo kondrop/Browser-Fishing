@@ -1382,7 +1382,7 @@ span.level-label-value {
   overflow: hidden;
   gap: var(--space-8);
   margin: 0;
-  padding: var(--space-20);
+  padding: var(--space-16);
   box-sizing: border-box;
 }
 
@@ -1463,6 +1463,16 @@ span.level-label-value {
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-4);
+}
+
+#book-ui .book-tab-icon.book-tab-icon--emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--book-tab-icon-size);
+  height: var(--book-tab-icon-size);
+  font-size: calc(var(--book-tab-icon-size) * 0.85);
+  line-height: 1;
 }
 
 #book-ui .book-tab-icon {
@@ -1767,6 +1777,7 @@ span.level-label-value {
   flex-direction: column;
   flex: 0 0 auto;
   width: 100%;
+  height: 100%;
   min-height: 0;
   overflow: visible;
   gap: 10px;
@@ -2609,6 +2620,516 @@ span.level-label-value {
   flex: 1;
   min-width: 0;
   width: 100%;
+}
+
+/* 統合BookUI - スキルタブ */
+#book-ui[data-tab="skills"] #book-list-header {
+  display: none !important;
+}
+
+#book-ui[data-tab="skills"] #book-list-scroll {
+  display: none !important;
+}
+
+#book-ui[data-tab="skills"] .book-left-pane {
+  display: none;
+}
+
+#book-ui[data-tab="skills"] .book-right-pane {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  gap: 0;
+}
+
+.book-skill-panel {
+  display: none;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+/* スキルタブ: 日本語は維持し、数値/SPなどだけ Jersey 10 を適用 */
+#book-ui[data-tab="skills"] .book-skill-category-title,
+#book-ui[data-tab="skills"] .book-skill-category-tab,
+#book-ui[data-tab="skills"] .book-skill-sp-value,
+#book-ui[data-tab="skills"] .book-skill-summary-item b,
+#book-ui[data-tab="skills"] .book-skill-node-meta,
+#book-ui[data-tab="skills"] .book-skill-cost-num {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+}
+
+.book-skill-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  padding: 0 6px;
+  box-sizing: border-box;
+}
+
+.book-skill-category-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: fit-content;
+  min-width: 221px;
+  height: 60px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 2;
+}
+
+.book-skill-category-title {
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 24px;
+  line-height: 1.2;
+  color: #320e0e;
+  margin: 0;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.book-skill-category-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: center;
+  height: 36px;
+  position: relative;
+  z-index: 2;
+  overflow: visible;
+}
+
+.book-skill-category-tabs.is-nav-selected::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: rgba(94, 46, 28, 0.45);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.book-skill-category-tab {
+  width: 33.941px;
+  height: 33.941px;
+  border: none;
+  background: transparent;
+  color: #320e0e;
+  opacity: 1;
+  transform: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 20px;
+  line-height: 36px;
+  padding: 0;
+  cursor: pointer;
+  isolation: isolate;
+  z-index: 1;
+}
+
+.book-skill-category-tab::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: #d8c7a7;
+  border: 2px solid #704a2b;
+  box-sizing: border-box;
+  opacity: 1;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.book-skill-category-tab > * {
+  position: relative;
+  z-index: 1;
+}
+
+.book-skill-category-tab.is-active {
+  width: 33.941px;
+  height: 33.941px;
+  color: #fff;
+  font-size: 20px;
+  text-shadow: 0 1px 0 rgba(50, 14, 14, 0.45);
+}
+
+.book-skill-category-tab.is-active::before {
+  width: 24px;
+  height: 24px;
+  background: #7cb86c;
+  opacity: 1;
+}
+
+.book-skill-category-tab.is-active::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 50%;
+  top: calc(100% - 2px);
+  transform: translateX(-50%);
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: #320e0e;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.book-skill-summary-col {
+  width: fit-content;
+  min-width: 168px;
+  height: fit-content;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.book-skill-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  --frame-fill-color: #f2e2b6;
+}
+
+.book-skill-sp-label {
+  font-size: 16px;
+  line-height: 17px;
+  font-family: "DotGothic16", sans-serif;
+  color: var(--color-semantic-text-muted, #5c4030);
+}
+
+.book-skill-sp-value {
+  font-size: 40px;
+  line-height: 1;
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  color: #c2681f;
+}
+
+.book-skill-summary-subrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #320e0e;
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.book-skill-summary-item {
+  font-family: "DotGothic16", sans-serif;
+  color: #5c4030;
+}
+
+.book-skill-summary-item b {
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  color: #320e0e;
+  font-size: 24px;
+  line-height: 1;
+  margin-left: 2px;
+  font-weight: 400;
+}
+
+.book-skill-content-row.ui-frame-box {
+  --frame-fill-color: #f4e8c6;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  box-sizing: border-box;
+  border-radius: 8px;
+}
+
+.book-skill-content-row.ui-frame-box::before {
+  inset: 0;
+  border-radius: 8px;
+}
+
+.book-skill-content-row.ui-frame-box::after {
+  border-image: none !important;
+  border: none !important;
+}
+
+/* ツリー列: 行内で残り高さを埋め、スクロール＋グラデは内側のみ（右ペイン全体は動かさない） */
+.book-skill-tree-scroll-wrap {
+  position: relative;
+  flex: 0 0 325px;
+  min-width: 325px;
+  width: 325px;
+  min-height: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+
+.book-skill-tree-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.book-skill-tree-wrap::-webkit-scrollbar {
+  display: none;
+}
+
+/* 親の --frame-fill-color（#f4e8c6）に合わせた上下フェード（他タブの book-list-scroll-fade と同型） */
+.book-skill-tree-scroll-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 44px;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.book-skill-tree-scroll-fade--bottom {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--frame-fill-color, #f4e8c6) 94%, transparent) 0%,
+    color-mix(in srgb, var(--frame-fill-color, #f4e8c6) 52%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+.book-skill-tree-scroll-fade--top {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--frame-fill-color, #f4e8c6) 94%, transparent) 0%,
+    color-mix(in srgb, var(--frame-fill-color, #f4e8c6) 52%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+.book-skill-tree-scroll-fade.is-visible {
+  opacity: 1;
+}
+
+.book-skill-tree-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0;
+  width: 100%;
+}
+
+.book-skill-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.book-skill-node-name {
+  font-size: 16px;
+  color: #320e0e;
+  line-height: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.book-skill-node-meta {
+  font-size: 28px;
+  color: #320e0e;
+  line-height: 1;
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  white-space: nowrap;
+}
+
+.book-skill-cost-num {
+  color: #c2681f;
+}
+
+.book-skill-node.ui-frame-box {
+  cursor: pointer;
+  text-align: left;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: calc(100% - 28px);
+  min-height: 34px;
+  padding: 12px;
+  box-sizing: border-box;
+  --frame-fill-color: #f2e2b6;
+}
+
+.book-skill-node-marker {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.book-skill-node-marker-inner {
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: #cbb792;
+}
+
+.book-skill-node-marker.is-ability .book-skill-node-marker-inner {
+  width: 14px;
+  height: 14px;
+}
+
+.book-skill-node-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+#book-ui #book-skill-tree-grid .book-skill-row.state-selected .book-skill-node.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui #book-skill-tree-grid .book-skill-row.state-selected .book-skill-node.ui-frame-box {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui #book-skill-tree-grid .book-skill-row.state-obtained .book-skill-node-marker-inner {
+  background: #7cb86c;
+  opacity: 1;
+}
+
+#book-ui #book-skill-tree-grid .book-skill-row.state-locked {
+  opacity: 0.3;
+}
+
+#book-ui #book-skill-tree-grid .book-skill-row .book-skill-node.ui-frame-box.is-available:not(.selected) {
+  opacity: 1;
+}
+
+.book-skill-node-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 0;
+  flex: 1 1 0;
+  width: 100%;
+  padding: 16px;
+  --frame-fill-color: #f2e2b6;
+}
+
+.book-skill-detail-name {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.2;
+  color: #320e0e;
+}
+
+.book-skill-detail-desc,
+.book-skill-detail-prereq,
+.book-skill-detail-cost,
+.book-skill-detail-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--color-semantic-text-muted, #5c4030);
+}
+
+.book-skill-detail-prereq,
+.book-skill-detail-cost {
+  display: none;
+}
+
+.book-skill-detail-hint {
+  min-height: 1.2em;
+}
+
+/* nes.css の inset box-shadow / focus リングを外し、枠内塗りをグリーンに統一 */
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box {
+  /* 既定の --frame-fill-inset だと塗りが枠より内側に沈むため、枠画像の直下まで塗りを伸ばす */
+  --frame-fill-inset: 0;
+  --frame-fill-color: #7cb86c;
+  align-self: stretch;
+  min-height: 33px;
+  /* 9スライス枠の border 幅（slice×scale）と縦パディングを揃えないと、内側に親のベージュが1px見えることがある */
+  padding: 8px 14px;
+  text-align: center;
+  box-sizing: content-box;
+  color: #fff;
+  margin-top: 4px;
+  box-shadow: none !important;
+  border-image: none;
+  border-image-width: 0;
+  border-image-outset: 0;
+}
+
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:hover,
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:focus,
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:focus-visible,
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:active {
+  color: #fff;
+  box-shadow: none !important;
+}
+
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:focus,
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:focus-visible {
+  outline: none;
+}
+
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box::after {
+  box-shadow: none !important;
+}
+
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:hover::after,
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:active::after {
+  box-shadow: none !important;
+}
+
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected {
+  --frame-fill-color: #c2681f;
+}
+
+#book-ui #book-skill-unlock.nes-btn:disabled {
+  opacity: 0.3;
+  filter: grayscale(0.15);
 }
 
 /* ============================================

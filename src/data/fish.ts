@@ -57,8 +57,12 @@ export interface RarityBonuses {
   legendaryBonus?: number;
 }
 
+export interface FishRollOptions {
+  junkWeightMultiplier?: number;
+}
+
 // ランダムに魚を取得（レア度と個別weightの重み付き）
-export function getRandomFish(bonuses?: RarityBonuses): FishConfig {
+export function getRandomFish(bonuses?: RarityBonuses, options?: FishRollOptions): FishConfig {
   // ボーナス適用後のレア度ウェイトを計算
   const adjustedWeights: Record<Rarity, number> = {
     [Rarity.COMMON]: rarityWeights[Rarity.COMMON] * (bonuses?.commonBonus || 1.0),
@@ -83,11 +87,13 @@ export function getRandomFish(bonuses?: RarityBonuses): FishConfig {
   
   // 2. 選ばれたレア度の魚から、個別weightで重み付けして選ぶ
   const fishOfRarity = fishDatabase.filter(f => f.rarity === selectedRarity);
-  const totalFishWeight = fishOfRarity.reduce((sum, f) => sum + f.weight, 0);
+  const junkWeightMul = Math.max(0, options?.junkWeightMultiplier ?? 1);
+  const getWeight = (f: FishConfig) => f.id.startsWith('junk_') ? f.weight * junkWeightMul : f.weight;
+  const totalFishWeight = fishOfRarity.reduce((sum, f) => sum + getWeight(f), 0);
   
   let fishRandom = Math.random() * totalFishWeight;
   for (const fish of fishOfRarity) {
-    fishRandom -= fish.weight;
+    fishRandom -= getWeight(fish);
     if (fishRandom <= 0) {
       return fish;
     }

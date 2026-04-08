@@ -5,6 +5,7 @@ import { getFishById, getRealFishCount } from './fish';
 import type { AchievementConfig, AchievementCondition } from './achievementConfig';
 import { achievementConfigs } from './achievementConfig';
 import { fishConfigs } from './fishConfig';
+import { getExpMultiplierForFish, getSellPriceMultiplier } from './skills';
 
 export interface InventoryItem {
   fishId: string;
@@ -42,6 +43,9 @@ export interface PlayerData {
   consecutiveSuccesses: number;        // 連続成功回数
   fishCaughtCounts: Map<string, number>; // 魚種ごとの釣果数（key: 魚ID, value: 釣果数）
   junkCaughtCount: number;             // ゴミを釣った回数
+  // スキルツリー
+  skillPoints: number;                 // 未使用SP
+  unlockedSkillNodes: Set<string>;     // 解放済みノードID
 }
 
 // プレイヤーデータの初期値
@@ -71,6 +75,8 @@ export function createInitialPlayerData(): PlayerData {
     consecutiveSuccesses: 0,
     fishCaughtCounts: new Map(),
     junkCaughtCount: 0,
+    skillPoints: 0,
+    unlockedSkillNodes: new Set(),
   };
 }
 
@@ -139,7 +145,9 @@ export function addFishToInventory(playerData: PlayerData, fish: FishConfig, siz
   }
   
   // 経験値を追加
-  const expGained = getExpByRarity(fish.rarity);
+  const expGainedBase = getExpByRarity(fish.rarity);
+  const expMul = getExpMultiplierForFish(playerData, fish.id);
+  const expGained = Math.max(1, Math.round(expGainedBase * expMul));
   const leveledUp = addExp(playerData, expGained);
   
   // インベントリに追加
@@ -188,6 +196,7 @@ export function sellFish(playerData: PlayerData, fishId: string, count: number =
   
   const isJunk = fishId.startsWith('junk_');
   let totalEarnings = 0;
+  const skillSellMul = getSellPriceMultiplier(playerData);
   
   // 売却する個数分の価格を計算（各個体のサイズを考慮）
   for (let i = 0; i < count && i < inventoryItem.count; i++) {
@@ -200,7 +209,7 @@ export function sellFish(playerData: PlayerData, fishId: string, count: number =
       price = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5); // ボーナス係数0.5
     }
     
-    totalEarnings += price;
+    totalEarnings += Math.round(price * skillSellMul);
   }
   
   if (removeFishFromInventory(playerData, fishId, count)) {
@@ -215,6 +224,7 @@ export function sellFish(playerData: PlayerData, fishId: string, count: number =
 // 全ての魚を売却（サイズを考慮した価格で売却）
 export function sellAllFish(playerData: PlayerData): number {
   let totalEarnings = 0;
+  const skillSellMul = getSellPriceMultiplier(playerData);
   
   for (const item of [...playerData.inventory]) {
     const fish = getFishById(item.fishId);
@@ -233,7 +243,7 @@ export function sellAllFish(playerData: PlayerData): number {
         price = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5); // ボーナス係数0.5
       }
       
-      totalEarnings += price;
+      totalEarnings += Math.round(price * skillSellMul);
     }
   }
   
@@ -247,6 +257,7 @@ export function sellAllFish(playerData: PlayerData): number {
 // インベントリの合計金額を計算（サイズを考慮した価格）
 export function calculateInventoryValue(playerData: PlayerData): number {
   let total = 0;
+  const skillSellMul = getSellPriceMultiplier(playerData);
   for (const item of playerData.inventory) {
     const fish = getFishById(item.fishId);
     if (!fish) continue;
@@ -264,7 +275,7 @@ export function calculateInventoryValue(playerData: PlayerData): number {
         price = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5); // ボーナス係数0.5
       }
       
-      total += price;
+      total += Math.round(price * skillSellMul);
     }
   }
   return total;
@@ -288,6 +299,7 @@ export function savePlayerData(playerData: PlayerData): void {
     achievements: Array.from(playerData.achievements),
     achievementProgress: Array.from(playerData.achievementProgress.entries()),
     fishCaughtCounts: Array.from(playerData.fishCaughtCounts.entries()),
+    unlockedSkillNodes: Array.from(playerData.unlockedSkillNodes),
   };
   localStorage.setItem('fishingGame_playerData', JSON.stringify(dataToSave));
 }
@@ -348,6 +360,8 @@ export function loadPlayerData(): PlayerData {
         consecutiveSuccesses: parsed.consecutiveSuccesses || initial.consecutiveSuccesses,
         fishCaughtCounts: new Map(parsed.fishCaughtCounts || []),
         junkCaughtCount: parsed.junkCaughtCount || initial.junkCaughtCount,
+        skillPoints: parsed.skillPoints !== undefined ? parsed.skillPoints : Math.max(0, (parsed.level ?? initial.level) - 1) * 3,
+        unlockedSkillNodes: new Set(parsed.unlockedSkillNodes || []),
       };
     } catch {
       console.error('Failed to load player data');
@@ -445,6 +459,10 @@ export function addExp(playerData: PlayerData, exp: number): boolean {
   const oldLevel = playerData.level;
   playerData.exp += exp;
   playerData.level = calculateLevel(playerData.exp);
+  const levelDiff = Math.max(0, playerData.level - oldLevel);
+  if (levelDiff > 0) {
+    playerData.skillPoints += levelDiff * 3;
+  }
   
   // レベルアップしたかどうか
   return playerData.level > oldLevel;
@@ -466,6 +484,19 @@ export function getLevelBarRangeBonus(level: number): number {
 export function getLevelGaugeSpeedBonus(level: number): number {
   if (level <= 1) return 0;
   return (level - 1) * 0.005;
+}
+
+// ファイト中プレイヤーバーの速度に毎フレーム掛ける減衰の強さ（1秒あたり、概ね0〜4.5）
+// レベルが高いほど慣性が抑えられ、止めたい位置で止まりやすい
+export function getLevelFightBarVelocityDragPerSecond(level: number): number {
+  if (level <= 1) return 0;
+  return Math.min(4.5, (level - 1) * 0.35);
+}
+
+// ステータス画面表示用（基準100、レベル1で100）
+export function getLevelFightControlDisplayIndex(level: number): number {
+  if (level <= 1) return 100;
+  return 100 + (level - 1) * 4;
 }
 
 // ============================================
