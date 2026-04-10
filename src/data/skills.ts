@@ -17,7 +17,7 @@ export type SkillAbilityId =
   | 'abil_control_smooth_drag'
   | 'abil_control_nearmiss_save'
   | 'abil_control_lock_on'
-  | 'abil_control_junk_ward'
+  | 'abil_luck_junk_ward'
   | 'abil_spec_first_sell_boost'
   | 'abil_spec_pedia_bonus';
 
@@ -82,8 +82,9 @@ function requiresFor(tree: SkillTreeId, slot: Slot): SkillNodeId[] {
     case 'n03':
       return [nid(tree, 'n02')];
     case 'n04':
-    case 'n05':
       return [nid(tree, 'n03')];
+    case 'n05':
+      return [nid(tree, 'n04')];
     case 'n06':
       return [nid(tree, 'n04'), nid(tree, 'n05')];
     case 'n07':
@@ -172,10 +173,10 @@ const NODE_META: Record<
     n04: { name: 'コントロール強化3', description: '慣性がさらに抑えられる。', kind: 'stat', statBonus: { fightBarDragSkillAdd: 0.03 } },
     n05: { name: 'コントロール強化4', description: '慣性がさらに抑えられる。', kind: 'stat', statBonus: { fightBarDragSkillAdd: 0.03 } },
     n06: {
-      name: 'ゴミ除けの符',
-      description: 'ゴミの出現率が恒久的に下がる。',
+      name: 'シルクタッチ',
+      description: 'ファイト開始時に魚が動き出すまでの時間が少し伸びる。',
       kind: 'ability',
-      abilityId: 'abil_control_junk_ward',
+      abilityId: 'abil_luck_junk_ward',
     },
     n07: { name: 'コントロール強化5', description: '慣性が大きく抑えられる。', kind: 'stat', statBonus: { fightBarDragSkillAdd: 0.04 } },
     n08: { name: 'コントロールマスター', description: '慣性がさらに抑えられる。', kind: 'stat', statBonus: { fightBarDragSkillAdd: 0.06 } },
@@ -193,7 +194,7 @@ const NODE_META: Record<
     n05: { name: '話術強化4', description: '売却価格が上がる。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.03 } },
     n06: {
       name: 'サングラス',
-      description: '図鑑・詳細で魚のレアリティ（星）が判別できるようになる。',
+      description: 'ファイト中、釣り上げ前の魚のレアリティが色でわかるようになる。',
       kind: 'ability',
       abilityId: 'abil_spec_pedia_bonus',
     },
@@ -259,10 +260,6 @@ export function getSkillStatBonuses(playerData: PlayerData): SkillStatBonuses {
     }
   }
 
-  if (hasSkillAbility(playerData, 'abil_control_junk_ward')) {
-    bonuses.junkRateSkillMul *= 0.75;
-  }
-
   return bonuses;
 }
 
@@ -293,7 +290,7 @@ export function canUnlockSkillNode(playerData: PlayerData, nodeId: SkillNodeId):
   }
   for (const req of def.requires) {
     if (!playerData.unlockedSkillNodes.has(req)) {
-      return { ok: false, reason: '前提パークが未解放です。' };
+      return { ok: false, reason: '前提スキルが未解放です。' };
     }
   }
   if (playerData.skillPoints < def.costSp) {
@@ -309,9 +306,4 @@ export function tryUnlockSkillNode(playerData: PlayerData, nodeId: SkillNodeId):
   playerData.skillPoints -= def.costSp;
   playerData.unlockedSkillNodes.add(nodeId);
   return { ok: true };
-}
-
-/** 図鑑・詳細でレアリティ（星）を表示してよいか */
-export function canShowPediaRarity(playerData: PlayerData): boolean {
-  return hasSkillAbility(playerData, 'abil_spec_pedia_bonus');
 }

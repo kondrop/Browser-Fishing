@@ -34,7 +34,8 @@ img {
 
 /* ========== 9スライスUIフレーム（塗り + 線の2枚重ね） ==========
  * 塗り: CSS（--frame-fill-color）。線: border.png
- * インセットは :root の --frame-fill-inset 一つで全体のサイズ感を統一
+ * --frame-fill-inset は :root が既定。--frame-scale が大きい要素ほど枠が太く、
+ * 塗りと枠画像の内縁の関係が変わるため、#book-ui（scale 3）だけ別値で上書きする。
  */
 :root {
   /* Figma sync tokens */
@@ -1290,9 +1291,11 @@ span.level-label-value {
   }
 }
 
-/* 図鑑/統合BookUIは枠が窮屈に見えるため、9スライス枠の倍率を少し下げる */
+/* 図鑑/統合BookUIは枠が窮屈に見えるため、9スライス枠の倍率を少し下げる。
+ * 枠が細い分、塗りインセットも :root(4px) より詰めた 3px の方が枠と馴染む。 */
 #book-ui .ui-frame-box {
   --frame-scale: 3;
+  --frame-fill-inset: 3px;
 }
 
 /* 統合BookUI 上部タブ: 非アクティブ=uiframe + 薄ベージュ塗り / アクティブ=border + クリーム塗り
@@ -1351,6 +1354,43 @@ span.level-label-value {
   --frame-fill-color: #e8cfa6;
 }
 
+/* 統合BookUI: 各タブで「選択中」のボタン・項目の不透明度を穏やかに明滅 */
+@keyframes book-ui-selected-opacity-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+#book-ui.is-open #book-list-scroll .book-list-item.selected.ui-frame-box,
+#book-ui.is-open[data-tab="achievement"]
+  #book-list-scroll
+  .achievement-category-item.achievement-category-selected.ui-frame-box,
+#book-ui.is-open[data-tab="status"] .book-status-stat-list li.is-selected,
+#book-ui.is-open[data-tab="skills"]
+  #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:not(:disabled),
+#book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+  animation: book-ui-selected-opacity-pulse 1.45s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #book-ui.is-open #book-list-scroll .book-list-item.selected.ui-frame-box,
+  #book-ui.is-open[data-tab="achievement"]
+    #book-list-scroll
+    .achievement-category-item.achievement-category-selected.ui-frame-box,
+  #book-ui.is-open[data-tab="status"] .book-status-stat-list li.is-selected,
+  #book-ui.is-open[data-tab="skills"]
+    #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:not(:disabled),
+  #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
+  #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+    animation: none;
+  }
+}
+
 #book-ui.is-open.is-topmost {
   pointer-events: auto;
   visibility: visible;
@@ -1362,6 +1402,142 @@ span.level-label-value {
   pointer-events: none;
   visibility: visible;
   opacity: 1;
+}
+
+/* 選択式モーダル（横並びの確定/取消など）
+ * コンテナに .modal-choice-actions を付与し、キー選択中の子要素に .is-nav-selected を付ける。
+ * Book 以外のモーダルでも同じパターンで再利用できる。 */
+.modal-choice-actions > :where(button, a, .nes-btn) {
+  transition: transform 0.2s ease-out;
+}
+
+.modal-choice-actions > :where(button, a, .nes-btn).is-nav-selected {
+  transform: translateY(-4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-choice-actions > :where(button, a, .nes-btn) {
+    transition: none;
+  }
+
+  .modal-choice-actions > :where(button, a, .nes-btn).is-nav-selected {
+    transform: none;
+  }
+}
+
+/* スキル解放確認（Book 全面オーバーレイ） */
+#book-ui #skill-unlock-confirm-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2500;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: var(--space-16, 16px);
+  background: rgba(35, 28, 20, 0.5);
+  pointer-events: auto;
+}
+
+#book-ui .skill-unlock-confirm-dialog {
+  width: 100%;
+  max-width: 360px;
+  padding: 24px var(--space-16, 16px);
+  --frame-fill-color: #f2e2b6;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: stretch;
+}
+
+#book-ui .skill-unlock-confirm-message {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #320e0e;
+  text-align: center;
+}
+
+#book-ui .skill-unlock-confirm-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 16px;
+  justify-content: center;
+}
+
+/* nes-btn の inset シャドウ / focus リングを外し、#book-skill-unlock と同じ枠・塗りに寄せる。
+ * Book 共通の --frame-fill-inset:3px は --frame-fill-inset:0 で打ち消し、塗りと border-image の隙間は下の ::before を -1px で埋める */
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box {
+  --frame-fill-inset: 0;
+  min-height: 33px;
+  padding: 8px 14px;
+  margin: 0;
+  text-align: center;
+  box-sizing: content-box;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border-image: none;
+  border-image-width: 0;
+  border-image-outset: 0;
+}
+
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box {
+  --frame-fill-color: #7cb86c;
+  color: #fff;
+}
+
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box {
+  --frame-fill-color: #b8a88c;
+  color: #320e0e;
+  width: 64px;
+}
+
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:hover,
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:focus,
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:focus-visible,
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:active,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:hover,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:focus,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:focus-visible,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:active {
+  box-shadow: none !important;
+}
+
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:focus,
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:focus-visible,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:focus,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:focus-visible {
+  outline: none;
+}
+
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box::after,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box::after {
+  box-shadow: none !important;
+  /* 枠は .ui-frame-box 既定の border.png（#book-skill-unlock と同じ）。非選択に uiframe を当てると緑ボタンが濁って見える */
+}
+
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box::before,
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box::before,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box::before {
+  inset: -1px;
+}
+
+/* キーボード／フォーカスで選択中は塗りだけ変える（枠は常に border.png） */
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected {
+  --frame-fill-color: #c2681f;
+  color: #fff;
+}
+
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:hover::after,
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:active::after,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:hover::after,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:active::after {
+  box-shadow: none !important;
 }
 
 .book-container {
@@ -3052,12 +3228,14 @@ span.level-label-value {
   min-height: 0;
   flex: 1 1 0;
   width: 100%;
-  padding: 16px;
+  padding: 16px 20px;
   --frame-fill-color: #f2e2b6;
 }
 
 .book-skill-detail-name {
   margin: 0;
+  align-self: stretch;
+  width: 100%;
   font-size: 17px;
   line-height: 1.2;
   color: #320e0e;
@@ -3084,17 +3262,21 @@ span.level-label-value {
 
 /* nes.css の inset box-shadow / focus リングを外し、枠内塗りをグリーンに統一 */
 #book-ui #book-skill-unlock.nes-btn.ui-frame-box {
-  /* 既定の --frame-fill-inset だと塗りが枠より内側に沈むため、枠画像の直下まで塗りを伸ばす */
+  /* Book 共通の 3px インセットは塗りを細くするため 0。枠との隙間は ::before を -1px にして埋める（確認ダイアログのボタンと同型） */
   --frame-fill-inset: 0;
   --frame-fill-color: #7cb86c;
+  display: block;
+  width: 100%;
+  max-width: 100%;
   align-self: stretch;
   min-height: 33px;
   /* 9スライス枠の border 幅（slice×scale）と縦パディングを揃えないと、内側に親のベージュが1px見えることがある */
   padding: 8px 14px;
   text-align: center;
-  box-sizing: content-box;
+  box-sizing: border-box;
   color: #fff;
-  margin-top: 4px;
+  /* .nes-btn の margin:4px が左右にも付くと width:100% で親幅+8px になり右に張り出し、余白が非対称に見える */
+  margin: 4px 0 0;
   box-shadow: none !important;
   border-image: none;
   border-image-width: 0;
@@ -3130,6 +3312,24 @@ span.level-label-value {
 #book-ui #book-skill-unlock.nes-btn:disabled {
   opacity: 0.3;
   filter: grayscale(0.15);
+}
+
+/* 取得済み: 表示を維持しつつグレーで判別しやすく */
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:disabled.book-skill-unlock--obtained {
+  opacity: 1;
+  filter: none;
+  cursor: default;
+  --frame-fill-color: #8a8a8a;
+  color: #f2f2f2;
+}
+
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:disabled.book-skill-unlock--obtained:hover,
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:disabled.book-skill-unlock--obtained:focus,
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:disabled.book-skill-unlock--obtained:focus-visible,
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:disabled.book-skill-unlock--obtained:active {
+  color: #f2f2f2;
+  --frame-fill-color: #8a8a8a;
+  box-shadow: none !important;
 }
 
 /* ============================================

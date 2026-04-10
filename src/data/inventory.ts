@@ -427,11 +427,17 @@ export function getExpByRarity(rarity: string): number {
 }
 
 // レベルに必要な累積経験値を計算
+// Lv1: 0。Lv2〜10 までは従来どおり 50*L*(L-1)+50（区間増分は Lv1→2 が150、以降 k→k+1 が 100*k）。
+// Lv10 以降の区間（k>=10 の k→k+1）だけ増分を 50*k に緩和する。
 export function getRequiredExp(level: number): number {
-  // レベル1: 0, レベル2: 100, レベル3: 250, レベル4: 450, ...
-  // 式: 50 * level * (level - 1) + 50
   if (level <= 1) return 0;
-  return 50 * level * (level - 1) + 50;
+  if (level <= 10) {
+    return 50 * level * (level - 1) + 50;
+  }
+  const baseAt10 = 50 * 10 * 9 + 50;
+  const m = level - 1;
+  const sum10ToM = (m * (m + 1)) / 2 - 45;
+  return baseAt10 + 50 * sum10ToM;
 }
 
 // 経験値からレベルを計算

@@ -7,7 +7,6 @@ import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, 
 import {
   SKILL_TREE_IDS,
   SKILL_TREE_LABELS,
-  canShowPediaRarity,
   canUnlockSkillNode,
   getExpMultiplierForFish,
   getSellPriceMultiplier,
@@ -94,6 +93,10 @@ export default class GameScene extends Phaser.Scene {
   private speedComboMultiplier: number = 0;
   private speedComboGrowPerSecond: number = 0.25;
   private skillSelectedNodeId: SkillNodeId | null = null;
+  /** スキル解放確認モーダルで確定待ちのノード（null で未表示） */
+  private skillUnlockConfirmPendingNodeId: SkillNodeId | null = null;
+  /** 確認ダイアログのキーボード選択（左右・Enter と同期） */
+  private skillUnlockConfirmFocus: 'cancel' | 'ok' = 'cancel';
   private fightSkillHudLeft!: Phaser.GameObjects.Text;
   private fightSkillHudUp!: Phaser.GameObjects.Text;
   private fightSkillHudRight!: Phaser.GameObjects.Text;
@@ -850,8 +853,12 @@ export default class GameScene extends Phaser.Scene {
                 this.closeAchievementModal();
                 return;
             }
-            // 統合BookUIが開いている場合は閉じる
+            // 統合BookUIが開いている場合は閉じる（スキル解放確認中は確認だけ閉じる）
             if (this.unifiedBookOpen) {
+                if (this.skillUnlockConfirmPendingNodeId) {
+                  this.closeSkillUnlockConfirm();
+                  return;
+                }
                 this.closeUnifiedBook();
                 return;
             }
@@ -876,6 +883,14 @@ export default class GameScene extends Phaser.Scene {
         // エンターキーで詳細を開く/購入
         this.input.keyboard.on('keydown-ENTER', () => {
             if (this.unifiedBookOpen) {
+                if (this.skillUnlockConfirmPendingNodeId) {
+                  if (this.skillUnlockConfirmFocus === 'cancel') {
+                    this.closeSkillUnlockConfirm();
+                  } else {
+                    this.applySkillUnlockConfirm();
+                  }
+                  return;
+                }
                 if (this.unifiedBookTab === 'skills' && this.skillNavArea === 'unlock') {
                     this.triggerSkillDetailAction();
                 }
@@ -1893,7 +1908,9 @@ export default class GameScene extends Phaser.Scene {
     this.playerBarPosition = 0.3;
     this.playerBarVelocity = 0;
     this.catchProgress = fightCfg['5-12_初期ゲージ'];
-    this.fishMoveTimer = 1.0;
+    // 初回の移動目標更新までの待ち（control_n06 シルクタッチで少し延長）
+    const fightStartMoveDelaySec = hasSkillAbility(this.playerData, 'abil_luck_junk_ward') ? 1.5 : 1.0;
+    this.fishMoveTimer = fightStartMoveDelaySec;
     this.fishTargetPosition = 0.4;
     this.fightStaggerUsedThisFight = false;
     this.fightSmoothDragUsedThisFight = false;
@@ -2981,7 +2998,7 @@ export default class GameScene extends Phaser.Scene {
                       <div class="book-skill-tree-scroll-fade book-skill-tree-scroll-fade--bottom" id="book-skill-tree-fade-bottom" aria-hidden="true"></div>
                     </div>
                     <div id="book-skill-node-detail" class="book-skill-node-detail ui-frame-box">
-                      <h4 id="book-skill-detail-name" class="book-skill-detail-name">—</h4>
+                      <h4 id="book-skill-detail-name" class="book-skill-detail-name">スキルを選択すると<br />説明が見られるよ</h4>
                       <p id="book-skill-detail-desc" class="book-skill-detail-desc"></p>
                       <p id="book-skill-detail-prereq" class="book-skill-detail-prereq"></p>
                       <p id="book-skill-detail-cost" class="book-skill-detail-cost"></p>
@@ -3051,6 +3068,15 @@ export default class GameScene extends Phaser.Scene {
                 <div class="book-list-scroll-fade book-list-scroll-fade--bottom" id="book-right-pane-fade-bottom" aria-hidden="true"></div>
             </div>
             </div>
+        <div id="skill-unlock-confirm-layer" class="skill-unlock-confirm-layer" style="display: none;" aria-hidden="true">
+          <div class="skill-unlock-confirm-dialog ui-frame-box" role="dialog" aria-modal="true" aria-labelledby="skill-unlock-confirm-message">
+            <p id="skill-unlock-confirm-message" class="skill-unlock-confirm-message"></p>
+            <div class="skill-unlock-confirm-actions modal-choice-actions">
+              <button type="button" id="skill-unlock-confirm-cancel" class="nes-btn ui-frame-box">やめる</button>
+              <button type="button" id="skill-unlock-confirm-ok" class="nes-btn ui-frame-box">解放する</button>
+            </div>
+          </div>
+        </div>
         </div>
       </div>
     `;
@@ -3093,15 +3119,38 @@ export default class GameScene extends Phaser.Scene {
     const skillUnlockBtn = this.unifiedBookUIElement.querySelector('#book-skill-unlock');
     skillUnlockBtn?.addEventListener('click', () => {
       if (!this.skillSelectedNodeId) return;
-      const r = tryUnlockSkillNode(this.playerData, this.skillSelectedNodeId);
-      if (r.ok) {
-        savePlayerData(this.playerData);
-        // updateStatusUI 内で skills タブ時は renderSkillBookPanel が走る（選択位置を維持）
-        this.updateStatusUI();
-        this.showResult('スキルを解放しました', 1200);
-      } else if (r.reason) {
-        this.showResult(r.reason, 1600);
+      if (this.playerData.unlockedSkillNodes.has(this.skillSelectedNodeId)) return;
+      const check = canUnlockSkillNode(this.playerData, this.skillSelectedNodeId);
+      if (!check.ok) {
+        if (check.reason) this.showResult(check.reason, 1600);
+        return;
       }
+      this.openSkillUnlockConfirm(this.skillSelectedNodeId);
+    });
+
+    const skillUnlockLayer = this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-layer');
+    skillUnlockLayer?.addEventListener('click', (e) => {
+      if (e.target === skillUnlockLayer) this.closeSkillUnlockConfirm();
+    });
+    const skillUnlockDialog = this.unifiedBookUIElement.querySelector('.skill-unlock-confirm-dialog');
+    skillUnlockDialog?.addEventListener('click', (e) => e.stopPropagation());
+    const skillUnlockCancelBtn = this.unifiedBookUIElement.querySelector(
+      '#skill-unlock-confirm-cancel',
+    ) as HTMLButtonElement | null;
+    const skillUnlockOkBtn = this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-ok') as HTMLButtonElement | null;
+    skillUnlockCancelBtn?.addEventListener('click', () => {
+      this.closeSkillUnlockConfirm();
+    });
+    skillUnlockOkBtn?.addEventListener('click', () => {
+      this.applySkillUnlockConfirm();
+    });
+    skillUnlockCancelBtn?.addEventListener('focus', () => {
+      this.skillUnlockConfirmFocus = 'cancel';
+      this.syncSkillUnlockConfirmSelection();
+    });
+    skillUnlockOkBtn?.addEventListener('focus', () => {
+      this.skillUnlockConfirmFocus = 'ok';
+      this.syncSkillUnlockConfirmSelection();
     });
 
     // グローバルに参照を保存
@@ -3307,9 +3356,8 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookSelectedId = treeId;
     this.unifiedBookSelectedIndex = index;
     this.setSkillNavArea('tree');
-    if (!this.skillSelectedNodeId || !String(this.skillSelectedNodeId).startsWith(`${treeId}_`)) {
-      this.skillSelectedNodeId = `${treeId}_n01` as SkillNodeId;
-    }
+    // カテゴリ切替直後はツリー上のノード未選択。↓で一段目を選ぶまで選択なし。
+    this.skillSelectedNodeId = null;
     this.unifiedBookListItems.forEach((item, i) => {
       const on = i === index;
       item.classList.toggle('selected', on);
@@ -3444,18 +3492,21 @@ export default class GameScene extends Phaser.Scene {
       grid.appendChild(row);
     }
 
-    if (!this.skillSelectedNodeId) {
-      this.skillSelectedNodeId = `${treeId}_n01` as SkillNodeId;
-    } else {
+    if (this.skillSelectedNodeId) {
       const sd = getSkillNodeDef(this.skillSelectedNodeId);
       if (!sd || sd.treeId !== treeId) {
-        this.skillSelectedNodeId = `${treeId}_n01` as SkillNodeId;
+        this.skillSelectedNodeId = null;
       }
     }
-    let selBtn = grid.querySelector(`[data-node-id="${this.skillSelectedNodeId}"]`) as HTMLElement | null;
-    if (!selBtn && nodes.length > 0) {
-      this.skillSelectedNodeId = nodes[0].id;
-      selBtn = grid.querySelector(`[data-node-id="${this.skillSelectedNodeId}"]`) as HTMLElement | null;
+    // 行 .book-skill-row にも data-node-id があるため、必ずノードボタンを対象にする
+    let selBtn: HTMLElement | null = null;
+    if (this.skillSelectedNodeId) {
+      selBtn = grid.querySelector(
+        `.book-skill-node[data-node-id="${this.skillSelectedNodeId}"]`,
+      ) as HTMLElement | null;
+      if (!selBtn) {
+        this.skillSelectedNodeId = null;
+      }
     }
     grid.querySelectorAll('.book-skill-node').forEach((el) => el.classList.remove('selected'));
     if (selBtn) selBtn.classList.add('selected');
@@ -3465,9 +3516,111 @@ export default class GameScene extends Phaser.Scene {
     this.updateSkillDetailPanel(panel);
   }
 
+  private clearSkillDetailPanel(root: HTMLElement) {
+    const nameEl = root.querySelector('#book-skill-detail-name');
+    if (nameEl) nameEl.innerHTML = 'スキルを選択すると<br />説明が見られるよ';
+    const descEl = root.querySelector('#book-skill-detail-desc');
+    if (descEl) descEl.textContent = '';
+    const prereqEl = root.querySelector('#book-skill-detail-prereq');
+    if (prereqEl) prereqEl.textContent = '';
+    const costEl = root.querySelector('#book-skill-detail-cost');
+    if (costEl) costEl.textContent = '';
+    const unlockBtn = root.querySelector('#book-skill-unlock') as HTMLButtonElement | null;
+    if (unlockBtn) {
+      unlockBtn.style.display = 'none';
+      unlockBtn.disabled = true;
+      unlockBtn.textContent = '解放する';
+      unlockBtn.classList.remove('book-skill-unlock--obtained');
+    }
+    const hint = root.querySelector('#book-skill-detail-hint');
+    if (hint) hint.textContent = '';
+  }
+
+  private openSkillUnlockConfirm(nodeId: SkillNodeId) {
+    const def = getSkillNodeDef(nodeId);
+    if (!def || !this.unifiedBookUIElement) return;
+    const layer = this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-layer') as HTMLElement | null;
+    const msg = this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-message');
+    if (msg) msg.textContent = `${def.costSp}SPを消費してスキルを解放しますか？`;
+    this.skillUnlockConfirmPendingNodeId = nodeId;
+    this.skillUnlockConfirmFocus = 'cancel';
+    this.syncSkillUnlockConfirmSelection();
+    if (layer) {
+      layer.style.display = 'flex';
+      layer.setAttribute('aria-hidden', 'false');
+    }
+    const cancelBtn = this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-cancel') as HTMLButtonElement | null;
+    requestAnimationFrame(() => {
+      cancelBtn?.focus();
+    });
+  }
+
+  private closeSkillUnlockConfirm() {
+    this.skillUnlockConfirmPendingNodeId = null;
+    this.skillUnlockConfirmFocus = 'cancel';
+    const layer = this.unifiedBookUIElement?.querySelector('#skill-unlock-confirm-layer') as HTMLElement | null;
+    if (layer) {
+      layer.style.display = 'none';
+      layer.setAttribute('aria-hidden', 'true');
+    }
+    const cancel = this.unifiedBookUIElement?.querySelector('#skill-unlock-confirm-cancel');
+    const ok = this.unifiedBookUIElement?.querySelector('#skill-unlock-confirm-ok');
+    cancel?.classList.remove('is-nav-selected');
+    ok?.classList.remove('is-nav-selected');
+  }
+
+  private syncSkillUnlockConfirmSelection() {
+    if (!this.unifiedBookUIElement) return;
+    const cancel = this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-cancel');
+    const ok = this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-ok');
+    cancel?.classList.toggle('is-nav-selected', this.skillUnlockConfirmFocus === 'cancel');
+    ok?.classList.toggle('is-nav-selected', this.skillUnlockConfirmFocus === 'ok');
+  }
+
+  /** スキル解放確認を表示中のみ。Phaser の矢印（カーソルキー）で左右移動。 */
+  private handleSkillUnlockConfirmNavigation() {
+    if (!this.skillUnlockConfirmPendingNodeId || !this.unifiedBookUIElement) return;
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) {
+      this.skillUnlockConfirmFocus = 'cancel';
+      this.syncSkillUnlockConfirmSelection();
+      (this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-cancel') as HTMLButtonElement | null)?.focus();
+      return;
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) {
+      this.skillUnlockConfirmFocus = 'ok';
+      this.syncSkillUnlockConfirmSelection();
+      (this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-ok') as HTMLButtonElement | null)?.focus();
+    }
+  }
+
+  private applySkillUnlockConfirm() {
+    const nodeId = this.skillUnlockConfirmPendingNodeId;
+    if (!nodeId) return;
+    this.closeSkillUnlockConfirm();
+    const r = tryUnlockSkillNode(this.playerData, nodeId);
+    if (r.ok) {
+      savePlayerData(this.playerData);
+      this.updateStatusUI();
+      this.showResult('スキルを解放しました', 1200);
+    } else if (r.reason) {
+      this.showResult(r.reason, 1600);
+    }
+  }
+
   private updateSkillDetailPanel(panel?: HTMLElement | null) {
     const root = panel ?? (this.unifiedBookUIElement?.querySelector('#book-skill-panel') as HTMLElement | null);
-    if (!root || !this.skillSelectedNodeId) return;
+    if (!root) return;
+    if (!this.skillSelectedNodeId) {
+      this.clearSkillDetailPanel(root);
+      this.setSkillNavArea(this.skillNavArea);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          this.updateUnifiedBookRightPaneScrollFade();
+          this.updateBookSkillTreeScrollFade();
+        });
+      });
+      return;
+    }
     const def = getSkillNodeDef(this.skillSelectedNodeId);
     if (!def) return;
 
@@ -3492,10 +3645,15 @@ export default class GameScene extends Phaser.Scene {
     const prereqMet = def.requires.every((req) => this.playerData.unlockedSkillNodes.has(req));
     const unlockBtn = root.querySelector('#book-skill-unlock') as HTMLButtonElement | null;
     if (unlockBtn) {
-      unlockBtn.style.display = unlocked ? 'none' : 'inline-block';
-      // 前提未達時のみボタンを無効化（説明文は読めるようにスキル選択自体は維持）
-      unlockBtn.disabled = !unlocked && !prereqMet;
-      unlockBtn.textContent = !unlocked && !prereqMet ? '解放不可' : '解放する';
+      unlockBtn.style.display = '';
+      unlockBtn.classList.toggle('book-skill-unlock--obtained', unlocked);
+      if (unlocked) {
+        unlockBtn.disabled = true;
+        unlockBtn.textContent = '解放済み';
+      } else {
+        unlockBtn.disabled = !prereqMet;
+        unlockBtn.textContent = !prereqMet ? '解放不可' : '解放する';
+      }
     }
 
     const hint = root.querySelector('#book-skill-detail-hint');
@@ -3601,6 +3759,102 @@ export default class GameScene extends Phaser.Scene {
     requestAnimationFrame(() => this.updateUnifiedBookRightPaneScrollFade());
   }
 
+  /** カテゴリに戻したとき、ツリー行の選択ハイライトと詳細を未選択状態にする */
+  private clearSkillTreeRowKeyboardSelection() {
+    if (!this.unifiedBookUIElement || this.unifiedBookTab !== 'skills') return;
+    this.skillSelectedNodeId = null;
+    const panel = this.unifiedBookUIElement.querySelector('#book-skill-panel') as HTMLElement | null;
+    if (!panel) return;
+    const grid = panel.querySelector('#book-skill-tree-grid') as HTMLElement | null;
+    if (grid) {
+      grid.querySelectorAll('.book-skill-node').forEach((el) => el.classList.remove('selected'));
+      this.updateSkillNodeVisualStates(grid);
+    }
+    this.updateSkillDetailPanel(panel);
+  }
+
+  /** スキルタブの矢印（バッグ/図鑑と同様の長押しリピートは handleUnifiedBookNavigation 側で制御） */
+  private handleSkillBookArrowNavigation(dir: 'up' | 'down' | 'left' | 'right') {
+    if (!this.unifiedBookUIElement) return;
+    const rightPane = this.unifiedBookRightPaneScrollElement;
+    const edgeStep = this.BOOK_EDGE_SCROLL_STEP_PX;
+
+    if (dir === 'up') {
+      if (this.skillNavArea === 'tree') {
+        const moved = this.moveSkillNodeSelection(-1);
+        if (!moved) {
+          this.setSkillNavArea('category');
+          this.clearSkillTreeRowKeyboardSelection();
+          this.ensureSkillCategoryVisibleInRightPane();
+        }
+      } else if (this.skillNavArea === 'unlock') {
+        this.setSkillNavArea('category');
+        this.clearSkillTreeRowKeyboardSelection();
+        this.ensureSkillCategoryVisibleInRightPane();
+      } else if (this.skillNavArea === 'category') {
+        this.nudgeScrollContainer(rightPane, -edgeStep);
+      }
+      return;
+    }
+    if (dir === 'down') {
+      if (this.skillNavArea === 'category') {
+        this.setSkillNavArea('tree');
+        if (!this.skillSelectedNodeId) {
+          const skillPanel = this.unifiedBookUIElement.querySelector('#book-skill-panel') as HTMLElement | null;
+          const firstNode = skillPanel?.querySelector(
+            '#book-skill-tree-grid .book-skill-node',
+          ) as HTMLElement | null;
+          if (firstNode) {
+            firstNode.click();
+            firstNode.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }
+      } else if (this.skillNavArea === 'tree') {
+        const moved = this.moveSkillNodeSelection(1);
+        if (!moved) {
+          if (!this.nudgeScrollContainer(this.bookSkillTreeScrollElement, edgeStep)) {
+            this.nudgeScrollContainer(rightPane, edgeStep);
+          }
+        }
+      } else if (this.skillNavArea === 'unlock') {
+        this.nudgeScrollContainer(rightPane, edgeStep);
+      }
+      return;
+    }
+    if (dir === 'left') {
+      if (this.skillNavArea === 'unlock') {
+        this.setSkillNavArea('tree');
+      } else {
+        const wasCategory = this.skillNavArea === 'category';
+        if (!this.switchSkillTreeByDelta(-1)) {
+          this.switchUnifiedBookTabWhenSkillHorizontalEdge(-1);
+        } else if (wasCategory) {
+          this.setSkillNavArea('category');
+        }
+      }
+      return;
+    }
+    if (dir === 'right') {
+      if (this.skillNavArea === 'category') {
+        if (!this.switchSkillTreeByDelta(1)) {
+          this.switchUnifiedBookTabWhenSkillHorizontalEdge(1);
+        } else {
+          this.setSkillNavArea('category');
+        }
+      } else if (this.skillNavArea === 'tree') {
+        if (this.getSkillUnlockButton()) {
+          this.setSkillNavArea('unlock');
+        } else if (!this.switchSkillTreeByDelta(1)) {
+          this.switchUnifiedBookTabWhenSkillHorizontalEdge(1);
+        }
+      } else if (this.skillNavArea === 'unlock') {
+        if (!this.switchSkillTreeByDelta(1)) {
+          this.switchUnifiedBookTabWhenSkillHorizontalEdge(1);
+        }
+      }
+    }
+  }
+
   private moveSkillNodeSelection(delta: number): boolean {
     if (!this.unifiedBookUIElement) return false;
     const panel = this.unifiedBookUIElement.querySelector('#book-skill-panel') as HTMLElement | null;
@@ -3612,7 +3866,14 @@ export default class GameScene extends Phaser.Scene {
     if (currentIdx < 0 && this.skillSelectedNodeId) {
       currentIdx = buttons.findIndex((btn) => btn.getAttribute('data-node-id') === this.skillSelectedNodeId);
     }
-    if (currentIdx < 0) currentIdx = 0;
+    if (currentIdx < 0) {
+      if (delta > 0) {
+        buttons[0]?.click();
+        buttons[0]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return true;
+      }
+      return false;
+    }
 
     const nextIdx = Math.max(0, Math.min(buttons.length - 1, currentIdx + delta));
     if (nextIdx === currentIdx) return false;
@@ -3940,12 +4201,8 @@ export default class GameScene extends Phaser.Scene {
     } else {
       if (isCaught) {
         const priceG = Math.round(fish.price * getSellPriceMultiplier(this.playerData));
-        if (this.unifiedBookTab === 'pedia' && !canShowPediaRarity(this.playerData)) {
-          meta.textContent = `💰 ${priceG}G | レア: ？？？`;
-        } else {
-          const rarityKey = fish.rarity as keyof typeof rarityStars;
-          meta.textContent = `💰 ${priceG}G | ${rarityStars[rarityKey]}`;
-        }
+        const rarityKey = fish.rarity as keyof typeof rarityStars;
+        meta.textContent = `💰 ${priceG}G | ${rarityStars[rarityKey]}`;
       } else {
         meta.textContent = '未発見';
       }
@@ -4157,22 +4414,18 @@ export default class GameScene extends Phaser.Scene {
       // 魚名
       name.textContent = fish.name;
       
-      // レアリティスター表示（図鑑はサングラス解放まで隠す）
-      if (this.unifiedBookTab === 'pedia' && isCaught && !canShowPediaRarity(this.playerData)) {
-        rarityStarsElement.innerHTML = '<span style="color: #9a9a9a; letter-spacing: 3px;">？？？</span>';
-      } else {
-        const starCount = rarityStarCount[fish.rarity];
-        const colorHex = this.getRarityColorCssValue(fish.rarity);
-        let starsHTML = '';
-        for (let i = 0; i < 5; i++) {
-          if (i < starCount) {
-            starsHTML += `<span style="color: ${colorHex}">★</span>`;
-          } else {
-            starsHTML += `<span style="color: #bababa">★</span>`;
-          }
+      // レアリティスター表示（釣果のある図鑑・インベントリは常に表示）
+      const starCount = rarityStarCount[fish.rarity];
+      const colorHex = this.getRarityColorCssValue(fish.rarity);
+      let starsHTML = '';
+      for (let i = 0; i < 5; i++) {
+        if (i < starCount) {
+          starsHTML += `<span style="color: ${colorHex}">★</span>`;
+        } else {
+          starsHTML += `<span style="color: #bababa">★</span>`;
         }
-        rarityStarsElement.innerHTML = starsHTML;
       }
+      rarityStarsElement.innerHTML = starsHTML;
 
       // ゴミの場合は生息地を表示しない
       const isJunk = fish.id.startsWith('junk_');
@@ -4574,6 +4827,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   closeUnifiedBook() {
+    this.closeSkillUnlockConfirm();
     this.unifiedBookOpen = false;
     this.unifiedBookSelectedId = null;
     this.unifiedBookSelectedIndex = null;
@@ -4594,6 +4848,10 @@ export default class GameScene extends Phaser.Scene {
 
   handleUnifiedBookNavigation() {
     if (!this.unifiedBookOpen) return;
+    if (this.skillUnlockConfirmPendingNodeId) {
+      this.handleSkillUnlockConfirmNavigation();
+      return;
+    }
 
     // タブ切替（Q, E）
     const keyboard = this.input?.keyboard;
@@ -4613,74 +4871,6 @@ export default class GameScene extends Phaser.Scene {
       if (i < 0) i = 0;
       this.switchUnifiedBookTab(bookTabsCycle[(i + 1) % bookTabsCycle.length]);
       return;
-    }
-
-    if (this.unifiedBookTab === 'skills') {
-      const rightPane = this.unifiedBookRightPaneScrollElement;
-      const edgeStep = this.BOOK_EDGE_SCROLL_STEP_PX;
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
-        if (this.skillNavArea === 'tree') {
-          const moved = this.moveSkillNodeSelection(-1);
-          if (!moved) {
-            this.setSkillNavArea('category');
-            this.ensureSkillCategoryVisibleInRightPane();
-          }
-        } else if (this.skillNavArea === 'unlock') {
-          this.setSkillNavArea('category');
-          this.ensureSkillCategoryVisibleInRightPane();
-        } else if (this.skillNavArea === 'category') {
-          this.nudgeScrollContainer(rightPane, -edgeStep);
-        }
-        return;
-      }
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
-        if (this.skillNavArea === 'category') {
-          this.setSkillNavArea('tree');
-        } else if (this.skillNavArea === 'tree') {
-          const moved = this.moveSkillNodeSelection(1);
-          if (!moved) {
-            if (!this.nudgeScrollContainer(this.bookSkillTreeScrollElement, edgeStep)) {
-              this.nudgeScrollContainer(rightPane, edgeStep);
-            }
-          }
-        } else if (this.skillNavArea === 'unlock') {
-          this.nudgeScrollContainer(rightPane, edgeStep);
-        }
-        return;
-      }
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) {
-        if (this.skillNavArea === 'unlock') {
-          this.setSkillNavArea('tree');
-        } else {
-          const wasCategory = this.skillNavArea === 'category';
-          if (!this.switchSkillTreeByDelta(-1)) {
-            this.switchUnifiedBookTabWhenSkillHorizontalEdge(-1);
-          } else if (wasCategory) {
-            this.setSkillNavArea('category');
-          }
-        }
-        return;
-      }
-      if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) {
-        if (this.skillNavArea === 'category') {
-          if (!this.switchSkillTreeByDelta(1)) {
-            this.switchUnifiedBookTabWhenSkillHorizontalEdge(1);
-          } else {
-            this.setSkillNavArea('category');
-          }
-        } else if (this.skillNavArea === 'tree') {
-          if (this.getSkillUnlockButton()) {
-            this.setSkillNavArea('unlock');
-          } else if (!this.switchSkillTreeByDelta(1)) {
-            this.switchUnifiedBookTabWhenSkillHorizontalEdge(1);
-          }
-        } else if (this.skillNavArea === 'unlock') {
-          if (!this.switchSkillTreeByDelta(1)) {
-            this.switchUnifiedBookTabWhenSkillHorizontalEdge(1);
-          }
-        }
-        return;
-      }
     }
 
     // リストが空（ステータスタブなど）のときは、左右の初回押下だけで隣タブへ
@@ -4724,6 +4914,11 @@ export default class GameScene extends Phaser.Scene {
       this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavRepeatIntervalMs;
     }
 
+    if (this.unifiedBookTab === 'skills') {
+      this.handleSkillBookArrowNavigation(dir);
+      return;
+    }
+
     if (this.unifiedBookListItems.length === 0) {
       if (this.unifiedBookTab === 'status') {
         const statusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
@@ -4752,7 +4947,7 @@ export default class GameScene extends Phaser.Scene {
     const lastIndex = this.unifiedBookListItems.length - 1;
     if (currentIndex < 0 || currentIndex > lastIndex) currentIndex = 0;
 
-    const columns = this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'skills' ? 1 : 3;
+    const columns = this.unifiedBookTab === 'achievement' ? 1 : 3;
 
     // 矢印キーで選択移動（グリッド基準）
     let newIndex = currentIndex;
@@ -4799,11 +4994,6 @@ export default class GameScene extends Phaser.Scene {
     if (this.unifiedBookTab === 'achievement') {
       const category = item.getAttribute('data-category');
       if (category) this.selectAchievementCategory(category, newIndex);
-    } else if (this.unifiedBookTab === 'skills') {
-      const treeId = item.getAttribute('data-tree-id') as SkillTreeId | null;
-      if (treeId && SKILL_TREE_IDS.includes(treeId)) {
-        this.selectSkillTree(treeId, newIndex);
-      }
     } else {
       const fishId = item.getAttribute('data-fish-id');
       if (fishId) this.selectUnifiedBookItem(fishId, newIndex);
