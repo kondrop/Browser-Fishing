@@ -37,6 +37,7 @@ const FishingState = {
   FAIL: 6,
 } as const;
 type FishingStateValue = typeof FishingState[keyof typeof FishingState];
+const CATCH_RESULT_FADE_MS = 300;
 
 export default class GameScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -56,6 +57,10 @@ export default class GameScene extends Phaser.Scene {
   private exclamation!: Phaser.GameObjects.Text;
   // 結果表示テキスト（HTML/CSS）
   private resultTextElement!: HTMLElement;
+  private resultTextTimer?: Phaser.Time.TimerEvent;
+  private catchResultElement!: HTMLElement;
+  private catchResultTimer?: Phaser.Time.TimerEvent;
+  private catchResultHideTimer?: Phaser.Time.TimerEvent;
   private hintText!: Phaser.GameObjects.Text;
 
   // 投擲用
@@ -154,6 +159,8 @@ export default class GameScene extends Phaser.Scene {
   private unifiedBookNavNextMoveAt: number = 0; // Phaser time (ms)
   private unifiedBookNavInitialDelayMs: number = 220;
   private unifiedBookNavRepeatIntervalMs: number = 70;
+  /** 上部 Book タブ行をキー操作中（左リスト先頭から↑で入る） */
+  private unifiedBookMainTabsNavActive: boolean = false;
   /** 選択が端でこれ以上動けないとき、上下キーでスクロールさせる量（px） */
   private readonly BOOK_EDGE_SCROLL_STEP_PX = 56;
   private unifiedBookListItems: HTMLElement[] = [];
@@ -172,6 +179,9 @@ export default class GameScene extends Phaser.Scene {
   private unifiedBookDetailElement!: HTMLElement;
   private unifiedBookDetailPlaceholderElement!: HTMLElement;
   private skillNavArea: 'category' | 'tree' | 'unlock' = 'tree';
+  /** 実績タブ: 左＝カテゴリ一覧 / 右＝実績詳細リスト */
+  private achievementNavArea: 'left' | 'right' = 'left';
+  private achievementDetailSelectedIndex: number = 0;
   private selectedStatusStatKey: 'power' | 'speed' | 'technique' | 'control' = 'power';
   private readonly statusStatOrder: Array<'power' | 'speed' | 'technique' | 'control'> = ['power', 'speed', 'technique', 'control'];
 
@@ -725,6 +735,42 @@ export default class GameScene extends Phaser.Scene {
     this.resultTextElement = tempDiv1.firstElementChild as HTMLElement;
     document.body.appendChild(this.resultTextElement);
 
+    const catchResultHTML = `
+      <div id="catch-result-popup" class="catch-result-popup ui-frame-box" style="display: none;">
+        <div class="catch-result-exp-chip">
+          <span class="catch-result-exp-value"></span>
+          <span class="catch-result-exp-label">exp.</span>
+        </div>
+        <img class="catch-result-big-label" src="/images/Fishing Result UI/Big-label.svg" alt="Big" />
+        <div class="catch-result-main-block">
+          <div class="catch-result-fish-wrap">
+            <img class="catch-result-fish-image" alt="fish" />
+            <div class="catch-result-fish-emoji"></div>
+          </div>
+          <div class="catch-result-text-wrap">
+            <div class="catch-result-main-line"></div>
+            <div class="catch-result-rarity-line"></div>
+          </div>
+        </div>
+        <div class="catch-result-meta-row">
+          <div class="catch-result-meta-chip">
+            <img src="/images/ui/ゴールド.png" alt="売値" class="catch-result-meta-icon-image book-detail-stat-label-icon" />
+            <span class="catch-result-meta-value catch-result-price-value"></span>
+            <span class="catch-result-meta-unit">g</span>
+          </div>
+          <div class="catch-result-meta-chip">
+            <img src="/images/ui/サイズ.png" alt="サイズ" class="catch-result-meta-icon-image book-detail-stat-label-icon" />
+            <span class="catch-result-meta-value catch-result-size-value"></span>
+            <span class="catch-result-meta-unit">cm</span>
+          </div>
+        </div>
+      </div>
+    `;
+    const tempDivResult = document.createElement('div');
+    tempDivResult.innerHTML = catchResultHTML;
+    this.catchResultElement = tempDivResult.firstElementChild as HTMLElement;
+    document.body.appendChild(this.catchResultElement);
+
     // パワーゲージ（25%大きく）
     const castCfg = config.casting;
     const gaugeWidth = Math.round(castCfg['2-1_ゲージ幅'] * 1.25);
@@ -961,6 +1007,9 @@ export default class GameScene extends Phaser.Scene {
         });
 
         this.spaceKey.on('down', () => {
+            if (this.dismissCatchResultPopupByUser()) {
+                return;
+            }
             if (this.state === FishingState.IDLE) {
                 if (this.isNearWater()) {
                     this.startCasting();
@@ -976,6 +1025,11 @@ export default class GameScene extends Phaser.Scene {
             if (this.state === FishingState.CASTING) {
                 this.finishCasting();
             }
+        });
+
+        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            if (pointer.button !== 0) return;
+            this.dismissCatchResultPopupByUser();
         });
 
     }
@@ -1750,6 +1804,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.resultTextElement) {
       this.resultTextElement.style.display = 'none';
     }
+    this.hideCatchResultPopup();
 
     const waitCfg = config.waiting;
     
@@ -1935,7 +1990,7 @@ export default class GameScene extends Phaser.Scene {
     if (!hasSkillAbility(this.playerData, 'abil_control_lock_on')) return;
     this.lockOnRemainingSec = 1.0;
     this.fightLockOnUsedThisFight = true;
-    this.showResult('スキル発動: ロックオン', 800);
+    this.showResult('スキル発動: ロックオン', 800, { resetFishingStateOnEnd: false });
   }
 
   /** ↑ : スタッガー（power_n06） */
@@ -1944,7 +1999,7 @@ export default class GameScene extends Phaser.Scene {
     if (!hasSkillAbility(this.playerData, 'abil_power_fight_steady')) return;
     this.fishFreezeRemainingSec = 1.5;
     this.fightStaggerUsedThisFight = true;
-    this.showResult('スキル発動: スタッガー', 800);
+    this.showResult('スキル発動: スタッガー', 800, { resetFishingStateOnEnd: false });
   }
 
   /** → : フィッシャーズハイ（technique_n03） */
@@ -1953,7 +2008,7 @@ export default class GameScene extends Phaser.Scene {
     if (!hasSkillAbility(this.playerData, 'abil_control_smooth_drag')) return;
     this.smoothDragRemainingSec = 3.0;
     this.fightSmoothDragUsedThisFight = true;
-    this.showResult('スキル発動: フィッシャーズハイ', 800);
+    this.showResult('スキル発動: フィッシャーズハイ', 800, { resetFishingStateOnEnd: false });
   }
 
   updateFighting(_time: number, delta: number) {
@@ -2058,8 +2113,9 @@ export default class GameScene extends Phaser.Scene {
     const isCatching = (this.fishBarPosition >= this.playerBarPosition && 
                         this.fishBarPosition <= this.playerBarPosition + barHeight);
     const criticalZoneHeight = hasSkillAbility(this.playerData, 'abil_speed_opening_surge') ? 0.08 : 0;
-    const criticalZoneTop = 0.5 + (criticalZoneHeight / 2);
-    const criticalZoneBottom = 0.5 - (criticalZoneHeight / 2);
+    const playerHitBarCenter = this.playerBarPosition + barHeight / 2;
+    const criticalZoneTop = playerHitBarCenter + (criticalZoneHeight / 2);
+    const criticalZoneBottom = playerHitBarCenter - (criticalZoneHeight / 2);
     const isInCriticalZone = criticalZoneHeight > 0
       && this.fishBarPosition >= criticalZoneBottom
       && this.fishBarPosition <= criticalZoneTop
@@ -2111,7 +2167,7 @@ export default class GameScene extends Phaser.Scene {
     if (criticalZoneHeight > 0) {
       this.uiCriticalZone.setVisible(true);
       this.uiCriticalZone.setSize(cfg['5-3_バー幅'] + 8, criticalZoneHeight * bgHeight);
-      this.uiCriticalZone.y = mapY(0.5);
+      this.uiCriticalZone.y = mapY(playerHitBarCenter);
     } else {
       this.uiCriticalZone.setVisible(false);
     }
@@ -2155,6 +2211,7 @@ export default class GameScene extends Phaser.Scene {
     this.cleanupFishingTools();
 
     if (this.currentFish) {
+        const isNewSpecies = !this.playerData.caughtFishIds.has(this.currentFish.id);
         // インベントリの空きをチェック
         const currentCount = getInventoryCount(this.playerData);
         if (currentCount >= this.playerData.maxInventorySlots) {
@@ -2195,19 +2252,28 @@ export default class GameScene extends Phaser.Scene {
 
             const stars = rarityStars[this.currentFish.rarity];
             const duration = config.result['6-2_成功表示時間'] * 1000;
-            
-            // サイズを表示（ゴミの場合は表示しない）
-            const sizeText = fishSize !== undefined ? ` | ${fishSize}cm` : '';
-            let resultMessage = `${this.currentFish.emoji} ${this.currentFish.name} ${stars}${sizeText}\nバッグ満杯！自動売却 +${earnings} G`;
-            if (leveledUp) {
-              resultMessage += `\n🎉 レベルアップ！ Lv.${this.playerData.level}`;
-            }
-            this.showResult(resultMessage, duration);
+            const sizeRatio = fishSize !== undefined ? fishSize / this.currentFish.maxSize : undefined;
+
+            this.showCatchResultSequence({
+              fish: this.currentFish,
+              fishSize,
+              stars,
+              price: earnings,
+              exp: expGain,
+              leveledUp,
+              isBagFull: true,
+              isNewSpecies,
+              level: this.playerData.level,
+              duration,
+              sizeRatio,
+            });
             return;
         }
 
         // インベントリに追加（ファイト開始時に生成したサイズを使用）
         const fishSize = this.currentFishSize;
+        const expMul = getExpMultiplierForFish(this.playerData, this.currentFish.id);
+        const expGain = Math.max(1, Math.round(getExpByRarity(this.currentFish.rarity) * expMul));
         const { leveledUp } = addFishToInventory(this.playerData, this.currentFish, fishSize);
         
         // 連続成功を更新
@@ -2247,16 +2313,20 @@ export default class GameScene extends Phaser.Scene {
         const stars = rarityStars[this.currentFish.rarity];
         const duration = config.result['6-2_成功表示時間'] * 1000;
         
-        // サイズを表示（ゴミの場合は表示しない）
-        const sizeText = fishSize !== undefined ? ` | ${fishSize}cm` : '';
-        let resultMessage = `${this.currentFish.emoji} ${this.currentFish.name} を釣った！\n${stars}${sizeText} | ${actualPrice}G`;
-        
-        // レベルアップ時のメッセージを追加
-        if (leveledUp) {
-          resultMessage += `\n🎉 レベルアップ！ Lv.${this.playerData.level}`;
-        }
-        
-        this.showResult(resultMessage, duration);
+        const sizeRatio = fishSize !== undefined ? fishSize / this.currentFish.maxSize : undefined;
+        this.showCatchResultSequence({
+          fish: this.currentFish,
+          fishSize,
+          stars,
+          price: actualPrice,
+          exp: expGain,
+          leveledUp,
+          isBagFull: false,
+          isNewSpecies,
+          level: this.playerData.level,
+          duration,
+          sizeRatio,
+        });
     }
     
     this.currentFish = null;
@@ -2288,20 +2358,205 @@ export default class GameScene extends Phaser.Scene {
     this.hintText.setVisible(false);
   }
 
-  showResult(text: string, duration: number) {
+  showResult(text: string, duration: number, options?: { resetFishingStateOnEnd?: boolean }) {
+    if (this.resultTextTimer) {
+      this.resultTextTimer.remove(false);
+      this.resultTextTimer = undefined;
+    }
+
     if (this.resultTextElement) {
       this.resultTextElement.textContent = text;
       this.resultTextElement.style.display = 'block';
     }
-    
-    this.time.delayedCall(duration, () => {
-        if (this.state === FishingState.SUCCESS || this.state === FishingState.FAIL) {
-            this.resetState();
+
+    const shouldResetFishingState = options?.resetFishingStateOnEnd ?? true;
+    this.resultTextTimer = this.time.delayedCall(duration, () => {
+        if (shouldResetFishingState && (this.state === FishingState.SUCCESS || this.state === FishingState.FAIL)) {
+          this.resetState();
         }
         if (this.resultTextElement) {
           this.resultTextElement.style.display = 'none';
         }
+        this.resultTextTimer = undefined;
     });
+  }
+
+  private showCatchResultSequence(params: {
+    fish: FishConfig;
+    fishSize?: number;
+    stars: string;
+    price: number;
+    exp: number;
+    leveledUp: boolean;
+    isBagFull: boolean;
+    isNewSpecies: boolean;
+    level: number;
+    duration: number;
+    sizeRatio?: number;
+  }) {
+    if (!this.catchResultElement) return;
+    const additionalDurationMs = 1000;
+
+    if (this.catchResultTimer) {
+      this.catchResultTimer.remove(false);
+      this.catchResultTimer = undefined;
+    }
+
+    const popupQueue: Array<{ kind: 'catch' | 'bag' | 'level' }> = [{ kind: 'catch' }];
+    if (params.isBagFull) popupQueue.push({ kind: 'bag' });
+    if (params.leveledUp) popupQueue.push({ kind: 'level' });
+
+    const showAt = (index: number) => {
+      const popup = popupQueue[index];
+      if (!popup) {
+        this.hideCatchResultPopup({
+          onHidden: () => {
+            if (this.state === FishingState.SUCCESS || this.state === FishingState.FAIL) {
+              this.resetState();
+            }
+          },
+        });
+        return;
+      }
+
+      this.renderCatchResultPopup(popup.kind, params);
+      const baseDuration = popup.kind === 'catch' ? params.duration : Math.min(params.duration, 1400);
+      const popupDuration = baseDuration + additionalDurationMs;
+      this.catchResultTimer = this.time.delayedCall(popupDuration, () => showAt(index + 1));
+    };
+
+    showAt(0);
+  }
+
+  private renderCatchResultPopup(
+    kind: 'catch' | 'bag' | 'level',
+    params: {
+      fish: FishConfig;
+      fishSize?: number;
+      stars: string;
+      price: number;
+      exp: number;
+      sizeRatio?: number;
+      isNewSpecies: boolean;
+      level: number;
+    }
+  ) {
+    if (!this.catchResultElement) return;
+
+    const mainLine = this.catchResultElement.querySelector('.catch-result-main-line') as HTMLElement | null;
+    const rarityLine = this.catchResultElement.querySelector('.catch-result-rarity-line') as HTMLElement | null;
+    const metaRow = this.catchResultElement.querySelector('.catch-result-meta-row') as HTMLElement | null;
+    const priceValue = this.catchResultElement.querySelector('.catch-result-price-value') as HTMLElement | null;
+    const sizeValue = this.catchResultElement.querySelector('.catch-result-size-value') as HTMLElement | null;
+    const fishImage = this.catchResultElement.querySelector('.catch-result-fish-image') as HTMLImageElement | null;
+    const fishEmoji = this.catchResultElement.querySelector('.catch-result-fish-emoji') as HTMLElement | null;
+    const bigLabel = this.catchResultElement.querySelector('.catch-result-big-label') as HTMLImageElement | null;
+    const expChip = this.catchResultElement.querySelector('.catch-result-exp-chip') as HTMLElement | null;
+    const expValue = this.catchResultElement.querySelector('.catch-result-exp-value') as HTMLElement | null;
+
+    if (!mainLine || !rarityLine || !metaRow || !priceValue || !sizeValue || !fishImage || !fishEmoji || !bigLabel || !expChip || !expValue) return;
+    if (this.catchResultHideTimer) {
+      this.catchResultHideTimer.remove(false);
+      this.catchResultHideTimer = undefined;
+    }
+
+    const fishImagePath = `/images/fish/${params.fish.name}.png`;
+    fishEmoji.textContent = params.fish.emoji;
+    fishImage.style.display = 'block';
+    fishImage.src = fishImagePath;
+    fishImage.onerror = () => {
+      fishImage.style.display = 'none';
+      fishEmoji.style.display = 'flex';
+    };
+    fishImage.onload = () => {
+      fishImage.style.display = 'block';
+      fishEmoji.style.display = 'none';
+    };
+
+    priceValue.textContent = params.price.toLocaleString();
+    sizeValue.textContent = params.fishSize !== undefined ? params.fishSize.toFixed(1) : '--';
+    const showBigLabel = (params.sizeRatio ?? 0) >= 0.75;
+    const showNewLabel = params.isNewSpecies;
+    if (kind === 'catch' && (showNewLabel || showBigLabel)) {
+      if (showNewLabel) {
+        bigLabel.src = '/images/Fishing Result UI/New-label.svg';
+        bigLabel.alt = 'New';
+      } else {
+        bigLabel.src = '/images/Fishing Result UI/Big-label.svg';
+        bigLabel.alt = 'Big';
+      }
+      bigLabel.style.display = 'block';
+    } else {
+      bigLabel.style.display = 'none';
+    }
+
+    this.catchResultElement.classList.toggle('catch-result-popup--notice', kind !== 'catch');
+    expValue.textContent = `+${params.exp.toLocaleString()}`;
+    expChip.style.display = kind === 'catch' ? 'inline-flex' : 'none';
+
+    if (kind === 'catch') {
+      mainLine.textContent = `${params.fish.name}を釣った！`;
+      rarityLine.textContent = params.stars;
+      rarityLine.style.color = this.getRarityColorCssValue(params.fish.rarity);
+      metaRow.style.display = 'flex';
+    } else if (kind === 'bag') {
+      mainLine.textContent = 'バッグ満杯！';
+      rarityLine.textContent = `自動売却 +${params.price.toLocaleString()} G`;
+      rarityLine.style.color = '';
+      metaRow.style.display = 'none';
+    } else {
+      mainLine.textContent = 'レベルアップ！';
+      rarityLine.textContent = `Lv.${params.level} になった`;
+      rarityLine.style.color = '';
+      metaRow.style.display = 'none';
+    }
+
+    this.catchResultElement.classList.remove('is-visible');
+    this.catchResultElement.style.display = 'flex';
+    void this.catchResultElement.offsetWidth;
+    this.catchResultElement.classList.add('is-visible');
+  }
+
+  private hideCatchResultPopup(options?: { immediate?: boolean; onHidden?: () => void }) {
+    if (!this.catchResultElement) return;
+    if (this.catchResultTimer) {
+      this.catchResultTimer.remove(false);
+      this.catchResultTimer = undefined;
+    }
+    if (this.catchResultHideTimer) {
+      this.catchResultHideTimer.remove(false);
+      this.catchResultHideTimer = undefined;
+    }
+
+    const isAlreadyHidden = this.catchResultElement.style.display === 'none';
+    const finalizeHide = () => {
+      this.catchResultElement.classList.remove('is-visible');
+      this.catchResultElement.style.display = 'none';
+      this.catchResultHideTimer = undefined;
+      options?.onHidden?.();
+    };
+
+    if (options?.immediate || isAlreadyHidden) {
+      finalizeHide();
+      return;
+    }
+
+    this.catchResultElement.classList.remove('is-visible');
+    this.catchResultHideTimer = this.time.delayedCall(CATCH_RESULT_FADE_MS, finalizeHide);
+  }
+
+  private dismissCatchResultPopupByUser(): boolean {
+    if (!this.catchResultElement || this.catchResultElement.style.display === 'none') {
+      return false;
+    }
+    this.hideCatchResultPopup({
+      onHidden: () => {
+        if (this.state === FishingState.SUCCESS || this.state === FishingState.FAIL) {
+          this.resetState();
+        }
+      },
+    });
+    return true;
   }
 
   resetState() {
@@ -2310,6 +2565,11 @@ export default class GameScene extends Phaser.Scene {
     if (this.resultTextElement) {
       this.resultTextElement.style.display = 'none';
     }
+    if (this.resultTextTimer) {
+      this.resultTextTimer.remove(false);
+      this.resultTextTimer = undefined;
+    }
+    this.hideCatchResultPopup();
     this.fightContainer.setVisible(false);
     this.hintText.setVisible(false);
   }
@@ -2892,7 +3152,7 @@ export default class GameScene extends Phaser.Scene {
             </button>
             <button class="book-tab-button ui-frame-box" data-tab="skills" aria-label="スキル">
               <span class="book-tab-button-inner">
-                <span class="book-tab-icon book-tab-icon--emoji" aria-hidden="true">🌿</span>
+                <img class="book-tab-icon" src="/images/ui/icon/icon_skill.png" alt="" aria-hidden="true" />
                 <span class="book-tab-label">スキル</span>
               </span>
             </button>
@@ -2911,8 +3171,9 @@ export default class GameScene extends Phaser.Scene {
           </div>
         </div>
         <div class="book-container ui-frame-box">
+            <div class="book-list-header" id="book-list-header">Bag</div>
+            <div class="book-main-row">
             <div class="book-left-pane">
-              <div class="book-list-header ui-frame-box" id="book-list-header">所持品一覧</div>
               <div class="book-list-scroll-wrap">
                 <div class="book-list-scroll" id="book-list-scroll"></div>
                 <div class="book-list-scroll-fade book-list-scroll-fade--top" id="book-list-scroll-fade-top" aria-hidden="true"></div>
@@ -2971,11 +3232,11 @@ export default class GameScene extends Phaser.Scene {
                     <div class="book-skill-category-block">
                       <div class="book-skill-category-title">Skill Category</div>
                       <div id="book-skill-category-tabs" class="book-skill-category-tabs" role="tablist" aria-label="スキルカテゴリ">
-                        <button type="button" class="book-skill-category-tab is-active" data-tree-id="power" data-label="POWER" aria-label="パワー">P</button>
-                        <button type="button" class="book-skill-category-tab" data-tree-id="speed" data-label="SPEED" aria-label="スピード">S</button>
-                        <button type="button" class="book-skill-category-tab" data-tree-id="technique" data-label="TECH" aria-label="テクニック">T</button>
-                        <button type="button" class="book-skill-category-tab" data-tree-id="control" data-label="CONTROL" aria-label="コントロール">C</button>
-                        <button type="button" class="book-skill-category-tab" data-tree-id="special" data-label="UNIQUE" aria-label="特殊">U</button>
+                        <button type="button" class="book-skill-category-tab is-active" data-tree-id="power" data-label="POWER" aria-label="パワー"><span class="book-skill-category-tab-initial">P</span></button>
+                        <button type="button" class="book-skill-category-tab" data-tree-id="speed" data-label="SPEED" aria-label="スピード"><span class="book-skill-category-tab-initial">S</span></button>
+                        <button type="button" class="book-skill-category-tab" data-tree-id="technique" data-label="TECH" aria-label="テクニック"><span class="book-skill-category-tab-initial">T</span></button>
+                        <button type="button" class="book-skill-category-tab" data-tree-id="control" data-label="CONTROL" aria-label="コントロール"><span class="book-skill-category-tab-initial">C</span></button>
+                        <button type="button" class="book-skill-category-tab" data-tree-id="special" data-label="UNIQUE" aria-label="特殊"><span class="book-skill-category-tab-initial">U</span></button>
                       </div>
                     </div>
                     <div class="book-skill-summary-col">
@@ -3068,6 +3329,7 @@ export default class GameScene extends Phaser.Scene {
                 <div class="book-list-scroll-fade book-list-scroll-fade--bottom" id="book-right-pane-fade-bottom" aria-hidden="true"></div>
             </div>
             </div>
+            </div>
         <div id="skill-unlock-confirm-layer" class="skill-unlock-confirm-layer" style="display: none;" aria-hidden="true">
           <div class="skill-unlock-confirm-dialog ui-frame-box" role="dialog" aria-modal="true" aria-labelledby="skill-unlock-confirm-message">
             <p id="skill-unlock-confirm-message" class="skill-unlock-confirm-message"></p>
@@ -3106,6 +3368,7 @@ export default class GameScene extends Phaser.Scene {
     const tabButtons = this.unifiedBookUIElement.querySelectorAll('.book-tab-button');
     tabButtons.forEach(btn => {
       btn.addEventListener('click', () => {
+        this.exitUnifiedBookMainTabsNav();
         const tab = (btn as HTMLElement).getAttribute('data-tab') as
           | 'inventory'
           | 'pedia'
@@ -3157,7 +3420,14 @@ export default class GameScene extends Phaser.Scene {
     (window as any).gameScene = this;
   }
 
-  switchUnifiedBookTab(tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'status') {
+  switchUnifiedBookTab(
+    tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'status',
+    opts?: { keepMainTabNav?: boolean },
+  ) {
+    if (!opts?.keepMainTabNav) {
+      this.exitUnifiedBookMainTabsNav();
+    }
+
     // 実績タブから他のタブに切り替える場合は、詳細エリアを元の構造に復元
     if (this.unifiedBookTab === 'achievement' && tab !== 'achievement') {
       this.restoreBookDetailStructure();
@@ -3167,6 +3437,8 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookSelectedId = null;
     this.unifiedBookSelectedIndex = null;
     this.setSkillNavArea('tree');
+    this.achievementNavArea = 'left';
+    this.achievementDetailSelectedIndex = 0;
 
     // タブボタンのアクティブ状態を更新
     const tabButtons = this.unifiedBookUIElement.querySelectorAll('.book-tab-button');
@@ -3179,11 +3451,18 @@ export default class GameScene extends Phaser.Scene {
       }
     });
 
-    // リストヘッダーを更新（ヘッダーは非表示にするか、空にする）
+    // 左ペイン（リスト）ヘッダーを更新
     const header = this.unifiedBookUIElement.querySelector('#book-list-header') as HTMLElement;
+    const menuHeadingByTab: Record<'inventory' | 'pedia' | 'skills' | 'achievement' | 'status', string> = {
+      inventory: 'Bag',
+      pedia: 'Pedia',
+      skills: 'Skills',
+      achievement: 'Achievements',
+      status: 'Status',
+    };
     if (header) {
-      header.textContent = '';
-      header.style.display = 'none';
+      header.textContent = menuHeadingByTab[tab];
+      header.style.display = 'block';
     }
 
     if (tab === 'achievement') {
@@ -3192,9 +3471,6 @@ export default class GameScene extends Phaser.Scene {
       this.unifiedBookUIElement.setAttribute('data-tab', 'status');
     } else if (tab === 'skills') {
       this.unifiedBookUIElement.setAttribute('data-tab', 'skills');
-      if (header) {
-        header.textContent = 'ツリー選択';
-      }
     } else {
       this.unifiedBookUIElement.removeAttribute('data-tab');
       this.restoreBookDetailStructure();
@@ -3208,6 +3484,113 @@ export default class GameScene extends Phaser.Scene {
         requestAnimationFrame(() => this.updateBookSkillTreeScrollFade());
       });
     }
+
+    if (this.unifiedBookMainTabsNavActive) {
+      this.syncUnifiedBookMainTabsNavUI();
+    }
+  }
+
+  private enterUnifiedBookMainTabsNav() {
+    // 先に true にしてから clear → update（status の setupStatusStatSelector が applySelection しないようにする）
+    this.unifiedBookMainTabsNavActive = true;
+    this.resetUnifiedBookTabScrollToTop();
+    this.clearUnifiedBookMenuSelectionForMainTabNav();
+    this.syncUnifiedBookMainTabsNavUI();
+  }
+
+  private exitUnifiedBookMainTabsNav() {
+    if (!this.unifiedBookMainTabsNavActive) return;
+    this.unifiedBookMainTabsNavActive = false;
+    this.syncUnifiedBookMainTabsNavUI();
+  }
+
+  /** 上部タブをキー選択中は、左ペイン／ステータス／スキルツリーの選択表示を外す */
+  private clearUnifiedBookMenuSelectionForMainTabNav() {
+    if (!this.unifiedBookUIElement) return;
+
+    this.unifiedBookSelectedId = null;
+    this.unifiedBookSelectedIndex = null;
+
+    for (const item of this.unifiedBookListItems) {
+      item.classList.remove('selected', 'achievement-category-selected');
+    }
+
+    const statusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
+    if (statusPanel) {
+      statusPanel.querySelectorAll('.book-status-stat-list li').forEach((li) => {
+        li.classList.remove('is-selected');
+        li.setAttribute('aria-selected', 'false');
+      });
+      const detailText = statusPanel.querySelector('#book-status-detail-text');
+      const detailTitle = statusPanel.querySelector('#book-status-detail-title');
+      if (detailText) detailText.textContent = '';
+      if (detailTitle) detailTitle.textContent = 'Info';
+    }
+
+    if (this.unifiedBookTab === 'skills') {
+      this.skillSelectedNodeId = null;
+      this.clearSkillTreeRowKeyboardSelection();
+      this.setSkillNavArea('tree');
+      const unlockBtn = this.unifiedBookUIElement.querySelector('#book-skill-unlock') as HTMLElement | null;
+      unlockBtn?.classList.remove('is-nav-selected');
+    }
+
+    if (this.unifiedBookTab === 'achievement') {
+      this.achievementNavArea = 'left';
+      this.unifiedBookDetailElement
+        ?.querySelectorAll('.achievement-detail-item--kb-selected')
+        .forEach((el) => el.classList.remove('achievement-detail-item--kb-selected'));
+    }
+
+    this.updateUnifiedBookDetail();
+  }
+
+  /** タブ行フォーカス解除後、先頭項目などへ選択を戻す */
+  private restoreUnifiedBookMenuSelectionAfterMainTabNav() {
+    if (!this.unifiedBookUIElement) return;
+
+    if (this.unifiedBookTab === 'status') {
+      const statusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
+      const first = statusPanel?.querySelector('.book-status-stat-list li') as HTMLElement | null;
+      first?.click();
+      return;
+    }
+
+    if (this.unifiedBookTab === 'skills') {
+      const panel = this.unifiedBookUIElement.querySelector('#book-skill-panel') as HTMLElement | null;
+      const activeTab = panel?.querySelector('.book-skill-category-tab.is-active') as HTMLElement | null;
+      const tid = activeTab?.dataset.treeId as SkillTreeId | undefined;
+      const idx =
+        tid && SKILL_TREE_IDS.includes(tid)
+          ? SKILL_TREE_IDS.indexOf(tid)
+          : 0;
+      this.selectSkillTree(SKILL_TREE_IDS[idx] ?? 'power', idx);
+      this.setSkillNavArea('category');
+      this.ensureSkillCategoryVisibleInRightPane();
+      return;
+    }
+
+    if (this.unifiedBookTab === 'achievement') {
+      const firstCategory = this.unifiedBookListItems[0]?.getAttribute('data-category');
+      if (firstCategory) this.selectAchievementCategory(firstCategory, 0);
+      return;
+    }
+
+    if (this.unifiedBookListItems.length > 0) {
+      const firstFishId = this.unifiedBookListItems[0]?.getAttribute('data-fish-id');
+      if (firstFishId) this.selectUnifiedBookItem(firstFishId, 0);
+    }
+  }
+
+  private syncUnifiedBookMainTabsNavUI() {
+    if (!this.unifiedBookUIElement) return;
+    this.unifiedBookUIElement.classList.toggle('is-book-main-tabs-nav', this.unifiedBookMainTabsNavActive);
+    const buttons = this.unifiedBookUIElement.querySelectorAll('.book-tab-button');
+    buttons.forEach((btn) => {
+      const t = (btn as HTMLElement).getAttribute('data-tab');
+      const on = this.unifiedBookMainTabsNavActive && t === this.unifiedBookTab;
+      btn.classList.toggle('is-nav-selected', !!on);
+    });
   }
 
   private fillBookStatusPanel(panel: HTMLElement) {
@@ -3330,6 +3713,16 @@ export default class GameScene extends Phaser.Scene {
       });
     });
 
+    if (this.unifiedBookMainTabsNavActive) {
+      items.forEach((item) => {
+        item.classList.remove('is-selected');
+        item.setAttribute('aria-selected', 'false');
+      });
+      const detailTitle = panel.querySelector('#book-status-detail-title');
+      if (detailTitle) detailTitle.textContent = 'Info';
+      detailTextEl.textContent = '';
+      return;
+    }
     applySelection(this.selectedStatusStatKey);
   }
 
@@ -3339,7 +3732,11 @@ export default class GameScene extends Phaser.Scene {
     const currentIndex = Math.max(0, this.statusStatOrder.indexOf(this.selectedStatusStatKey));
     const nextIndex = Math.max(0, Math.min(items.length - 1, currentIndex + delta));
     if (nextIndex === currentIndex && delta !== 0) {
-      this.nudgeBookScrollOnVerticalEdge(delta < 0 ? 'up' : 'down');
+      if (delta < 0) {
+        this.enterUnifiedBookMainTabsNav();
+      } else {
+        this.nudgeBookScrollOnVerticalEdge('down');
+      }
       return;
     }
     const nextItem = items[nextIndex];
@@ -3397,6 +3794,9 @@ export default class GameScene extends Phaser.Scene {
     if (!panel) return;
 
     // 左リストの選択が一瞬ずれていても、現在見ているノードのツリーを優先（解放直後などに power_n01 へ戻らない）
+    const noListSelection =
+      this.unifiedBookSelectedIndex === null && this.unifiedBookSelectedId === null;
+
     let treeId: SkillTreeId = 'power';
     const selNodeDef = this.skillSelectedNodeId ? getSkillNodeDef(this.skillSelectedNodeId) : undefined;
     if (selNodeDef && SKILL_TREE_IDS.includes(selNodeDef.treeId)) {
@@ -3406,13 +3806,21 @@ export default class GameScene extends Phaser.Scene {
       if (bookTree && SKILL_TREE_IDS.includes(bookTree)) treeId = bookTree;
     }
 
+    if (noListSelection && !selNodeDef) {
+      const activeTab = panel.querySelector('.book-skill-category-tab.is-active') as HTMLElement | null;
+      const at = activeTab?.dataset.treeId as SkillTreeId | undefined;
+      if (at && SKILL_TREE_IDS.includes(at)) treeId = at;
+    }
+
     const treeIdx = SKILL_TREE_IDS.indexOf(treeId);
     if (treeIdx >= 0) {
-      this.unifiedBookSelectedId = treeId;
-      this.unifiedBookSelectedIndex = treeIdx;
+      if (!noListSelection) {
+        this.unifiedBookSelectedId = treeId;
+        this.unifiedBookSelectedIndex = treeIdx;
+      }
       if (this.unifiedBookListItems.length > 0) {
         this.unifiedBookListItems.forEach((item, i) => {
-          item.classList.toggle('selected', i === treeIdx);
+          item.classList.toggle('selected', !noListSelection && i === treeIdx);
         });
       }
     }
@@ -3737,6 +4145,27 @@ export default class GameScene extends Phaser.Scene {
     return true;
   }
 
+  /** 上部タブ行へフォーカス移動したとき、各タブ内スクロールを先頭に戻す */
+  private resetUnifiedBookTabScrollToTop() {
+    const targets: Array<HTMLElement | null> = [
+      this.unifiedBookListScrollElement,
+      this.unifiedBookRightPaneScrollElement,
+      this.bookSkillTreeScrollElement,
+    ];
+    let changed = false;
+    targets.forEach((el) => {
+      if (!el || el.scrollTop <= 0) return;
+      el.scrollTop = 0;
+      changed = true;
+    });
+    if (!changed) return;
+    requestAnimationFrame(() => {
+      this.updateUnifiedBookListScrollFade();
+      this.updateUnifiedBookRightPaneScrollFade();
+      this.updateBookSkillTreeScrollFade();
+    });
+  }
+
   /** 左リスト→右ペインの順で、端での上下入力に応じてスクロール */
   private nudgeBookScrollOnVerticalEdge(dir: 'up' | 'down'): boolean {
     const step = this.BOOK_EDGE_SCROLL_STEP_PX;
@@ -3792,7 +4221,7 @@ export default class GameScene extends Phaser.Scene {
         this.clearSkillTreeRowKeyboardSelection();
         this.ensureSkillCategoryVisibleInRightPane();
       } else if (this.skillNavArea === 'category') {
-        this.nudgeScrollContainer(rightPane, -edgeStep);
+        this.enterUnifiedBookMainTabsNav();
       }
       return;
     }
@@ -4011,7 +4440,11 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // 初期状態では1つ目を選択状態にする（ホバーでは切り替えない方針）
-    if (this.unifiedBookListItems.length > 0 && this.unifiedBookSelectedIndex === null) {
+    if (
+      this.unifiedBookListItems.length > 0 &&
+      this.unifiedBookSelectedIndex === null &&
+      !this.unifiedBookMainTabsNavActive
+    ) {
       if (this.unifiedBookTab === 'achievement') {
         const firstCategory = this.unifiedBookListItems[0]?.getAttribute('data-category');
         if (firstCategory) this.selectAchievementCategory(firstCategory, 0);
@@ -4022,14 +4455,19 @@ export default class GameScene extends Phaser.Scene {
         if (firstFishId) this.selectUnifiedBookItem(firstFishId, 0);
       }
     } else if (this.unifiedBookTab === 'skills' && this.unifiedBookListItems.length > 0) {
-      const idx = Math.min(this.unifiedBookSelectedIndex ?? 0, this.unifiedBookListItems.length - 1);
-      this.unifiedBookListItems.forEach((item, i) => item.classList.toggle('selected', i === idx));
-      const tid = this.unifiedBookListItems[idx]?.getAttribute('data-tree-id') as SkillTreeId | undefined;
-      if (tid && SKILL_TREE_IDS.includes(tid)) {
-        this.unifiedBookSelectedId = tid;
-        this.unifiedBookSelectedIndex = idx;
+      if (this.unifiedBookSelectedIndex === null || this.unifiedBookSelectedId === null) {
+        this.unifiedBookListItems.forEach((item) => item.classList.remove('selected'));
+        this.renderSkillBookPanel();
+      } else {
+        const idx = Math.min(this.unifiedBookSelectedIndex, this.unifiedBookListItems.length - 1);
+        this.unifiedBookListItems.forEach((item, i) => item.classList.toggle('selected', i === idx));
+        const tid = this.unifiedBookListItems[idx]?.getAttribute('data-tree-id') as SkillTreeId | undefined;
+        if (tid && SKILL_TREE_IDS.includes(tid)) {
+          this.unifiedBookSelectedId = tid;
+          this.unifiedBookSelectedIndex = idx;
+        }
+        this.renderSkillBookPanel();
       }
-      this.renderSkillBookPanel();
     }
 
     requestAnimationFrame(() => {
@@ -4707,6 +5145,7 @@ export default class GameScene extends Phaser.Scene {
   selectAchievementCategory(category: string, index: number) {
     this.unifiedBookSelectedId = category;
     this.unifiedBookSelectedIndex = index;
+    this.achievementDetailSelectedIndex = 0;
 
     // 選択状態を更新
     this.unifiedBookListItems.forEach((item, i) => {
@@ -4784,6 +5223,92 @@ export default class GameScene extends Phaser.Scene {
       </div>`;
   }
 
+  private syncAchievementDetailKeyboardSelection() {
+    const root = this.unifiedBookDetailElement;
+    if (!root) return;
+    const items = root.querySelectorAll('.achievement-detail-list .achievement-detail-item');
+    items.forEach((el, i) => {
+      el.classList.toggle(
+        'achievement-detail-item--kb-selected',
+        this.achievementNavArea === 'right' && i === this.achievementDetailSelectedIndex,
+      );
+    });
+  }
+
+  private enterAchievementRightPane() {
+    if (!this.unifiedBookDetailElement) return;
+    const items = this.unifiedBookDetailElement.querySelectorAll(
+      '.achievement-detail-list .achievement-detail-item',
+    );
+    if (items.length === 0) return;
+    this.achievementNavArea = 'right';
+    this.achievementDetailSelectedIndex = 0;
+    this.syncAchievementDetailKeyboardSelection();
+    (items[0] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  private handleAchievementRightPaneNavigation(
+    dir: 'up' | 'down' | 'left' | 'right',
+    now: number,
+  ) {
+    if (!this.unifiedBookDetailElement) return;
+    const items = Array.from(
+      this.unifiedBookDetailElement.querySelectorAll(
+        '.achievement-detail-list .achievement-detail-item',
+      ),
+    ) as HTMLElement[];
+    const lastIdx = items.length - 1;
+
+    if (lastIdx < 0) {
+      this.achievementNavArea = 'left';
+      return;
+    }
+
+    if (dir === 'left') {
+      this.achievementNavArea = 'left';
+      items.forEach((el) => el.classList.remove('achievement-detail-item--kb-selected'));
+      return;
+    }
+
+    if (dir === 'up') {
+      if (this.achievementDetailSelectedIndex > 0) {
+        this.achievementDetailSelectedIndex--;
+        this.syncAchievementDetailKeyboardSelection();
+        items[this.achievementDetailSelectedIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        this.nudgeBookScrollOnVerticalEdge('up');
+      }
+      return;
+    }
+
+    if (dir === 'down') {
+      if (this.achievementDetailSelectedIndex < lastIdx) {
+        this.achievementDetailSelectedIndex++;
+        this.syncAchievementDetailKeyboardSelection();
+        items[this.achievementDetailSelectedIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        this.nudgeBookScrollOnVerticalEdge('down');
+      }
+      return;
+    }
+
+    if (dir === 'right') {
+      const tabs: Array<'inventory' | 'pedia' | 'skills' | 'achievement' | 'status'> = [
+        'inventory',
+        'pedia',
+        'skills',
+        'achievement',
+        'status',
+      ];
+      const currentTabIdx = tabs.indexOf(this.unifiedBookTab);
+      const nextTabIdx = currentTabIdx + 1;
+      if (nextTabIdx >= 0 && nextTabIdx < tabs.length) {
+        this.switchUnifiedBookTab(tabs[nextTabIdx]);
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+      }
+    }
+  }
+
   updateAchievementDetail(category: string) {
     if (!this.unifiedBookDetailElement || !this.unifiedBookDetailPlaceholderElement) return;
 
@@ -4807,6 +5332,28 @@ export default class GameScene extends Phaser.Scene {
           .join('')}
       </div>
     `;
+
+    const n = achievements.length;
+    if (n === 0) {
+      this.achievementNavArea = 'left';
+      return;
+    }
+    if (this.achievementNavArea === 'right') {
+      this.achievementDetailSelectedIndex = Math.min(
+        Math.max(0, this.achievementDetailSelectedIndex),
+        n - 1,
+      );
+      requestAnimationFrame(() => {
+        this.syncAchievementDetailKeyboardSelection();
+        const list = this.unifiedBookDetailElement?.querySelectorAll(
+          '.achievement-detail-list .achievement-detail-item',
+        );
+        list?.[this.achievementDetailSelectedIndex]?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      });
+    }
   }
 
   openUnifiedBook(tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'status' = 'inventory') {
@@ -4828,11 +5375,14 @@ export default class GameScene extends Phaser.Scene {
 
   closeUnifiedBook() {
     this.closeSkillUnlockConfirm();
+    this.exitUnifiedBookMainTabsNav();
     this.unifiedBookOpen = false;
     this.unifiedBookSelectedId = null;
     this.unifiedBookSelectedIndex = null;
     this.unifiedBookNavRepeatDir = null;
     this.setSkillNavArea('tree');
+    this.achievementNavArea = 'left';
+    this.achievementDetailSelectedIndex = 0;
 
     // モーダルスタックから削除してオーバーレイを非表示（updateModalStatesでis-openクラスが削除される）
     this.closeModal(this.MODAL_IDS.UNIFIED_BOOK);
@@ -4860,20 +5410,24 @@ export default class GameScene extends Phaser.Scene {
     const eKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     
     const bookTabsCycle = ['inventory', 'pedia', 'skills', 'achievement', 'status'] as const;
+    const keepTabRow = this.unifiedBookMainTabsNavActive;
     if (Phaser.Input.Keyboard.JustDown(qKey)) {
       let i = bookTabsCycle.indexOf(this.unifiedBookTab);
       if (i < 0) i = 0;
-      this.switchUnifiedBookTab(bookTabsCycle[(i - 1 + bookTabsCycle.length) % bookTabsCycle.length]);
+      this.switchUnifiedBookTab(bookTabsCycle[(i - 1 + bookTabsCycle.length) % bookTabsCycle.length], {
+        keepMainTabNav: keepTabRow,
+      });
       return;
     }
     if (Phaser.Input.Keyboard.JustDown(eKey)) {
       let i = bookTabsCycle.indexOf(this.unifiedBookTab);
       if (i < 0) i = 0;
-      this.switchUnifiedBookTab(bookTabsCycle[(i + 1) % bookTabsCycle.length]);
+      this.switchUnifiedBookTab(bookTabsCycle[(i + 1) % bookTabsCycle.length], {
+        keepMainTabNav: keepTabRow,
+      });
       return;
     }
 
-    // リストが空（ステータスタブなど）のときは、左右の初回押下だけで隣タブへ
     const now = this.time.now;
 
     // 現在の矢印方向（複数押しの場合は優先度を固定）
@@ -4914,6 +5468,34 @@ export default class GameScene extends Phaser.Scene {
       this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavRepeatIntervalMs;
     }
 
+    const bookTabOrder: Array<'inventory' | 'pedia' | 'skills' | 'achievement' | 'status'> = [
+      'inventory',
+      'pedia',
+      'skills',
+      'achievement',
+      'status',
+    ];
+
+    if (this.unifiedBookMainTabsNavActive) {
+      const ti = bookTabOrder.indexOf(this.unifiedBookTab);
+      if (dir === 'down') {
+        this.exitUnifiedBookMainTabsNav();
+        this.restoreUnifiedBookMenuSelectionAfterMainTabNav();
+        return;
+      }
+      if (dir === 'left' && ti > 0) {
+        this.switchUnifiedBookTab(bookTabOrder[ti - 1], { keepMainTabNav: true });
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+        return;
+      }
+      if (dir === 'right' && ti >= 0 && ti < bookTabOrder.length - 1) {
+        this.switchUnifiedBookTab(bookTabOrder[ti + 1], { keepMainTabNav: true });
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+        return;
+      }
+      return;
+    }
+
     if (this.unifiedBookTab === 'skills') {
       this.handleSkillBookArrowNavigation(dir);
       return;
@@ -4942,12 +5524,29 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.unifiedBookTab === 'achievement' && this.unifiedBookListItems.length > 0) {
+      if (this.achievementNavArea === 'right') {
+        this.handleAchievementRightPaneNavigation(dir, now);
+        return;
+      }
+      if (dir === 'right') {
+        this.enterAchievementRightPane();
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+        return;
+      }
+    }
+
     // 現在の選択インデックスを取得（インベントリは同じ `fish.id` が複数枚あり得るため index 基準）
     let currentIndex = this.unifiedBookSelectedIndex ?? 0;
     const lastIndex = this.unifiedBookListItems.length - 1;
     if (currentIndex < 0 || currentIndex > lastIndex) currentIndex = 0;
 
     const columns = this.unifiedBookTab === 'achievement' ? 1 : 3;
+
+    if (dir === 'up' && currentIndex < columns && this.achievementNavArea === 'left') {
+      this.enterUnifiedBookMainTabsNav();
+      return;
+    }
 
     // 矢印キーで選択移動（グリッド基準）
     let newIndex = currentIndex;

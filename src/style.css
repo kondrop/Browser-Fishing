@@ -1192,6 +1192,221 @@ span.level-label-value {
   white-space: pre-line;
 }
 
+.catch-result-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(-50% + 50px));
+  min-width: 260px;
+  max-width: 320px;
+  padding: 31px 16px 24px;
+  color: #320e0e;
+  z-index: 520;
+  user-select: none;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  opacity: 0;
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+.catch-result-popup.is-visible {
+  transform: translate(-50%, -50%);
+  opacity: 1;
+}
+
+.catch-result-popup.ui-frame-box {
+  --frame-fill-color: #e8cfa6;
+}
+
+.catch-result-popup.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+.catch-result-exp-chip {
+  position: absolute;
+  top: 18px;
+  left: 174px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 69px;
+  width: fit-content;
+  text-align: right;
+  gap: 0;
+  padding: 2px 10px;
+  background: #7cb86c;
+  border-radius: 4px;
+  color: #fff;
+  z-index: 2;
+  white-space: nowrap;
+  line-height: 17px;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-style: normal;
+  font-weight: 400;
+}
+
+.catch-result-exp-label {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 15px;
+  line-height: 1;
+  color: #fff;
+  font-weight: 400;
+}
+
+.catch-result-exp-value {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 22px;
+  line-height: 1;
+  color: #fff;
+  font-weight: 400;
+  padding-right: 2px;
+}
+
+.catch-result-main-block {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: -4px;
+  padding-top: 4px;
+}
+
+.catch-result-fish-wrap {
+  width: 128px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: -6px;
+}
+
+.catch-result-text-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.catch-result-fish-image {
+  width: 114px;
+  height: 114px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.catch-result-fish-emoji {
+  display: none;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  font-size: 68px;
+  line-height: 1;
+}
+
+.catch-result-main-line {
+  font-family: 'DotGothic16', sans-serif;
+  font-size: 20px;
+  line-height: 1;
+  color: #320e0e;
+  white-space: nowrap;
+}
+
+.catch-result-rarity-line {
+  font-family: 'DotGothic16', sans-serif;
+  font-size: 22px;
+  line-height: 1;
+  color: #4599ff;
+  white-space: nowrap;
+}
+
+.catch-result-meta-row {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.catch-result-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #f2e2b6;
+  color: #212121;
+}
+
+.catch-result-meta-icon-image {
+  width: auto;
+  height: 27px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+  flex-shrink: 0;
+}
+
+.catch-result-meta-value {
+  font-family: 'Jersey 10', 'DotGothic16', sans-serif !important;
+  font-size: 28px;
+  line-height: 1;
+  color: #000;
+}
+
+.catch-result-meta-unit {
+  font-family: 'Jersey 10', 'DotGothic16', sans-serif !important;
+  font-size: 24px;
+  line-height: 1;
+  color: #212121;
+  opacity: 0.5;
+}
+
+.catch-result-popup--notice {
+  min-width: 320px;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+
+.catch-result-popup--notice .catch-result-fish-wrap {
+  width: 92px;
+  height: 80px;
+  margin-bottom: 0;
+}
+
+.catch-result-popup--notice .catch-result-fish-image {
+  width: 76px;
+  height: 76px;
+}
+
+.catch-result-popup--notice .catch-result-fish-emoji {
+  font-size: 52px;
+}
+
+.catch-result-popup--notice .catch-result-main-line {
+  font-size: 34px;
+}
+
+.catch-result-popup--notice .catch-result-rarity-line {
+  font-size: 30px;
+  color: #320e0e;
+}
+
+.catch-result-big-label {
+  position: absolute;
+  left: -11px;
+  top: 18px;
+  width: 110px;
+  height: auto;
+  display: none;
+  image-rendering: pixelated;
+}
+
 /* 8bit風スクロールバー - ゲーム画面風 */
 /* Webkit系ブラウザー（Chrome, Safari, Edge） */
 ::-webkit-scrollbar {
@@ -1270,8 +1485,9 @@ span.level-label-value {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  /* body overflow:hidden 下で縦センター時に上端が欠けないよう余白 + 溢れ時は上寄せ */
-  padding-block: var(--space-16);
+  /* 上余白は不要化。下余白のみ残して従来の見切れを抑える */
+  padding-top: 0;
+  padding-bottom: var(--space-16);
   justify-content: center;
   align-items: center;
   z-index: 2000;
@@ -1317,13 +1533,19 @@ span.level-label-value {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-/* アクティブタブだけ少し上げる（非選択は translateY(0) でトランジション） */
+/* アクティブだけでは上げない。キーでタブ行フォーカス中の is-nav-selected だけ上げる */
 #book-ui .book-tab-button {
   transform: translateY(0);
 }
 
-#book-ui .book-tab-button.active {
+#book-ui.is-book-main-tabs-nav .book-tab-button.is-nav-selected {
   transform: translateY(-6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #book-ui.is-book-main-tabs-nav .book-tab-button.is-nav-selected {
+    transform: none;
+  }
 }
 
 /* nes.css reboot の button:focus リング（オレンジの枠）を出さない。選択状態は .active の枠で示す */
@@ -1372,8 +1594,18 @@ span.level-label-value {
 #book-ui.is-open[data-tab="status"] .book-status-stat-list li.is-selected,
 #book-ui.is-open[data-tab="skills"]
   #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:not(:disabled),
+#book-ui.is-open[data-tab="skills"]
+  #book-skill-category-tabs.is-nav-selected
+  .book-skill-category-tab.is-active
+  .book-skill-category-tab-initial,
+#book-ui.is-open[data-tab="skills"]
+  #book-skill-category-tabs.is-nav-selected
+  .book-skill-category-tab.is-active::after,
+#book-ui.is-open[data-tab="achievement"]
+  .achievement-detail-item.ui-frame-box.achievement-detail-item--kb-selected,
 #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
-#book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+#book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui.is-open.is-book-main-tabs-nav .book-tab-button.ui-frame-box.is-nav-selected {
   animation: book-ui-selected-opacity-pulse 1.45s ease-in-out infinite;
 }
 
@@ -1385,8 +1617,18 @@ span.level-label-value {
   #book-ui.is-open[data-tab="status"] .book-status-stat-list li.is-selected,
   #book-ui.is-open[data-tab="skills"]
     #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:not(:disabled),
+  #book-ui.is-open[data-tab="skills"]
+    #book-skill-category-tabs.is-nav-selected
+    .book-skill-category-tab.is-active
+    .book-skill-category-tab-initial,
+  #book-ui.is-open[data-tab="skills"]
+    #book-skill-category-tabs.is-nav-selected
+    .book-skill-category-tab.is-active::after,
+  #book-ui.is-open[data-tab="achievement"]
+    .achievement-detail-item.ui-frame-box.achievement-detail-item--kb-selected,
   #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
-  #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+  #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
+  #book-ui.is-open.is-book-main-tabs-nav .book-tab-button.ui-frame-box.is-nav-selected {
     animation: none;
   }
 }
@@ -1547,7 +1789,7 @@ span.level-label-value {
   height: 85%;
   max-height: 800px;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   gap: 0;
   font-family: 'DotGothic16', sans-serif !important;
   position: relative;
@@ -1556,21 +1798,23 @@ span.level-label-value {
   transition: transform 0.3s ease-out, opacity 0.3s ease-out;
   min-height: 0;
   overflow: hidden;
-  gap: var(--space-8);
+  gap: 0px;
   margin: 0;
   padding: var(--space-16);
   box-sizing: border-box;
 }
 
-/* Figma .book-container: 平坦塗り + 2px ダークブラウン枠（9スライス枠は使わない） */
-.book-container.ui-frame-box::before {
-  --frame-fill-color: var(--color-semantic-bg-book-container);
-  inset: 0;
+.book-main-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  gap: 0;
 }
 
-.book-container.ui-frame-box::after {
-  border-image: none !important;
-  border: 2px solid var(--color-semantic-border-book) !important;
+/* メインコンテナ: 9スライス枠（BOOK_UI_STYLE_GUIDE / .ui-frame-box 既定の border.png + 塗り） */
+#book-ui .book-container.ui-frame-box::before {
+  --frame-fill-color: var(--color-semantic-bg-book-container);
 }
 
 /* 統合BookUIが開いている時：下から50pxの位置からスライドイン */
@@ -1707,12 +1951,33 @@ span.level-label-value {
 }
 
 .book-list-header {
-  padding: 12px 15px;
-  border-bottom: none;
-  font-size: 18px;
-  color: #320e0e;
-  text-align: center;
-  display: none;
+  padding: 4px 16px;
+  min-height: 34px;
+  margin: 0 4px 8px 4px;
+  border: none;
+  border-radius: 8px;
+  background: #e6d5ac;
+  font-size: 24px;
+  line-height: 1;
+  color: #5c4030;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  letter-spacing: 0.01em;
+}
+
+.book-menu-heading {
+  padding: 4px 16px;
+  min-height: 34px;
+  font-size: 24px;
+  line-height: 1;
+  color: #5c4030;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
 }
 
 .book-list-scroll-wrap {
@@ -1881,7 +2146,7 @@ span.level-label-value {
   display: flex;
   flex-direction: column;
   background: transparent;
-  padding: 4px 6px 10px 8px;
+  padding: 4px 4px 10px 4px;
   overflow: visible;
   min-height: 0;
   gap: 10px;
@@ -2557,6 +2822,20 @@ span.level-label-value {
   opacity: 1;
 }
 
+/* 右ペインキー選択中: Book UI と同じ枠・クリーム塗り（達成済みの枠半透明を上書き） */
+#book-ui .achievement-detail-item.ui-frame-box.achievement-detail-item--kb-selected::before {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui .achievement-detail-item.ui-frame-box.achievement-detail-item--kb-selected::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui .achievement-detail-item.ui-frame-box.achievement-detail-item--kb-selected.unlocked.ui-frame-box::before,
+#book-ui .achievement-detail-item.ui-frame-box.achievement-detail-item--kb-selected.unlocked.ui-frame-box::after {
+  opacity: 1;
+}
+
 /* 達成済み: ui-frame の塗り・9スライス枠も本文に合わせて半透明（疑似要素は行の子ではないため個別指定） */
 .achievement-detail-item.unlocked.ui-frame-box::before,
 .achievement-detail-item.unlocked.ui-frame-box::after {
@@ -2778,11 +3057,6 @@ span.level-label-value {
   display: none;
 }
 
-/* 統合BookUI - ステータスタブ */
-#book-ui[data-tab="status"] #book-list-header {
-  display: none !important;
-}
-
 #book-ui[data-tab="status"] #book-list-scroll {
   display: none !important;
 }
@@ -2796,11 +3070,6 @@ span.level-label-value {
   flex: 1;
   min-width: 0;
   width: 100%;
-}
-
-/* 統合BookUI - スキルタブ */
-#book-ui[data-tab="skills"] #book-list-header {
-  display: none !important;
 }
 
 #book-ui[data-tab="skills"] #book-list-scroll {
@@ -2834,6 +3103,7 @@ span.level-label-value {
 /* スキルタブ: 日本語は維持し、数値/SPなどだけ Jersey 10 を適用 */
 #book-ui[data-tab="skills"] .book-skill-category-title,
 #book-ui[data-tab="skills"] .book-skill-category-tab,
+#book-ui[data-tab="skills"] .book-skill-category-tab .book-skill-category-tab-initial,
 #book-ui[data-tab="skills"] .book-skill-sp-value,
 #book-ui[data-tab="skills"] .book-skill-summary-item b,
 #book-ui[data-tab="skills"] .book-skill-node-meta,
@@ -2941,6 +3211,10 @@ span.level-label-value {
 .book-skill-category-tab > * {
   position: relative;
   z-index: 1;
+}
+
+.book-skill-category-tab-initial {
+  display: inline-block;
 }
 
 .book-skill-category-tab.is-active {

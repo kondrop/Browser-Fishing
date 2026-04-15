@@ -126,7 +126,7 @@ const NODE_META: Record<
     n02: { name: 'スピード強化2', description: 'ヒット時のゲージ上昇がわずかに速くなる。', kind: 'stat', statBonus: { gaugeSpeedSkillAdd: 0.02 } },
     n03: {
       name: '一点集中',
-      description: 'ヒットゲージ中央に狭いクリティカル帯が出現。取り込むと上昇が速くなる。',
+      description: 'プレイヤーのヒットバー中央に狭いクリティカル帯が表示される。取り込むと上昇が速くなる。',
       kind: 'ability',
       abilityId: 'abil_speed_opening_surge',
     },
@@ -186,7 +186,7 @@ const NODE_META: Record<
     n02: { name: '話術強化2', description: '売却価格がわずかに上がる。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.02 } },
     n03: {
       name: '研究熱心',
-      description: '同じ魚を多く釣っているほど、その魚の経験値ボーナス（上限あり）。',
+      description: '同じ魚を多く釣っているほど、その魚の経験値ボーナス（最大2.0倍）。',
       kind: 'ability',
       abilityId: 'abil_spec_first_sell_boost',
     },
@@ -278,7 +278,7 @@ export function getSellPriceMultiplier(playerData: PlayerData): number {
 export function getExpMultiplierForFish(playerData: PlayerData, fishId: string): number {
   if (!hasSkillAbility(playerData, 'abil_spec_first_sell_boost')) return 1;
   const caught = playerData.fishCaughtCounts.get(fishId) || 0;
-  const bonus = Math.min(0.5, caught * 0.02);
+  const bonus = Math.min(1.0, caught * 0.02);
   return 1 + bonus;
 }
 
