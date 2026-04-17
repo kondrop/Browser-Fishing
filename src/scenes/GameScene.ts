@@ -2512,8 +2512,10 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.catchResultElement.classList.remove('is-visible');
+    this.catchResultElement.classList.add('is-entering');
     this.catchResultElement.style.display = 'flex';
     void this.catchResultElement.offsetWidth;
+    this.catchResultElement.classList.remove('is-entering');
     this.catchResultElement.classList.add('is-visible');
   }
 
@@ -2530,6 +2532,7 @@ export default class GameScene extends Phaser.Scene {
 
     const isAlreadyHidden = this.catchResultElement.style.display === 'none';
     const finalizeHide = () => {
+      this.catchResultElement.classList.remove('is-entering');
       this.catchResultElement.classList.remove('is-visible');
       this.catchResultElement.style.display = 'none';
       this.catchResultHideTimer = undefined;
@@ -4781,6 +4784,7 @@ export default class GameScene extends Phaser.Scene {
     let habitatText = this.unifiedBookDetailElement.querySelector('#book-detail-habitat') as HTMLElement;
     let catchCountText = this.unifiedBookDetailElement.querySelector('#book-detail-catch-count-value') as HTMLElement;
     let imageContainer = this.unifiedBookDetailElement.querySelector('.book-detail-image-container-new') as HTMLElement;
+    let habitatRow = this.unifiedBookDetailElement.querySelector('.book-detail-habitat-row') as HTMLElement;
     
     // 要素が存在しない場合は復元して再取得
     if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !priceUnitText || !sizeText || !sizeUnitText || !habitatText || !catchCountText || !imageContainer) {
@@ -4797,6 +4801,7 @@ export default class GameScene extends Phaser.Scene {
       habitatText = this.unifiedBookDetailElement.querySelector('#book-detail-habitat') as HTMLElement;
       catchCountText = this.unifiedBookDetailElement.querySelector('#book-detail-catch-count-value') as HTMLElement;
       imageContainer = this.unifiedBookDetailElement.querySelector('.book-detail-image-container-new') as HTMLElement;
+      habitatRow = this.unifiedBookDetailElement.querySelector('.book-detail-habitat-row') as HTMLElement;
       
       if (!imageCanvas || !emoji || !name || !rarityStarsElement || !desc || !priceText || !priceUnitText || !sizeText || !sizeUnitText || !habitatText || !catchCountText || !imageContainer) {
         return; // 復元に失敗した場合は処理を中断
@@ -4805,6 +4810,9 @@ export default class GameScene extends Phaser.Scene {
 
     // 生息地に応じて背景画像を設定
     const isJunk = fish.id.startsWith('junk_');
+    if (habitatRow) {
+      habitatRow.style.display = isJunk ? 'none' : '';
+    }
     if (!isJunk && imageContainer) {
       const habitatBgMap: Record<Habitat, string> = {
         [Habitat.FRESHWATER]: '/images/habitats/freshwater-bg.png',
@@ -4865,9 +4873,6 @@ export default class GameScene extends Phaser.Scene {
       }
       rarityStarsElement.innerHTML = starsHTML;
 
-      // ゴミの場合は生息地を表示しない
-      const isJunk = fish.id.startsWith('junk_');
-      
       // インベントリタブの場合は個体のサイズ、図鑑タブの場合は記録を表示
       let displaySizeValue: string;
       let displaySizeUnit: string;
@@ -5011,7 +5016,6 @@ export default class GameScene extends Phaser.Scene {
         [Habitat.SALTWATER]: '#19648B',
         [Habitat.STREAM]: '#327F75'
       };
-      const isJunk = fish.id.startsWith('junk_');
       if (!isJunk) {
         habitatText.textContent = habitatTextMap[fish.habitat] || '不明';
         habitatText.style.backgroundColor = habitatColorMap[fish.habitat] || '#327F75';

@@ -1196,7 +1196,7 @@ span.level-label-value {
   position: fixed;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, calc(-50% + 50px));
+  transform: translate(-50%, -50%);
   min-width: 260px;
   max-width: 320px;
   padding: 31px 16px 24px;
@@ -1209,12 +1209,15 @@ span.level-label-value {
   align-items: center;
   gap: 16px;
   opacity: 0;
-  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+  transition: opacity 0.3s ease-out;
 }
 
 .catch-result-popup.is-visible {
-  transform: translate(-50%, -50%);
   opacity: 1;
+}
+
+.catch-result-popup.is-entering {
+  transform: translate(-50%, calc(-50% + 50px));
 }
 
 .catch-result-popup.ui-frame-box {
@@ -1588,10 +1591,6 @@ span.level-label-value {
 }
 
 #book-ui.is-open #book-list-scroll .book-list-item.selected.ui-frame-box,
-#book-ui.is-open[data-tab="achievement"]
-  #book-list-scroll
-  .achievement-category-item.achievement-category-selected.ui-frame-box,
-#book-ui.is-open[data-tab="status"] .book-status-stat-list li.is-selected,
 #book-ui.is-open[data-tab="skills"]
   #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:not(:disabled),
 #book-ui.is-open[data-tab="skills"]
@@ -1601,8 +1600,6 @@ span.level-label-value {
 #book-ui.is-open[data-tab="skills"]
   #book-skill-category-tabs.is-nav-selected
   .book-skill-category-tab.is-active::after,
-#book-ui.is-open[data-tab="achievement"]
-  .achievement-detail-item.ui-frame-box.achievement-detail-item--kb-selected,
 #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
 #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
 #book-ui.is-open.is-book-main-tabs-nav .book-tab-button.ui-frame-box.is-nav-selected {
@@ -1611,10 +1608,6 @@ span.level-label-value {
 
 @media (prefers-reduced-motion: reduce) {
   #book-ui.is-open #book-list-scroll .book-list-item.selected.ui-frame-box,
-  #book-ui.is-open[data-tab="achievement"]
-    #book-list-scroll
-    .achievement-category-item.achievement-category-selected.ui-frame-box,
-  #book-ui.is-open[data-tab="status"] .book-status-stat-list li.is-selected,
   #book-ui.is-open[data-tab="skills"]
     #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:not(:disabled),
   #book-ui.is-open[data-tab="skills"]
@@ -1624,8 +1617,6 @@ span.level-label-value {
   #book-ui.is-open[data-tab="skills"]
     #book-skill-category-tabs.is-nav-selected
     .book-skill-category-tab.is-active::after,
-  #book-ui.is-open[data-tab="achievement"]
-    .achievement-detail-item.ui-frame-box.achievement-detail-item--kb-selected,
   #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
   #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
   #book-ui.is-open.is-book-main-tabs-nav .book-tab-button.ui-frame-box.is-nav-selected {
@@ -1847,6 +1838,29 @@ span.level-label-value {
   margin: 0;
   border-bottom: none;
   background: unset;
+  transform: translateY(0);
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
+
+#book-ui.is-open.is-topmost > .book-header {
+  opacity: 1;
+  animation: book-ui-header-enter 0.3s ease-out;
+}
+
+#book-ui.is-open.is-behind > .book-header {
+  opacity: 1;
+}
+
+@keyframes book-ui-header-enter {
+  from {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .book-tabs {
