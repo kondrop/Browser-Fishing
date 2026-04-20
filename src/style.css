@@ -15,6 +15,12 @@ body * {
   cursor: inherit !important;
 }
 
+/* キー選択の指マーカー表示中は、実マウスカーソル（NES.css の指カーソル含む）を隠す */
+body.ui-kb-selection-cursor-hide,
+body.ui-kb-selection-cursor-hide * {
+  cursor: none !important;
+}
+
 /* #app の width/height は削除（これが原因でした） */
 
 canvas {
@@ -959,50 +965,182 @@ span.level-label-value {
 
 /* ショップモーダル */
 .modal-content.shop-modal {
-  min-width: 600px;
-  max-width: 650px;
+  min-width: 760px;
+  max-width: 760px;
+  height: 100%;
+  padding: 20px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  --frame-fill-color: var(--color-semantic-bg-book-container);
+  overflow: hidden;
+}
+
+.shop-modal-header-row {
+  padding: var(--space-4) var(--space-16);
+  margin: 0;
+  min-height: 32px;
+}
+
+.modal-content.shop-modal .modal-header h2 {
+  margin: 0;
+  color: var(--color-semantic-text-muted);
+  font-size: 24px;
+  line-height: 1;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-weight: 400;
+}
+
+#shop-modal .shop-modal-header-row.book-list-header {
+  padding: 4px 16px;
+  min-height: 34px;
+  margin: 0 4px 4px 4px;
+  border: none;
+  border-radius: 8px;
+  background: #e6d5ac;
+  font-size: 24px;
+  line-height: 1;
+  color: #5c4030 !important;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  box-shadow: none;
+}
+
+.shop-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: var(--space-8);
 }
 
 .shop-tabs {
   display: flex;
-  gap: 12px;
+  gap: var(--space-4);
+  flex: 1;
   justify-content: center;
-  margin: 20px 0;
+  margin: 0;
 }
 
 .shop-tab-button {
   border: none;
-  padding: 10px 20px;
+  padding: var(--space-10) var(--space-16);
   color: #320e0e;
-  font-size: 28px;
+  font-size: 18px;
   font-weight: normal;
   cursor: pointer;
-  font-family: 'DotGothic16', sans-serif;
-  transition: transform 0.1s, filter 0.1s;
+  font-family: "DotGothic16", sans-serif !important;
+  font-weight: 400;
+  line-height: 1;
+  min-width: 0;
+  flex: 1 1 0;
+  height: 40px;
+  transition: transform 0.1s ease, filter 0.1s ease;
 }
 
 .shop-tab-button:hover {
-  transform: scale(1.05);
+  transform: scale(1.02);
   filter: brightness(0.95);
+}
+
+#shop-modal .shop-tab-button.nes-btn.ui-frame-box,
+#shop-modal .shop-tab-button.nes-btn.ui-frame-box:hover,
+#shop-modal .shop-tab-button.nes-btn.ui-frame-box:focus,
+#shop-modal .shop-tab-button.nes-btn.ui-frame-box:focus-visible,
+#shop-modal .shop-tab-button.nes-btn.ui-frame-box:active {
+  box-shadow: none !important;
+}
+
+#shop-modal .shop-tab-button.nes-btn.ui-frame-box:focus,
+#shop-modal .shop-tab-button.nes-btn.ui-frame-box:focus-visible {
+  outline: none;
+}
+
+#shop-modal .shop-tab-button.nes-btn.ui-frame-box::after {
+  box-shadow: none !important;
 }
 
 .shop-items-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 20px 0;
+  gap: var(--space-8);
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.shop-items-list::-webkit-scrollbar {
+  display: none;
+}
+
+.shop-items-scroll-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shop-items-scroll-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 44px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.shop-items-scroll-fade--bottom {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--color-semantic-bg-book-container) 94%, transparent) 0%,
+    color-mix(in srgb, var(--color-semantic-bg-book-container) 52%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+.shop-items-scroll-fade--top {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--color-semantic-bg-book-container) 94%, transparent) 0%,
+    color-mix(in srgb, var(--color-semantic-bg-book-container) 52%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+.shop-items-scroll-fade.is-visible {
+  opacity: 1;
 }
 
 .shop-item {
   position: relative;
   cursor: pointer;
-  transition: transform 0.1s, filter 0.1s;
+  transition: filter 0.1s ease;
   box-sizing: border-box;
 }
 
 .shop-item:hover {
-  transform: scale(1.02);
   filter: brightness(0.95);
+}
+
+.shop-item.is-owned {
+  cursor: default;
+}
+
+.shop-item.is-owned:hover {
+  filter: none;
 }
 
 .shop-item.selected .shop-item-content {
@@ -1011,72 +1149,308 @@ span.level-label-value {
 
 .shop-item-content {
   border: none;
-  padding: 10px;
+  padding: 20px 24px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 15px;
 }
 
-.shop-item-icon-container,
 .shop-item-icon {
-  width: 60px;
-  height: 60px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
   flex-shrink: 0;
 }
 
 .shop-item-icon-image {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  max-width: 100%;
-  max-height: 100%;
+  width: 40px;
+  height: 40px;
 }
 
 .shop-item-icon-emoji {
-  font-size: 48px;
-}
-
-.shop-item-details {
-  flex: 1;
+  font-size: 35px;
 }
 
 .shop-item-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.shop-item-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-16);
+  margin-bottom: var(--space-4);
+}
+
+.shop-item-title-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  flex: 1;
+  min-width: 0;
 }
 
 .shop-item-name {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: normal;
   color: #320e0e;
-  margin-bottom: 0;
+  line-height: 1;
+  font-family: "DotGothic16", sans-serif !important;
+  font-weight: 400;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 
-.shop-item-desc {
+.shop-item-action {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.shop-item-price-group {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 4px;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.shop-item-price-value {
+  font-size: 40px;
+  color: #000;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-weight: 400;
+}
+
+.shop-item-price-value.is-insufficient {
+  color: #80352a;
+}
+
+.shop-item-price-unit {
+  font-size: 32px;
+  color: rgba(33, 33, 33, 0.5);
+  margin-bottom: 2px;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-weight: 400;
+}
+
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box {
+  --frame-fill-inset: 0;
+  --frame-fill-color: #7cb86c;
+  min-width: 140px;
+  height: 40px;
+  padding: 6px 14px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 18px;
-  color: #320e0e;
-  margin-bottom: 0;
+  line-height: 1;
+  color: #fff;
+  font-family: "DotGothic16", sans-serif !important;
+  font-weight: 400;
+  margin: 0;
+  box-shadow: none !important;
+  border-image: none;
+  border-image-width: 0;
+  border-image-outset: 0;
 }
 
-.shop-item-price {
-  font-size: 28px;
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:hover,
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:focus,
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:focus-visible,
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:active {
+  color: #fff;
+  box-shadow: none !important;
+}
+
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:focus,
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:focus-visible {
+  outline: none;
+}
+
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box::after {
+  box-shadow: none !important;
+}
+
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box::before {
+  inset: -1px;
+}
+
+.shop-item-action-button.is-equipped {
+  --frame-fill-color: #cbb792;
   color: #320e0e;
-  font-weight: normal;
+}
+
+.shop-item-action-button.is-owned {
+  --frame-fill-color: #8a8a8a;
+  color: #f2f2f2;
+}
+
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box.is-owned:disabled {
+  opacity: 1;
+  filter: none;
+  cursor: default;
+  --frame-fill-color: #8f8f8f;
+  color: #f2f2f2;
+  box-shadow: none !important;
+}
+
+.shop-item-action-button.is-disabled {
+  --frame-fill-color: #ab8f78;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box.is-owned:disabled:hover,
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box.is-owned:disabled:focus,
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box.is-owned:disabled:focus-visible,
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box.is-owned:disabled:active {
+  color: #f2f2f2;
+  --frame-fill-color: #8f8f8f;
+}
+
+.shop-item-stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-8);
+}
+
+.shop-item-stat-chip {
+  background: var(--color-semantic-bg-book-container);
+  border-radius: 4px;
+  padding: 4px 10px;
+  height: 36px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--color-semantic-text-muted);
+  line-height: 1;
+}
+
+.shop-item-stat-chip-label {
+  font-size: 14px;
+  color: var(--color-semantic-text-primary);
+  font-family: "DotGothic16", sans-serif !important;
+  font-weight: 400;
+}
+
+.shop-item-stat-chip-value {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 28px;
+  color: var(--color-primitive-orange-600);
+  font-weight: 400;
+}
+
+.shop-item-note {
+  background: var(--color-semantic-bg-book-container);
+  border-radius: 4px;
+  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--color-semantic-text-detail);
+}
+
+.shop-item-note-label {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  color: var(--color-primitive-orange-600);
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 400;
+}
+
+.shop-item-note-text {
+  font-size: 16px;
+  color: var(--color-semantic-text-detail);
+  font-family: "DotGothic16", sans-serif !important;
+  font-weight: 400;
 }
 
 .shop-money {
-  text-align: center;
-  font-size: 28px;
-  color: #320e0e;
-  font-weight: normal;
-  margin: 20px 0;
-  padding: 10px;
+  --frame-scale: 3;
+  --frame-fill-color: #ecd5ab;
+  margin: 0;
+  padding: 4px 16px;
   border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #320e0e;
+}
+
+#shop-money.shop-money {
+  height: 48px;
+}
+
+#shop-modal .shop-money.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+.shop-money-label {
+  font-size: 18px;
+  color: #320e0e;
+  line-height: 1;
+  font-family: "DotGothic16", sans-serif !important;
+  font-weight: 400;
+  position: relative;
+  top: -1px;
+}
+
+.shop-money-icon-image {
+  width: auto;
+  height: 27px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+  flex-shrink: 0;
+  position: relative;
+  top: -2px;
+}
+
+.shop-money-value {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 32px;
+  color: #000;
+  line-height: 1;
+  font-weight: 400;
+}
+
+.shop-money-unit {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 24px;
+  line-height: 1;
+  color: rgba(33, 33, 33, 0.5);
+  font-weight: 400;
+  position: relative;
+  top: -2px;
+}
+
+.shop-money-amount {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.shop-money-balance {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0;
 }
 
 .shop-hint {
@@ -1089,6 +1463,7 @@ span.level-label-value {
 /* ショップ: タブ / 商品行の枠を統合BookUIと同じ uiframe（非選択）↔ border（選択・アクティブ） */
 #shop-modal .shop-tab-button.ui-frame-box {
   --frame-scale: 3;
+  --frame-fill-inset: 1px;
   --frame-fill-color: #CBB792;
 }
 
@@ -1107,6 +1482,7 @@ span.level-label-value {
 #shop-modal .shop-item .shop-item-content.ui-frame-box {
   --frame-scale: 3;
   --frame-fill-color: #CBB792;
+  --frame-fill-inset: 3px;
 }
 
 #shop-modal .shop-item .shop-item-content.ui-frame-box::after {
@@ -1646,6 +2022,19 @@ span.level-label-value {
 
 .modal-choice-actions > :where(button, a, .nes-btn).is-nav-selected {
   transform: translateY(-4px);
+}
+
+/* キー選択中の項目の右下に追従する指し示しマーカー（GameScene が fixed で配置）
+ * 画像は node_modules/nes.css が html に指定している既定カーソルと同一（ゲーム内の指ポインター） */
+.ui-kb-selection-pointer {
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 9400;
+  background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABFklEQVRYR9WXURLDIAhE6/0PbSdOtUpcd1Gnpv1KGpTHBpCE1/cXq+vrMph7dGvXZTtpfW10DCA5jrH1H0Jhs5E0hnZdCR+vb5S8Nn8mQCeS9BdSalYJqMBjAGzq59xAESN7VFVUgV8AZB/dZBR7QTFDCqGquvUBVVoEtgIwpQRzmANSFHgWQKExHdIrPeuMvQNDarXe6nC/AutgV3JW+6bgqQLeV8FekRtgV+ToDKEKnACYKsfZjjkam7a0ZpYTytwmgainpC3HvwBocgKOxqRjehoR9DFKNFYtOwCGYCszobeCbl26N6yyQ6g8X/Wex/rBPsNEV6qAMaJPMynIHQCoSqS9JSMmwef51LflTgCRszU7DvAGiV6mHWfsaVUAAAAASUVORK5CYII=")
+    right bottom / contain no-repeat;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.4));
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2738,17 +3127,36 @@ span.level-label-value {
 }
 
 .achievement-category-seg {
+  position: relative;
+  display: inline-block;
   width: 16px;
   height: 16px;
   flex-shrink: 0;
 }
 
+.achievement-category-seg::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 1px solid var(--color-semantic-border-soft);
+  box-sizing: border-box;
+}
+
 .achievement-category-seg--on {
-  background: var(--color-semantic-bg-active);
+  --achievement-category-seg-fill: var(--color-semantic-bg-active);
 }
 
 .achievement-category-seg--off {
-  background: var(--color-semantic-bg-nonactive);
+  --achievement-category-seg-fill: var(--color-semantic-bg-nonactive);
+}
+
+.achievement-category-seg--on::before,
+.achievement-category-seg--off::before {
+  background: var(--achievement-category-seg-fill);
 }
 
 /* 実績カテゴリグリッドアイテム（グリッド形式用 - 現在は未使用） */
@@ -2900,25 +3308,12 @@ span.level-label-value {
   color: rgba(50, 14, 14, 0.5);
 }
 
-.achievement-detail-item__row--cleared .achievement-detail-item__emoji {
-  opacity: 0.5;
-}
-
 .achievement-detail-item__row--cleared .achievement-detail-reward {
   opacity: 0.5;
 }
 
 .achievement-detail-item__row--cleared .achievement-detail-item__progress {
   opacity: 0.5;
-}
-
-.achievement-detail-item__emoji {
-  flex-shrink: 0;
-  width: 28px;
-  font-size: var(--font-size-detail-stat-value);
-  line-height: 1;
-  text-align: center;
-  color: var(--color-primitive-white);
 }
 
 .achievement-detail-item__body {
@@ -3829,6 +4224,8 @@ span.level-label-value {
   display: flex;
   flex-direction: column;
   gap: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .book-status-stat-list li {
@@ -3839,7 +4236,6 @@ span.level-label-value {
   padding: 12px 10px;
   min-height: 42px;
   cursor: inherit;
-  transition: transform 0.1s, filter 0.1s;
   position: relative;
   border: none;
   --frame-fill-color: #CBB792;
@@ -3849,9 +4245,13 @@ span.level-label-value {
   border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-.book-status-stat-list li:hover {
-  transform: scale(1.02);
-  filter: brightness(0.97);
+/* ホバー: 選択と同じ塗り・枠（矢印 ::before は .is-selected のみ） */
+.book-status-stat-list li:not(.is-selected):hover {
+  --frame-fill-color: #e8cfa6;
+}
+
+.book-status-stat-list li:not(.is-selected):hover.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 .book-status-stat-list li:focus-visible {
@@ -3925,7 +4325,7 @@ span.level-label-value {
   color: var(--color-semantic-text-detail);
 }
 
-/* ── 装備名（竿名など） ── */
+/* ── 装備名（サオ名など） ── */
 .book-status-line-strong {
   font-size: 16px;
   margin: 0 0 8px 0;

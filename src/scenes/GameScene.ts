@@ -182,6 +182,10 @@ export default class GameScene extends Phaser.Scene {
   /** 実績タブ: 左＝カテゴリ一覧 / 右＝実績詳細リスト */
   private achievementNavArea: 'left' | 'right' = 'left';
   private achievementDetailSelectedIndex: number = 0;
+  /** キー選択行の右下に表示する指し示しアイコン（body 直下・fixed） */
+  private kbSelectionPointerEl: HTMLDivElement | null = null;
+  /** メニュー操作の直近入力（キー時のみ実カーソルを隠す） */
+  private uiMenuNavInputChannel: 'mouse' | 'keyboard' = 'mouse';
   private selectedStatusStatKey: 'power' | 'speed' | 'technique' | 'control' = 'power';
   private readonly statusStatOrder: Array<'power' | 'speed' | 'technique' | 'control'> = ['power', 'speed', 'technique', 'control'];
 
@@ -192,12 +196,17 @@ export default class GameScene extends Phaser.Scene {
   private achievementUIElement!: HTMLElement;
   private achievementNotificationElement!: HTMLElement;
   private achievementOpen: boolean = false;
+  private shopItemsScrollWrapElement: HTMLElement | null = null;
+  private shopItemsScrollFadeTopElement: HTMLElement | null = null;
+  private shopItemsScrollFadeBottomElement: HTMLElement | null = null;
+  private shopItemsScrollFadeObserver: ResizeObserver | null = null;
   private shopItemsListElement!: HTMLElement;
   private shopMoneyElement!: HTMLElement;
   private shopOpen: boolean = false;
 
   private shopSelectedIndex: number = 0;
   private shopTab: 'rod' | 'bait' | 'lure' | 'inventory' = 'rod';
+  private shopNavArea: 'tabs' | 'items' = 'items';
 
   // 操作説明テキスト（HTML/CSS）
   private controlsTextElement!: HTMLElement;
@@ -238,7 +247,6 @@ export default class GameScene extends Phaser.Scene {
   private characterSettingsElement!: HTMLElement;
   private characterPreviewIntervalId: number | null = null;
   private characterColorTemp: string = '#ffffff';
-  private nextStatusIconRefreshAt: number = 0;
   private readonly CHARACTER_COLORS: { value: string; label?: string }[] = [
     { value: '#ffffff', label: 'なし' },
     { value: '#F27F7F' },
@@ -291,9 +299,10 @@ export default class GameScene extends Phaser.Scene {
     // メインcanvas上のプレイヤーと同じ見た目に寄せるため、
     // 可能なら現在のプレイヤーフレームを直接転写する。
     let drewFromPlayerFrame = false;
-    if (this.player?.frame && this.player.texture?.key) {
-      const frame = this.player.frame;
-      const sourceImage = frame.source.image as CanvasImageSource | undefined;
+    // アイコンは常にスプライト先頭フレーム（アイドル1コマ目）のみ。プレイヤーアニメに同期しない。
+    if (this.player?.texture) {
+      const frame = this.player.texture.get(0);
+      const sourceImage = frame?.source?.image as CanvasImageSource | undefined;
       if (sourceImage) {
         ctx.drawImage(
           sourceImage,
@@ -354,14 +363,6 @@ export default class GameScene extends Phaser.Scene {
       data[i + 2] = data[i + 2] * bf;
     }
     ctx.putImageData(imageData, 0, 0);
-  }
-
-  private refreshStatusCharacterIconThrottled(nowMs: number) {
-    if (!this.statusUIElement) return;
-    if (!this.player) return;
-    if (nowMs < this.nextStatusIconRefreshAt) return;
-    this.nextStatusIconRefreshAt = nowMs + 250;
-    this.renderStatusCharacterIcon(undefined, this.getSelectedColor());
   }
 
   private getRarityColorCssValue(rarity: string): string {
@@ -463,7 +464,7 @@ export default class GameScene extends Phaser.Scene {
 
     // ショップアイテムの画像を読み込み（IDと日本語ファイル名のマッピング）
     const itemImages: { [id: string]: string } = {
-      // 竿
+      // サオ（表示名） / 画像ファイル名は既存アセットに合わせる
       'rod_basic': '木の竿',
       'rod_bamboo': '竹の竿',
       'rod_carbon': 'カーボンロッド',
@@ -855,6 +856,14 @@ export default class GameScene extends Phaser.Scene {
     // デバッグ用キャラクター設定UI（起動時に一度生成）
     this.createCharacterSettingsUI();
 
+    const markUiMenuMousePointer = (e?: PointerEvent) => {
+      if (e && e.type === 'pointermove' && e.movementX === 0 && e.movementY === 0) return;
+      this.uiMenuNavInputChannel = 'mouse';
+    };
+    document.addEventListener('pointerdown', () => markUiMenuMousePointer(), { capture: true });
+    document.addEventListener('pointermove', (ev) => markUiMenuMousePointer(ev as PointerEvent), { capture: true });
+    document.addEventListener('wheel', () => markUiMenuMousePointer(), { capture: true, passive: true });
+
     if (this.input.keyboard) {
         this.cursors = this.input.keyboard.createCursorKeys();
         this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -945,7 +954,11 @@ export default class GameScene extends Phaser.Scene {
             } else if (this.bookOpen && !this.bookDetailOpen) {
                 this.openBookDetail();
             } else if (this.shopOpen) {
-                this.purchaseOrEquipItem();
+                if (this.shopNavArea === 'tabs') {
+                    this.updateShopTabs();
+                } else {
+                    this.purchaseOrEquipItem();
+                }
             }
         });
 
@@ -1541,8 +1554,6 @@ export default class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
-    this.refreshStatusCharacterIconThrottled(time);
-
     // FPS表示を更新
     if (this.debugFpsElement) {
       const fpsValue = this.debugFpsElement.querySelector('#fps-value');
@@ -1554,6 +1565,7 @@ export default class GameScene extends Phaser.Scene {
     // 統合BookUIが開いている場合はキーボード操作を処理
     if (this.unifiedBookOpen) {
       this.handleUnifiedBookNavigation();
+      this.refreshKbSelectionPointer();
       return;
     }
 
@@ -1566,21 +1578,25 @@ export default class GameScene extends Phaser.Scene {
       // 最上位モーダルの操作のみ処理
       if (topModalId === this.MODAL_IDS.INVENTORY && !this.detailModalOpen) {
         this.handleInventoryNavigation();
+        this.refreshKbSelectionPointer();
         return;
       }
 
       if (topModalId === this.MODAL_IDS.BOOK && !this.bookDetailOpen) {
         this.handleBookNavigation();
+        this.refreshKbSelectionPointer();
         return;
       }
 
       if (topModalId === this.MODAL_IDS.SHOP) {
         this.handleShopNavigation();
+        this.refreshKbSelectionPointer();
         return;
       }
 
       // その他のモーダル（詳細モーダルなど）が最上位の場合は何もしない
       // ただし、ネットワーク処理などは継続（将来のマルチ対応）
+      this.refreshKbSelectionPointer();
       return;
     }
 
@@ -1618,6 +1634,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.state === FishingState.BITE) {
         this.exclamation.setScale(1 + Math.sin(time / 50) * 0.2);
     }
+
+    this.refreshKbSelectionPointer();
   }
 
   handleMovement() {
@@ -1808,17 +1826,17 @@ export default class GameScene extends Phaser.Scene {
 
     const waitCfg = config.waiting;
     
-    // 装備中の竿のボーナスを取得
+    // 装備中のサオのボーナスを取得
     const equippedRod = getRodById(this.playerData.equippedRodId);
     const skillBonuses = getSkillStatBonuses(this.playerData);
-    const castDistanceBonus = (equippedRod?.castDistanceBonus || 1.0) + skillBonuses.castDistSkillAdd;
+    const powerStatus = 1.0 + (equippedRod?.powerStatAdd || 0) + skillBonuses.castDistSkillAdd;
     
-    // パワーに応じた距離（竿のボーナスを反映）
+    // パワーに応じた距離（サオのボーナスを反映）
     const minDist = waitCfg['3-3_最小投擲距離'];
     const maxDist = waitCfg['3-4_最大投擲距離'];
     const baseDistance = minDist + (this.castPower * (maxDist - minDist));
     const distanceSpan = Math.max(0, maxDist - minDist);
-    const castDistanceAdd = distanceSpan * (castDistanceBonus - 1.0);
+    const castDistanceAdd = distanceSpan * (powerStatus - 1.0);
     let distance = baseDistance + castDistanceAdd;
     if (hasSkillAbility(this.playerData, 'abil_power_cast_finesse') && this.castPower >= 0.98) {
       distance *= 1.25;
@@ -1878,17 +1896,17 @@ export default class GameScene extends Phaser.Scene {
     const lure = this.playerData.equippedLureId ? getLureById(this.playerData.equippedLureId) : null;
 
     // 装備ボーナスは乗算ではなく加算で合成する
-    const rareChanceBonus = equippedRod?.rareChanceBonus || 1.0;
+    const rodRarityHitAdd = equippedRod?.rarityHitRateAdd || { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 };
     const addBonus = (a: number, b: number, c: number = 1.0) => {
       const combined = 1.0 + (a - 1.0) + (b - 1.0) + (c - 1.0);
       return Math.max(0.05, combined);
     };
     const bonuses = {
-      commonBonus: addBonus(bait?.commonBonus || 1.0, lure?.commonBonus || 1.0),
-      uncommonBonus: addBonus(bait?.uncommonBonus || 1.0, lure?.uncommonBonus || 1.0),
-      rareBonus: addBonus(bait?.rareBonus || 1.0, lure?.rareBonus || 1.0, rareChanceBonus),
-      epicBonus: addBonus(bait?.epicBonus || 1.0, lure?.epicBonus || 1.0, rareChanceBonus),
-      legendaryBonus: addBonus(bait?.legendaryBonus || 1.0, lure?.legendaryBonus || 1.0, rareChanceBonus),
+      commonBonus: addBonus(bait?.commonBonus || 1.0, lure?.commonBonus || 1.0, 1.0 + rodRarityHitAdd.common),
+      uncommonBonus: addBonus(bait?.uncommonBonus || 1.0, lure?.uncommonBonus || 1.0, 1.0 + rodRarityHitAdd.uncommon),
+      rareBonus: addBonus(bait?.rareBonus || 1.0, lure?.rareBonus || 1.0, 1.0 + rodRarityHitAdd.rare),
+      epicBonus: addBonus(bait?.epicBonus || 1.0, lure?.epicBonus || 1.0, 1.0 + rodRarityHitAdd.epic),
+      legendaryBonus: addBonus(bait?.legendaryBonus || 1.0, lure?.legendaryBonus || 1.0, 1.0 + rodRarityHitAdd.legendary),
     };
 
     // どの魚が釣れるか決定（ボーナス適用）
@@ -2035,7 +2053,10 @@ export default class GameScene extends Phaser.Scene {
     }
     this.playerBarVelocity -= gravity * dt;
 
-    const barDrag = getLevelFightBarVelocityDragPerSecond(this.playerData.level) + skillBonuses.fightBarDragSkillAdd;
+    const equippedRod = getRodById(this.playerData.equippedRodId);
+    const barDrag = getLevelFightBarVelocityDragPerSecond(this.playerData.level)
+      + skillBonuses.fightBarDragSkillAdd
+      + (equippedRod?.controlStatAdd || 0);
     if (barDrag > 0) {
       this.playerBarVelocity *= Math.max(0, 1 - barDrag * dt);
     }
@@ -2109,7 +2130,15 @@ export default class GameScene extends Phaser.Scene {
       : 0;
     this.smoothDragRemainingSec = Math.max(0, this.smoothDragRemainingSec - dt);
     const smoothDragBonus = this.smoothDragRemainingSec > 0 ? 0.12 : 0;
-    const barHeight = Math.min(1.0, baseBarHeight + levelBarBonus + skillBonuses.barRangeSkillAdd + nearmissBonus + smoothDragBonus);  // 最大1.0まで
+    const barHeight = Math.min(
+      1.0,
+      baseBarHeight
+      + levelBarBonus
+      + skillBonuses.barRangeSkillAdd
+      + (equippedRod?.techniqueStatAdd || 0)
+      + nearmissBonus
+      + smoothDragBonus
+    );  // 最大1.0まで
     const isCatching = (this.fishBarPosition >= this.playerBarPosition && 
                         this.fishBarPosition <= this.playerBarPosition + barHeight);
     const criticalZoneHeight = hasSkillAbility(this.playerData, 'abil_speed_opening_surge') ? 0.08 : 0;
@@ -2121,9 +2150,7 @@ export default class GameScene extends Phaser.Scene {
       && this.fishBarPosition <= criticalZoneTop
       && isCatching;
 
-    // 装備中の竿のボーナスを取得
-    const equippedRod = getRodById(this.playerData.equippedRodId);
-    const rodCatchBonus = equippedRod?.catchRateBonus || 1.0;
+    const rodSpeedStatAdd = equippedRod?.speedStatAdd || 0;
 
     // サイズによるcatchRate調整（粘り強さ）
     let adjustedCatchRate = catchRate;
@@ -2136,7 +2163,7 @@ export default class GameScene extends Phaser.Scene {
         // レベル由来は倍率に巻き込まず、最後に加算して効かせる
         const baseGaugeSpeed = cfg['5-10_ゲージ増加速度'];
         const levelGaugeBonus = getLevelGaugeSpeedBonus(this.playerData.level);
-        const rodCatchAdd = baseGaugeSpeed * (rodCatchBonus - 1.0);
+        const rodCatchAdd = baseGaugeSpeed * rodSpeedStatAdd;
         if (hasSkillAbility(this.playerData, 'abil_speed_last_push')) {
           this.speedComboMultiplier = Math.min(0.5, this.speedComboMultiplier + this.speedComboGrowPerSecond * dt);
         }
@@ -3026,6 +3053,15 @@ export default class GameScene extends Phaser.Scene {
   handleInventoryNavigation() {
     if (!this.inventoryOpen || this.detailModalOpen) return;
 
+    if (
+      Phaser.Input.Keyboard.JustDown(this.cursors.left) ||
+      Phaser.Input.Keyboard.JustDown(this.cursors.right) ||
+      Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
+      Phaser.Input.Keyboard.JustDown(this.cursors.down)
+    ) {
+      this.noteUiMenuKeyboardNavigation();
+    }
+
     const gridSize = 3;
     const maxRows = Math.ceil(this.playerData.maxInventorySlots / gridSize);
     let newIndex = this.selectedSlotIndex;
@@ -3639,21 +3675,21 @@ export default class GameScene extends Phaser.Scene {
     }
 
     const rod = getRodById(pd.equippedRodId);
-    // 表示専用: 内部の倍率・0〜1比率を「基準100」の整数に（例 1.25→125、判定幅0.25→25）
+    // 表示専用: 内部の加算値・0〜1比率を「基準100」の整数に（例 1.25→125、判定幅0.25→25）
     const fmtBookStatIndex = (v: number) => String(Math.round(Math.max(0, v) * 100));
 
     // 実効能力（装備+レベル）
     const fightCfg = config.fighting;
 
     const baseGaugeSpeed = fightCfg['5-10_ゲージ増加速度'];
-    const rodCatchAdd = baseGaugeSpeed * ((rod?.catchRateBonus ?? 1) - 1.0);
+    const rodCatchAdd = baseGaugeSpeed * (rod?.speedStatAdd ?? 0);
 
     const baseBarHeight = fightCfg['5-9_バー判定範囲'];
-    const effectiveBarHeight = Math.min(1.0, baseBarHeight + barBonus + skillBonuses.barRangeSkillAdd);
-    const effectiveControl = Math.max(0, getLevelFightBarVelocityDragPerSecond(level) + skillBonuses.fightBarDragSkillAdd);
+    const effectiveBarHeight = Math.min(1.0, baseBarHeight + barBonus + skillBonuses.barRangeSkillAdd + (rod?.techniqueStatAdd ?? 0));
+    const effectiveControl = Math.max(0, getLevelFightBarVelocityDragPerSecond(level) + skillBonuses.fightBarDragSkillAdd + (rod?.controlStatAdd ?? 0));
 
     const powerEl = panel.querySelector('#book-status-power');
-    if (powerEl) powerEl.textContent = fmtBookStatIndex((rod?.castDistanceBonus ?? 1) + skillBonuses.castDistSkillAdd);
+    if (powerEl) powerEl.textContent = fmtBookStatIndex(1 + (rod?.powerStatAdd ?? 0) + skillBonuses.castDistSkillAdd);
     const speedEl = panel.querySelector('#book-status-speed');
     if (speedEl) speedEl.textContent = fmtBookStatIndex(1 + (rodCatchAdd + gaugeBonus + skillBonuses.gaugeSpeedSkillAdd) / Math.max(0.0001, baseGaugeSpeed));
     const techniqueEl = panel.querySelector('#book-status-technique');
@@ -3667,11 +3703,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private setupStatusStatSelector(panel: HTMLElement) {
-    const items = Array.from(panel.querySelectorAll('.book-status-stat-list li')) as HTMLElement[];
-    if (!items.length) return;
-
-    const detailTextEl = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
-    if (!detailTextEl) return;
+    const list = panel.querySelector('.book-status-stat-list') as HTMLElement | null;
+    if (!list) return;
 
     const statDetails: Record<'power' | 'speed' | 'technique' | 'control', { text: string }> = {
       'power': {
@@ -3690,31 +3723,46 @@ export default class GameScene extends Phaser.Scene {
 
     const applySelection = (nextKey: 'power' | 'speed' | 'technique' | 'control') => {
       this.selectedStatusStatKey = nextKey;
-      items.forEach((item) => {
+      const curItems = Array.from(list.querySelectorAll('li[data-stat-key]')) as HTMLElement[];
+      curItems.forEach((item) => {
         const isSelected = item.dataset.statKey === nextKey;
         item.classList.toggle('is-selected', isSelected);
         item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
       });
-      const detail = statDetails[nextKey];
-      detailTextEl.textContent = detail.text;
+      const detailTextEl = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
+      if (detailTextEl) {
+        detailTextEl.textContent = statDetails[nextKey].text;
+      }
     };
 
-    items.forEach((item) => {
-      if (item.dataset.statBound === '1') return;
-      item.dataset.statBound = '1';
-      item.addEventListener('click', () => {
-        const key = item.dataset.statKey as 'power' | 'speed' | 'technique' | 'control' | undefined;
+    if (list.dataset.statListBound !== '1') {
+      list.dataset.statListBound = '1';
+      list.addEventListener('click', (e) => {
+        const t = e.target as HTMLElement | null;
+        if (!t) return;
+        const li = t.closest('li[data-stat-key]') as HTMLElement | null;
+        if (!li || !list.contains(li)) return;
+        const key = li.dataset.statKey as 'power' | 'speed' | 'technique' | 'control' | undefined;
         if (!key) return;
         applySelection(key);
       });
-      item.addEventListener('keydown', (e: KeyboardEvent) => {
+      list.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
+        const t = e.target as HTMLElement | null;
+        if (!t) return;
+        const li = t.closest('li[data-stat-key]') as HTMLElement | null;
+        if (!li || !list.contains(li)) return;
         e.preventDefault();
-        const key = item.dataset.statKey as 'power' | 'speed' | 'technique' | 'control' | undefined;
+        const key = li.dataset.statKey as 'power' | 'speed' | 'technique' | 'control' | undefined;
         if (!key) return;
         applySelection(key);
       });
-    });
+    }
+
+    const items = Array.from(list.querySelectorAll('li[data-stat-key]')) as HTMLElement[];
+    if (!items.length) return;
+
+    const detailTextEl = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
 
     if (this.unifiedBookMainTabsNavActive) {
       items.forEach((item) => {
@@ -3723,7 +3771,7 @@ export default class GameScene extends Phaser.Scene {
       });
       const detailTitle = panel.querySelector('#book-status-detail-title');
       if (detailTitle) detailTitle.textContent = 'Info';
-      detailTextEl.textContent = '';
+      if (detailTextEl) detailTextEl.textContent = '';
       return;
     }
     applySelection(this.selectedStatusStatKey);
@@ -3992,12 +4040,14 @@ export default class GameScene extends Phaser.Scene {
   private handleSkillUnlockConfirmNavigation() {
     if (!this.skillUnlockConfirmPendingNodeId || !this.unifiedBookUIElement) return;
     if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) {
+      this.noteUiMenuKeyboardNavigation();
       this.skillUnlockConfirmFocus = 'cancel';
       this.syncSkillUnlockConfirmSelection();
       (this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-cancel') as HTMLButtonElement | null)?.focus();
       return;
     }
     if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) {
+      this.noteUiMenuKeyboardNavigation();
       this.skillUnlockConfirmFocus = 'ok';
       this.syncSkillUnlockConfirmSelection();
       (this.unifiedBookUIElement.querySelector('#skill-unlock-confirm-ok') as HTMLButtonElement | null)?.focus();
@@ -5106,17 +5156,17 @@ export default class GameScene extends Phaser.Scene {
     item.setAttribute('data-category', category);
     item.setAttribute('data-index', index.toString());
 
-    const categoryData: Record<string, { name: string; emoji: string; char: string }> = {
-      'catch': { name: '釣果', emoji: '🎣', char: '釣' },
-      'rarity': { name: 'レア度', emoji: '⭐', char: 'レ' },
-      'collection': { name: '図鑑', emoji: '📖', char: '図' },
-      'level': { name: 'レベル', emoji: '⭐', char: 'レ' },
-      'money': { name: '経済', emoji: '💰', char: '経' },
-      'equipment': { name: '装備', emoji: '⚔️', char: '装' },
-      'special': { name: '特殊', emoji: '✨', char: '特' },
+    const categoryData: Record<string, { name: string; char: string }> = {
+      'catch': { name: '釣果', char: '釣' },
+      'rarity': { name: 'レア度', char: 'レ' },
+      'collection': { name: '図鑑', char: '図' },
+      'level': { name: 'レベル', char: 'レ' },
+      'money': { name: '経済', char: '経' },
+      'equipment': { name: '装備', char: '装' },
+      'special': { name: '特殊', char: '特' },
     };
 
-    const data = categoryData[category] || { name: category, emoji: '⭐', char: category[0] };
+    const data = categoryData[category] || { name: category, char: category[0] };
     const unlockedCount = getAchievementsByCategory(category).filter((a) =>
       this.playerData.achievements.has(a.id)
     ).length;
@@ -5131,7 +5181,7 @@ export default class GameScene extends Phaser.Scene {
 
     item.innerHTML = `
       <div class="achievement-category-item__head">
-        <span class="achievement-category-item__name">${displayAchievementEmoji(data.emoji)} ${data.name}</span>
+        <span class="achievement-category-item__name">${data.name}</span>
         <span class="achievement-category-item__count">${unlockedCount}/${count} 達成</span>
       </div>
       <div class="achievement-category-item__segments" role="img" aria-label="カテゴリ達成 ${unlockedCount} / ${count}">
@@ -5203,7 +5253,6 @@ export default class GameScene extends Phaser.Scene {
     return `
       <div class="achievement-detail-item__inner">
         <div class="achievement-detail-item__row${rowClass}">
-          <div class="achievement-detail-item__emoji">${displayAchievementEmoji(achievement.emoji)}</div>
           <div class="achievement-detail-item__body">
             <div class="achievement-detail-item__top">
               <div class="achievement-detail-item__textcol">
@@ -5363,6 +5412,8 @@ export default class GameScene extends Phaser.Scene {
   openUnifiedBook(tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'status' = 'inventory') {
     if (this.state !== FishingState.IDLE) return;
 
+    if (this.shopOpen) this.closeShop();
+
     this.unifiedBookOpen = true;
     this.unifiedBookTab = tab;
     this.unifiedBookSelectedId = null;
@@ -5400,6 +5451,155 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  private getKbSelectionPointerEl(): HTMLDivElement {
+    if (this.kbSelectionPointerEl) return this.kbSelectionPointerEl;
+    const el = document.createElement('div');
+    el.className = 'ui-kb-selection-pointer';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.display = 'none';
+    document.body.appendChild(el);
+    this.kbSelectionPointerEl = el;
+    return el;
+  }
+
+  /** キー／ゲームパッドで辿るメニュー上の、現在の選択要素（右下マーカー用） */
+  private resolveKbSelectionPointerHost(): HTMLElement | null {
+    if (
+      this.unifiedBookOpen &&
+      this.unifiedBookUIElement?.classList.contains('is-open') &&
+      this.unifiedBookUIElement.classList.contains('is-topmost')
+    ) {
+      return this.resolveKbPointerForUnifiedBook();
+    }
+
+    const topModalId = this.modalStack.length > 0 ? this.modalStack[this.modalStack.length - 1] : undefined;
+    if (!topModalId) return null;
+
+    if (topModalId === this.MODAL_IDS.INVENTORY && !this.detailModalOpen && this.inventoryUIElement?.classList.contains('is-topmost')) {
+      const slot = this.inventorySlots[this.selectedSlotIndex];
+      return slot && document.body.contains(slot) ? slot : null;
+    }
+
+    if (topModalId === this.MODAL_IDS.BOOK && !this.bookDetailOpen && this.bookUIElement?.classList.contains('is-topmost')) {
+      const slot = this.bookSlots[this.bookSelectedIndex];
+      return slot && document.body.contains(slot) ? slot : null;
+    }
+
+    if (topModalId === this.MODAL_IDS.SHOP && this.shopOpen && this.shopUIElement?.classList.contains('is-topmost')) {
+      if (this.shopNavArea === 'tabs') {
+        const tabEl = this.shopUIElement.querySelector(`.shop-tab[data-tab="${this.shopTab}"]`) as HTMLElement | null;
+        return tabEl && document.body.contains(tabEl) ? tabEl : null;
+      }
+      const el = this.shopItemElements[this.shopSelectedIndex];
+      if (!el || !document.body.contains(el)) return null;
+      const actionButton = el.querySelector('.shop-item-action-button') as HTMLElement | null;
+      return actionButton && document.body.contains(actionButton) ? actionButton : el;
+    }
+
+    return null;
+  }
+
+  private resolveKbPointerForUnifiedBook(): HTMLElement | null {
+    const root = this.unifiedBookUIElement!;
+    if (this.skillUnlockConfirmPendingNodeId) {
+      const cancel = root.querySelector('#skill-unlock-confirm-cancel.is-nav-selected') as HTMLElement | null;
+      if (cancel) return cancel;
+      const ok = root.querySelector('#skill-unlock-confirm-ok.is-nav-selected') as HTMLElement | null;
+      return ok;
+    }
+
+    if (this.unifiedBookMainTabsNavActive) {
+      return root.querySelector('.book-tab-button.is-nav-selected') as HTMLElement | null;
+    }
+
+    if (this.unifiedBookTab === 'status') {
+      return root.querySelector('.book-status-stat-list li.is-selected') as HTMLElement | null;
+    }
+
+    if (this.unifiedBookTab === 'skills') {
+      if (this.skillNavArea === 'unlock') {
+        const unlock = root.querySelector('#book-skill-unlock.is-nav-selected') as HTMLElement | null;
+        if (unlock) return unlock;
+      }
+      if (this.skillNavArea === 'category') {
+        const tabs = root.querySelector('#book-skill-category-tabs.is-nav-selected') as HTMLElement | null;
+        if (tabs) {
+          const activeTab = tabs.querySelector('.book-skill-category-tab.is-active') as HTMLElement | null;
+          if (activeTab) return activeTab;
+          return tabs;
+        }
+      }
+      if (this.skillNavArea === 'tree') {
+        return root.querySelector('#book-skill-tree-grid .book-skill-node.selected') as HTMLElement | null;
+      }
+      return null;
+    }
+
+    if (this.unifiedBookTab === 'achievement') {
+      if (this.achievementNavArea === 'right') {
+        const row = root.querySelector('.achievement-detail-item.achievement-detail-item--kb-selected') as HTMLElement | null;
+        if (row) return row;
+      }
+      const cat = root.querySelector(
+        '#book-list-scroll .achievement-category-item.achievement-category-selected',
+      ) as HTMLElement | null;
+      if (cat) return cat;
+    }
+
+    return root.querySelector('#book-list-scroll .book-list-item.selected') as HTMLElement | null;
+  }
+
+  private noteUiMenuKeyboardNavigation() {
+    this.uiMenuNavInputChannel = 'keyboard';
+  }
+
+  private positionKbSelectionPointer(host: HTMLElement | null) {
+    const ptr = this.getKbSelectionPointerEl();
+    const hideKbPointerAndCursor = () => {
+      ptr.style.display = 'none';
+      document.body.classList.remove('ui-kb-selection-cursor-hide');
+    };
+    if (!host) {
+      hideKbPointerAndCursor();
+      return;
+    }
+    const r = host.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) {
+      hideKbPointerAndCursor();
+      return;
+    }
+    /* マウス操作中は右下マーカーを出さず、実カーソルのみ */
+    if (this.uiMenuNavInputChannel === 'mouse') {
+      ptr.style.display = 'none';
+      document.body.classList.remove('ui-kb-selection-cursor-hide');
+      return;
+    }
+    /* NES.css 既定カーソルと同じ 32×32。正の nudge でホスト矩形の右下外側へ寄せる（要素ごとに分岐可） */
+    const size = 32;
+    let nudgeX = 16;
+    let nudgeY = 16;
+    /* 上部 Book タブ: +8 だと下に寄りすぎるため従来の 8 のまま */
+    if (host.classList.contains('book-tab-button')) {
+      nudgeX = 8;
+      nudgeY = 8;
+    } else if (host.classList.contains('book-skill-category-tab')) {
+      /* スキル◇は小さめホスト用（共通 +8 は適用しない） */
+      nudgeX = 28;
+      nudgeY = 42;
+    }
+    ptr.style.display = 'block';
+    ptr.style.position = 'fixed';
+    ptr.style.left = `${Math.round(r.right - size + nudgeX)}px`;
+    ptr.style.top = `${Math.round(r.bottom - size + nudgeY)}px`;
+    ptr.style.width = `${size}px`;
+    ptr.style.height = `${size}px`;
+    document.body.classList.toggle('ui-kb-selection-cursor-hide', this.uiMenuNavInputChannel === 'keyboard');
+  }
+
+  private refreshKbSelectionPointer() {
+    this.positionKbSelectionPointer(this.resolveKbSelectionPointerHost());
+  }
+
   handleUnifiedBookNavigation() {
     if (!this.unifiedBookOpen) return;
     if (this.skillUnlockConfirmPendingNodeId) {
@@ -5416,6 +5616,7 @@ export default class GameScene extends Phaser.Scene {
     const bookTabsCycle = ['inventory', 'pedia', 'skills', 'achievement', 'status'] as const;
     const keepTabRow = this.unifiedBookMainTabsNavActive;
     if (Phaser.Input.Keyboard.JustDown(qKey)) {
+      this.noteUiMenuKeyboardNavigation();
       let i = bookTabsCycle.indexOf(this.unifiedBookTab);
       if (i < 0) i = 0;
       this.switchUnifiedBookTab(bookTabsCycle[(i - 1 + bookTabsCycle.length) % bookTabsCycle.length], {
@@ -5424,6 +5625,7 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
     if (Phaser.Input.Keyboard.JustDown(eKey)) {
+      this.noteUiMenuKeyboardNavigation();
       let i = bookTabsCycle.indexOf(this.unifiedBookTab);
       if (i < 0) i = 0;
       this.switchUnifiedBookTab(bookTabsCycle[(i + 1) % bookTabsCycle.length], {
@@ -5463,6 +5665,8 @@ export default class GameScene extends Phaser.Scene {
     const shouldMove = isInitialMove || isRepeatMoveDue;
 
     if (!shouldMove) return;
+
+    this.noteUiMenuKeyboardNavigation();
 
     // 次回移動タイミング更新
     if (this.unifiedBookNavRepeatDir !== dir) {
@@ -5954,6 +6158,15 @@ export default class GameScene extends Phaser.Scene {
   handleBookNavigation() {
     if (!this.bookOpen || this.bookDetailOpen) return;
 
+    if (
+      Phaser.Input.Keyboard.JustDown(this.cursors.left) ||
+      Phaser.Input.Keyboard.JustDown(this.cursors.right) ||
+      Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
+      Phaser.Input.Keyboard.JustDown(this.cursors.down)
+    ) {
+      this.noteUiMenuKeyboardNavigation();
+    }
+
     const gridCols = 4;
     const fishList = this.getRealFishList();
     const slotsPerPage = 12;
@@ -5989,21 +6202,22 @@ export default class GameScene extends Phaser.Scene {
     const shopHTML = `
       <div id="shop-modal" class="modal" style="display: none;" aria-hidden="true">
         <div class="modal-content shop-modal nes-container with-rounded ui-frame-box">
-          <button class="modal-close ui-frame-box" onclick="window.gameScene?.closeShop()">✕</button>
-          <div class="modal-header">
-            <h2>🏪 ショップ</h2>
-          </div>
-          <div class="shop-tabs">
-            <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="rod">🎣 竿</button>
-            <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="bait">🪱 エサ</button>
-            <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="lure">🎯 ルアー</button>
-            <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="inventory">🎒 バッグ</button>
-          </div>
-          <div id="shop-items-list" class="shop-items-list"></div>
-          <div class="modal-footer">
+          <div class="modal-header shop-modal-header-row book-list-header">Shop</div>
+          <div class="shop-controls-row">
+            <div class="shop-tabs">
+              <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="rod">サオ</button>
+              <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="bait">エサ</button>
+              <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="lure">ルアー</button>
+              <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="inventory">バッグ</button>
+            </div>
             <div id="shop-money" class="shop-money ui-frame-box"></div>
-            <div class="hint-text">↑↓: 選択 | ENTER: 購入/装備 | S/ESC: 閉じる</div>
           </div>
+          <div class="shop-items-scroll-wrap" id="shop-items-scroll-wrap">
+            <div class="shop-items-scroll-fade shop-items-scroll-fade--top" id="shop-items-scroll-fade-top" aria-hidden="true"></div>
+            <div id="shop-items-list" class="shop-items-list"></div>
+            <div class="shop-items-scroll-fade shop-items-scroll-fade--bottom" id="shop-items-scroll-fade-bottom" aria-hidden="true"></div>
+          </div>
+          <div class="modal-footer"></div>
         </div>
       </div>
     `;
@@ -6013,15 +6227,28 @@ export default class GameScene extends Phaser.Scene {
     this.shopUIElement = tempDiv.firstElementChild as HTMLElement;
     document.body.appendChild(this.shopUIElement);
 
+    this.shopUIElement.addEventListener('pointerdown', (e) => {
+      if (!this.shopOpen) return;
+      const panel = this.shopUIElement.querySelector('.modal-content');
+      if (panel && !panel.contains(e.target as Node)) {
+        this.closeShop();
+      }
+    });
+
     // ショップの要素をキャッシュ
+    this.shopItemsScrollWrapElement = this.shopUIElement.querySelector('#shop-items-scroll-wrap') as HTMLElement;
+    this.shopItemsScrollFadeTopElement = this.shopUIElement.querySelector('#shop-items-scroll-fade-top') as HTMLElement;
+    this.shopItemsScrollFadeBottomElement = this.shopUIElement.querySelector('#shop-items-scroll-fade-bottom') as HTMLElement;
     this.shopItemsListElement = this.shopUIElement.querySelector('#shop-items-list') as HTMLElement;
     this.shopMoneyElement = this.shopUIElement.querySelector('#shop-money') as HTMLElement;
+    this.setupShopItemsScrollFade();
 
     // タブボタンのイベント
     const tabButtons = this.shopUIElement.querySelectorAll('.shop-tab');
     tabButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         const tab = btn.getAttribute('data-tab') as 'rod' | 'bait' | 'lure' | 'inventory';
+        this.shopNavArea = 'tabs';
         this.shopTab = tab;
         this.shopSelectedIndex = 0;
         this.updateShopContent();
@@ -6426,6 +6653,7 @@ export default class GameScene extends Phaser.Scene {
     this.shopOpen = true;
     this.shopSelectedIndex = 0;
     this.shopTab = 'rod';
+    this.shopNavArea = 'items';
     this.updateShopContent();
     this.updateShopTabs();
     if (this.shopUIElement) {
@@ -6452,7 +6680,12 @@ export default class GameScene extends Phaser.Scene {
       } else {
         btn.classList.remove('active');
       }
+      btn.classList.remove('is-nav-selected');
     });
+    if (this.shopNavArea === 'tabs') {
+      const activeTab = this.shopUIElement.querySelector(`.shop-tab[data-tab="${this.shopTab}"]`) as HTMLElement | null;
+      if (activeTab) activeTab.classList.add('is-nav-selected');
+    }
   }
 
   updateShopContent() {
@@ -6475,7 +6708,7 @@ export default class GameScene extends Phaser.Scene {
         name: rod.name,
         icon: rod.icon,
         price: rod.price,
-        info: `距離+${Math.round((rod.castDistanceBonus - 1) * 100)}% 捕獲+${Math.round((rod.catchRateBonus - 1) * 100)}% レア+${Math.round((rod.rareChanceBonus - 1) * 100)}%`,
+        info: `P:+${Math.round(rod.powerStatAdd * 100)} S:+${Math.round(rod.speedStatAdd * 100)} T:+${Math.round(rod.techniqueStatAdd * 100)} C:+${Math.round(rod.controlStatAdd * 12)} R/E/L:+${Math.round(rod.rarityHitRateAdd.rare * 100)}/+${Math.round(rod.rarityHitRateAdd.epic * 100)}/+${Math.round(rod.rarityHitRateAdd.legendary * 100)}`,
         owned: this.hasRod(rod.id),
         equipped: this.playerData.equippedRodId === rod.id,
       }));
@@ -6512,41 +6745,85 @@ export default class GameScene extends Phaser.Scene {
     }
 
     items.forEach((item, index) => {
-      // 名前の色
-      const nameColor = item.equipped ? '#00ff00' : (item.owned ? '#aaaaaa' : '#ffffff');
+      const canAfford = this.playerData.money >= item.price;
+      const priceValue = item.price.toLocaleString();
+      let buttonText = '購入する';
+      let buttonStateClass = '';
 
-      // 価格または状態
-      let priceText = '';
-      let priceColor = '#ffff00';
-      if (item.equipped) {
-        priceText = '装備中';
-        priceColor = '#00ff00';
-      } else if (item.owned && this.shopTab !== 'bait') {
-        priceText = '所持';
-        priceColor = '#888888';
-      } else if (item.price === 0) {
-        priceText = '無料';
-        priceColor = '#00ff00';
-      } else {
-        priceText = `${item.price.toLocaleString()} G`;
-        priceColor = this.playerData.money >= item.price ? '#ffff00' : '#ff4444';
+      if (item.owned && this.shopTab !== 'bait') {
+        buttonText = '購入済み';
+        buttonStateClass = 'is-owned';
+      } else if (!canAfford && item.price > 0) {
+        buttonStateClass = 'is-disabled';
       }
 
-      // DOM要素を直接作成（innerHTMLを使わない）
+      const statChips: { label: string; value: string }[] = [];
+      let noteText = item.info;
+
+      if (this.shopTab === 'rod') {
+        const rod = rodConfigs[index];
+        if (rod) {
+          statChips.push(
+            { label: 'パワー', value: `+${Math.round(rod.powerStatAdd * 100)}` },
+            { label: 'スピード', value: `+${Math.round(rod.speedStatAdd * 100)}` },
+            { label: 'コントロール', value: `+${Math.round(rod.controlStatAdd * 12)}` },
+            { label: 'テクニック', value: `+${Math.round(rod.techniqueStatAdd * 100)}` }
+          );
+          noteText = rod.description;
+        }
+      } else if (this.shopTab === 'bait') {
+        const bait = baitConfigs[index];
+        if (bait) {
+          statChips.push(
+            { label: '所持', value: `${getBaitCount(this.playerData, bait.id)}個` },
+            { label: '購入', value: `x${bait.quantity}` },
+            { label: 'RARE', value: `${Math.round((bait.rareBonus - 1) * 100)}%` },
+            { label: 'EPIC', value: `${Math.round((bait.epicBonus - 1) * 100)}%` }
+          );
+          noteText = bait.description;
+        }
+      } else if (this.shopTab === 'lure') {
+        const lure = lureConfigs[index];
+        if (lure) {
+          statChips.push(
+            { label: 'UNCOMMON', value: `${Math.round((lure.uncommonBonus - 1) * 100)}%` },
+            { label: 'RARE', value: `${Math.round((lure.rareBonus - 1) * 100)}%` },
+            { label: 'EPIC', value: `${Math.round((lure.epicBonus - 1) * 100)}%` },
+            { label: 'LEGEND', value: `${Math.round((lure.legendaryBonus - 1) * 100)}%` }
+          );
+          noteText = lure.description;
+        }
+      } else {
+        const inv = inventoryUpgradeConfigs[index];
+        if (inv) {
+          const currentSlots = this.playerData.maxInventorySlots;
+          statChips.push(
+            { label: '現在', value: `${currentSlots}枠` },
+            { label: '拡張後', value: `${inv.slotCount}枠` },
+            { label: '増加', value: `+${Math.max(inv.slotCount - currentSlots, 0)}` },
+            { label: '分類', value: 'バッグ' }
+          );
+          noteText = inv.description;
+        }
+      }
+
       const itemEl = document.createElement('div');
       itemEl.className = 'shop-item';
+      if (item.owned && this.shopTab !== 'bait') {
+        itemEl.classList.add('is-owned');
+      }
       itemEl.setAttribute('data-index', index.toString());
 
       const contentWrap = document.createElement('div');
       contentWrap.className = 'shop-item-content ui-frame-box';
-      
+
       const iconContainer = document.createElement('div');
       iconContainer.className = 'shop-item-icon';
       if (this.textures.exists(item.id)) {
         const canvas = document.createElement('canvas');
         canvas.className = 'shop-item-icon-image';
-        canvas.width = 40;
-        canvas.height = 40;
+        canvas.width = 64;
+        canvas.height = 64;
         canvas.setAttribute('data-item-id', item.id);
         iconContainer.appendChild(canvas);
       } else {
@@ -6555,33 +6832,87 @@ export default class GameScene extends Phaser.Scene {
         emojiSpan.textContent = item.icon;
         iconContainer.appendChild(emojiSpan);
       }
-      
+
       const infoContainer = document.createElement('div');
       infoContainer.className = 'shop-item-info';
-      
+
+      const topRow = document.createElement('div');
+      topRow.className = 'shop-item-top-row';
+
+      const titleGroup = document.createElement('div');
+      titleGroup.className = 'shop-item-title-group';
+
       const nameEl = document.createElement('div');
       nameEl.className = 'shop-item-name';
       nameEl.textContent = item.name;
-      nameEl.style.color = nameColor;
-      if (item.equipped) nameEl.style.fontWeight = 'bold';
-      
-      const descEl = document.createElement('div');
-      descEl.className = 'shop-item-desc';
-      descEl.textContent = item.info;
-      
-      infoContainer.appendChild(nameEl);
-      infoContainer.appendChild(descEl);
-      
-      const priceEl = document.createElement('div');
-      priceEl.className = 'shop-item-price';
-      priceEl.textContent = priceText;
-      priceEl.style.color = priceColor;
-      
-      contentWrap.appendChild(iconContainer);
+
+      const actionWrap = document.createElement('div');
+      actionWrap.className = 'shop-item-action';
+
+      const priceGroup = document.createElement('div');
+      priceGroup.className = 'shop-item-price-group';
+
+      const priceValueEl = document.createElement('span');
+      priceValueEl.className = 'shop-item-price-value';
+      priceValueEl.textContent = priceValue;
+      if (!canAfford && item.price > 0) {
+        priceValueEl.classList.add('is-insufficient');
+      }
+
+      const priceUnitEl = document.createElement('span');
+      priceUnitEl.className = 'shop-item-price-unit';
+      priceUnitEl.textContent = 'G';
+
+      const actionButtonEl = document.createElement('button');
+      actionButtonEl.type = 'button';
+      actionButtonEl.className = `shop-item-action-button nes-btn ui-frame-box ${buttonStateClass}`.trim();
+      actionButtonEl.textContent = buttonText;
+      if (buttonStateClass === 'is-owned') {
+        actionButtonEl.disabled = true;
+      }
+
+      priceGroup.appendChild(priceValueEl);
+      priceGroup.appendChild(priceUnitEl);
+      actionWrap.appendChild(priceGroup);
+      actionWrap.appendChild(actionButtonEl);
+      titleGroup.appendChild(iconContainer);
+      titleGroup.appendChild(nameEl);
+      topRow.appendChild(titleGroup);
+      topRow.appendChild(actionWrap);
+
+      const statRow = document.createElement('div');
+      statRow.className = 'shop-item-stat-row';
+      statChips.forEach((chip) => {
+        const chipEl = document.createElement('div');
+        chipEl.className = 'shop-item-stat-chip';
+        const chipLabelEl = document.createElement('span');
+        chipLabelEl.className = 'shop-item-stat-chip-label';
+        chipLabelEl.textContent = chip.label;
+        const chipValueEl = document.createElement('span');
+        chipValueEl.className = 'shop-item-stat-chip-value';
+        chipValueEl.textContent = chip.value;
+        chipEl.appendChild(chipLabelEl);
+        chipEl.appendChild(chipValueEl);
+        statRow.appendChild(chipEl);
+      });
+
+      const noteRow = document.createElement('div');
+      noteRow.className = 'shop-item-note';
+      const noteLabelEl = document.createElement('span');
+      noteLabelEl.className = 'shop-item-note-label';
+      noteLabelEl.textContent = 'Note';
+      const noteTextEl = document.createElement('span');
+      noteTextEl.className = 'shop-item-note-text';
+      noteTextEl.textContent = noteText;
+      noteRow.appendChild(noteLabelEl);
+      noteRow.appendChild(noteTextEl);
+
+      infoContainer.appendChild(topRow);
+      infoContainer.appendChild(statRow);
+      infoContainer.appendChild(noteRow);
       contentWrap.appendChild(infoContainer);
-      contentWrap.appendChild(priceEl);
       itemEl.appendChild(contentWrap);
-      
+
       this.shopItemsListElement.appendChild(itemEl);
     });
 
@@ -6591,13 +6922,21 @@ export default class GameScene extends Phaser.Scene {
     
     itemElements.forEach((itemEl, index) => {
       itemEl.addEventListener('click', () => {
+        const item = items[index];
+        this.shopNavArea = 'items';
         this.shopSelectedIndex = index;
         this.updateShopSelection();
+        this.updateShopTabs();
+        if (item && item.owned && this.shopTab !== 'bait') {
+          return;
+        }
         this.purchaseOrEquipItem();
       });
       itemEl.addEventListener('mouseenter', () => {
+        this.shopNavArea = 'items';
         this.shopSelectedIndex = index;
         this.updateShopSelection();
+        this.updateShopTabs();
       });
       
       // 画像を描画（画像がある場合）
@@ -6608,10 +6947,10 @@ export default class GameScene extends Phaser.Scene {
           const ctx = canvas.getContext('2d');
           if (ctx) {
             const frame = this.textures.getFrame(item.id);
-            ctx.clearRect(0, 0, 40, 40);
+            ctx.clearRect(0, 0, 64, 64);
             const sourceImage = frame.source.image as HTMLImageElement;
             if (sourceImage) {
-              ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, 40, 40);
+              ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, 64, 64);
             }
           }
         }
@@ -6620,10 +6959,41 @@ export default class GameScene extends Phaser.Scene {
 
     // 所持金を更新
     if (this.shopMoneyElement) {
-      this.shopMoneyElement.textContent = `💰 所持金: ${this.playerData.money.toLocaleString()} G`;
+      this.shopMoneyElement.innerHTML = `
+        <span class="shop-money-label">所持金</span>
+        <div class="shop-money-balance">
+          <img src="/images/ui/ゴールド.png" alt="" aria-hidden="true" class="shop-money-icon-image" />
+          <div class="shop-money-amount">
+            <span class="shop-money-value">${this.playerData.money.toLocaleString()}</span>
+            <span class="shop-money-unit">G</span>
+          </div>
+        </div>
+      `;
     }
 
     this.updateShopSelection();
+    this.updateShopItemsScrollFade();
+  }
+
+  private setupShopItemsScrollFade() {
+    const el = this.shopItemsListElement;
+    if (!el || !this.shopItemsScrollFadeTopElement || !this.shopItemsScrollFadeBottomElement) return;
+
+    const update = () => this.updateShopItemsScrollFade();
+    el.addEventListener('scroll', update, { passive: true });
+
+    this.shopItemsScrollFadeObserver = new ResizeObserver(update);
+    this.shopItemsScrollFadeObserver.observe(el);
+    const wrap = this.shopItemsScrollWrapElement;
+    if (wrap) this.shopItemsScrollFadeObserver.observe(wrap);
+  }
+
+  private updateShopItemsScrollFade() {
+    this.updateScrollFadeIndicators(
+      this.shopItemsListElement,
+      this.shopItemsScrollFadeTopElement,
+      this.shopItemsScrollFadeBottomElement,
+    );
   }
 
   private lastSelectedShopIndex: number = -1;
@@ -6644,10 +7014,14 @@ export default class GameScene extends Phaser.Scene {
     
     // 選択されたアイテムにクラスを追加
     if (this.shopItemElements[this.shopSelectedIndex]) {
-      this.shopItemElements[this.shopSelectedIndex].classList.add('selected');
+      const selectedEl = this.shopItemElements[this.shopSelectedIndex];
+      selectedEl.classList.add('selected');
+      // キーボード移動時に選択中アイテムが常に見えるようにする
+      selectedEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
     
     this.lastSelectedShopIndex = this.shopSelectedIndex;
+    this.updateShopItemsScrollFade();
   }
 
   hasRod(rodId: string): boolean {
@@ -6800,6 +7174,34 @@ export default class GameScene extends Phaser.Scene {
   }
 
   handleShopNavigation() {
+    const justUp = Phaser.Input.Keyboard.JustDown(this.cursors.up);
+    const justDown = Phaser.Input.Keyboard.JustDown(this.cursors.down);
+    const justLeft = Phaser.Input.Keyboard.JustDown(this.cursors.left);
+    const justRight = Phaser.Input.Keyboard.JustDown(this.cursors.right);
+
+    if (justUp || justDown || justLeft || justRight) {
+      this.noteUiMenuKeyboardNavigation();
+    }
+
+    const tabOrder: Array<'rod' | 'bait' | 'lure' | 'inventory'> = ['rod', 'bait', 'lure', 'inventory'];
+    const currentTabIndex = Math.max(0, tabOrder.indexOf(this.shopTab));
+
+    if (this.shopNavArea === 'tabs') {
+      let nextTabIndex = currentTabIndex;
+      if (justLeft) nextTabIndex = (currentTabIndex - 1 + tabOrder.length) % tabOrder.length;
+      if (justRight) nextTabIndex = (currentTabIndex + 1) % tabOrder.length;
+      if (nextTabIndex !== currentTabIndex) {
+        this.shopTab = tabOrder[nextTabIndex];
+        this.shopSelectedIndex = 0;
+        this.updateShopContent();
+      }
+      if (justDown) {
+        this.shopNavArea = 'items';
+      }
+      this.updateShopTabs();
+      return;
+    }
+
     let itemCount = 0;
     if (this.shopTab === 'rod') itemCount = rodConfigs.length;
     else if (this.shopTab === 'bait') itemCount = baitConfigs.length;
@@ -6808,9 +7210,15 @@ export default class GameScene extends Phaser.Scene {
 
     let newIndex = this.shopSelectedIndex;
 
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
-        if (this.shopSelectedIndex > 0) newIndex--;
-    } else if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
+    if (justUp) {
+        if (this.shopSelectedIndex > 0) {
+          newIndex--;
+        } else {
+          this.shopNavArea = 'tabs';
+          this.updateShopTabs();
+          return;
+        }
+    } else if (justDown) {
         if (this.shopSelectedIndex < itemCount - 1) newIndex++;
     }
 
@@ -6818,6 +7226,7 @@ export default class GameScene extends Phaser.Scene {
         this.shopSelectedIndex = newIndex;
         this.updateShopSelection();
     }
+    this.updateShopTabs();
   }
 }
 

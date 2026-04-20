@@ -1,7 +1,7 @@
 // 🏪 ショップ設定ファイル
 
 // ============================================
-// 竿の定義
+// サオの定義
 // ============================================
 export interface RodConfig {
   id: string;
@@ -9,62 +9,81 @@ export interface RodConfig {
   description: string;
   price: number;
   icon: string;
-  // 効果
-  castDistanceBonus: number;    // 投擲距離ボーナス（倍率）
-  catchRateBonus: number;       // 捕獲率ボーナス（倍率）
-  rareChanceBonus: number;      // レア出現率ボーナス（倍率）
+  // 効果（ステータスはすべて「基準値への加算」）
+  powerStatAdd: number;      // 投擲距離に効くパワー加算
+  speedStatAdd: number;      // 捕獲ゲージ上昇に効くスピード加算
+  techniqueStatAdd: number;  // 判定帯の広さに効くテクニック加算
+  controlStatAdd: number;    // バー操作安定性に効くコントロール加算
+  // レアリティ別ヒット率加算（1.0に対する加算値。例: 0.06 => +6%）
+  rarityHitRateAdd: {
+    common: number;
+    uncommon: number;
+    rare: number;
+    epic: number;
+    legendary: number;
+  };
 }
 
 export const rodConfigs: RodConfig[] = [
   {
     id: 'rod_basic',
-    name: '木の竿',
-    description: '初心者用の基本的な竿。',
+    name: '木のサオ',
+    description: '初心者用の基本的なサオ。',
     price: 0,  // 初期装備
     icon: '🎣',
-    castDistanceBonus: 1.0,
-    catchRateBonus: 1.0,
-    rareChanceBonus: 1.0,
+    powerStatAdd: 0.0,
+    speedStatAdd: 0.0,
+    techniqueStatAdd: 0.0,
+    controlStatAdd: 0.0,
+    rarityHitRateAdd: { common: 0.0, uncommon: 0.0, rare: 0.0, epic: 0.0, legendary: 0.0 },
   },
   {
     id: 'rod_bamboo',
-    name: '竹の竿',
-    description: 'しなやかで扱いやすい竿。',
+    name: '竹のサオ',
+    description: 'しなやかで扱いやすいサオ。',
     price: 500,
     icon: '🎋',
-    castDistanceBonus: 1.06,
-    catchRateBonus: 1.06,
-    rareChanceBonus: 1.0,
+    powerStatAdd: 0.04,
+    speedStatAdd: 0.04,
+    techniqueStatAdd: 0.01,
+    controlStatAdd: 0.05,
+    rarityHitRateAdd: { common: 0.0, uncommon: 0.01, rare: 0.01, epic: 0.0, legendary: 0.0 },
   },
   {
     id: 'rod_carbon',
     name: 'カーボンロッド',
-    description: '軽くて丈夫な高性能竿。',
+    description: '軽くて丈夫な高性能サオ。',
     price: 2000,
     icon: '⚡',
-    castDistanceBonus: 1.12,
-    catchRateBonus: 1.12,
-    rareChanceBonus: 1.03,
+    powerStatAdd: 0.09,
+    speedStatAdd: 0.09,
+    techniqueStatAdd: 0.02,
+    controlStatAdd: 0.1,
+    rarityHitRateAdd: { common: 0.0, uncommon: 0.02, rare: 0.03, epic: 0.02, legendary: 0.01 },
   },
   {
     id: 'rod_master',
-    name: '名人の竿',
-    description: '伝説の釣り師が使っていた竿。',
+    name: '名人のサオ',
+    description: '伝説の釣り師が使っていたサオ。',
     price: 8000,
     icon: '👑',
-    castDistanceBonus: 1.18,
-    catchRateBonus: 1.18,
-    rareChanceBonus: 1.07,
+    powerStatAdd: 0.14,
+    speedStatAdd: 0.14,
+    techniqueStatAdd: 0.04,
+    controlStatAdd: 0.16,
+    rarityHitRateAdd: { common: 0.0, uncommon: 0.03, rare: 0.06, epic: 0.05, legendary: 0.03 },
   },
   {
     id: 'rod_legendary',
-    name: '達人の竿',
-    description: '釣りの達人だけが扱える究極の竿。',
+    name: '達人のサオ',
+    description: '釣りの達人だけが扱える究極のサオ。',
     price: 30000,
     icon: '🏆',
-    castDistanceBonus: 1.25,
-    catchRateBonus: 1.25,
-    rareChanceBonus: 1.12,
+    powerStatAdd: 0.2,
+    speedStatAdd: 0.2,
+    techniqueStatAdd: 0.06,
+    controlStatAdd: 0.22,
+    rarityHitRateAdd: { common: 0.0, uncommon: 0.04, rare: 0.09, epic: 0.08, legendary: 0.06 },
   },
 ];
 
@@ -275,7 +294,7 @@ export function getInventoryUpgradeById(id: string): InventoryUpgradeConfig | un
   return inventoryUpgradeConfigs.find(upgrade => upgrade.id === id);
 }
 
-// 次の竿を取得
+// 次のサオを取得
 export function getNextRod(currentRodId: string): RodConfig | undefined {
   const currentIndex = rodConfigs.findIndex(rod => rod.id === currentRodId);
   if (currentIndex === -1 || currentIndex >= rodConfigs.length - 1) {

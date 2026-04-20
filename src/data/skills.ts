@@ -182,24 +182,24 @@ const NODE_META: Record<
     n08: { name: 'コントロールマスター', description: '慣性がさらに抑えられる。', kind: 'stat', statBonus: { fightBarDragSkillAdd: 0.06 } },
   },
   special: {
-    n01: { name: '話術強化1', description: '売却価格がわずかに上がる。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.02 } },
-    n02: { name: '話術強化2', description: '売却価格がわずかに上がる。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.02 } },
+    n01: { name: '話術強化1', description: '売却価格の倍率が +3% 上がる（他の話術強化と加算）。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.03 } },
+    n02: { name: '話術強化2', description: '売却価格の倍率が +3% 上がる（他の話術強化と加算）。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.03 } },
     n03: {
       name: '研究熱心',
       description: '同じ魚を多く釣っているほど、その魚の経験値ボーナス（最大2.0倍）。',
       kind: 'ability',
       abilityId: 'abil_spec_first_sell_boost',
     },
-    n04: { name: '話術強化3', description: '売却価格が上がる。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.03 } },
-    n05: { name: '話術強化4', description: '売却価格が上がる。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.03 } },
+    n04: { name: '話術強化3', description: '売却価格の倍率が +5% 上がる（他の話術強化と加算）。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.05 } },
+    n05: { name: '話術強化4', description: '売却価格の倍率が +5% 上がる（他の話術強化と加算）。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.05 } },
     n06: {
       name: 'サングラス',
       description: 'ファイト中、釣り上げ前の魚のレアリティが色でわかるようになる。',
       kind: 'ability',
       abilityId: 'abil_spec_pedia_bonus',
     },
-    n07: { name: '話術強化5', description: '売却価格が大きく上がる。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.04 } },
-    n08: { name: '特殊マスター', description: '売却価格がさらに上がる。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.05 } },
+    n07: { name: '話術強化5', description: '売却価格の倍率が +7% 上がる（他の話術強化と加算）。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.07 } },
+    n08: { name: '特殊マスター', description: '売却価格の倍率が +10% 上がる（他の話術強化と加算）。', kind: 'stat', statBonus: { sellPriceSkillMul: 0.1 } },
   },
 };
 
