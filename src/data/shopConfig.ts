@@ -1,7 +1,7 @@
 // 🏪 ショップ設定ファイル
 
 // ============================================
-// サオの定義
+// 釣り竿の定義
 // ============================================
 export interface RodConfig {
   id: string;
@@ -27,8 +27,8 @@ export interface RodConfig {
 export const rodConfigs: RodConfig[] = [
   {
     id: 'rod_basic',
-    name: '木のサオ',
-    description: '初心者用の基本的なサオ。',
+    name: '木の釣り竿',
+    description: '初心者用の基本的な釣り竿。',
     price: 0,  // 初期装備
     icon: '🎣',
     powerStatAdd: 0.0,
@@ -39,8 +39,8 @@ export const rodConfigs: RodConfig[] = [
   },
   {
     id: 'rod_bamboo',
-    name: '竹のサオ',
-    description: 'しなやかで扱いやすいサオ。',
+    name: '竹の釣り竿',
+    description: 'しなやかで扱いやすい釣り竿。',
     price: 500,
     icon: '🎋',
     powerStatAdd: 0.04,
@@ -52,7 +52,7 @@ export const rodConfigs: RodConfig[] = [
   {
     id: 'rod_carbon',
     name: 'カーボンロッド',
-    description: '軽くて丈夫な高性能サオ。',
+    description: '軽くて丈夫な高性能釣り竿。',
     price: 2000,
     icon: '⚡',
     powerStatAdd: 0.09,
@@ -63,8 +63,8 @@ export const rodConfigs: RodConfig[] = [
   },
   {
     id: 'rod_master',
-    name: '名人のサオ',
-    description: '伝説の釣り師が使っていたサオ。',
+    name: '名人の釣り竿',
+    description: '伝説の釣り師が使っていた釣り竿。',
     price: 8000,
     icon: '👑',
     powerStatAdd: 0.14,
@@ -75,8 +75,8 @@ export const rodConfigs: RodConfig[] = [
   },
   {
     id: 'rod_legendary',
-    name: '達人のサオ',
-    description: '釣りの達人だけが扱える究極のサオ。',
+    name: '達人の釣り竿',
+    description: '釣りの達人だけが扱える究極の釣り竿。',
     price: 30000,
     icon: '🏆',
     powerStatAdd: 0.2,
@@ -115,9 +115,9 @@ export const baitConfigs: BaitConfig[] = [
     quantity: 20,
     commonBonus: 1.25,
     uncommonBonus: 1.05,
-    rareBonus: 0.98,
-    epicBonus: 0.95,
-    legendaryBonus: 0.92,
+    rareBonus: 1.0,
+    epicBonus: 1.0,
+    legendaryBonus: 1.0,
   },
   {
     id: 'bait_shrimp',
@@ -126,11 +126,11 @@ export const baitConfigs: BaitConfig[] = [
     price: 80,
     icon: '🦐',
     quantity: 15,
-    commonBonus: 0.92,
+    commonBonus: 1.0,
     uncommonBonus: 1.22,
     rareBonus: 1.08,
-    epicBonus: 0.98,
-    legendaryBonus: 0.94,
+    epicBonus: 1.0,
+    legendaryBonus: 1.0,
   },
   {
     id: 'bait_minnow',
@@ -139,8 +139,8 @@ export const baitConfigs: BaitConfig[] = [
     price: 200,
     icon: '🐟',
     quantity: 10,
-    commonBonus: 0.82,
-    uncommonBonus: 0.92,
+    commonBonus: 1.0,
+    uncommonBonus: 1.0,
     rareBonus: 1.25,
     epicBonus: 1.15,
     legendaryBonus: 1.08,
@@ -152,8 +152,8 @@ export const baitConfigs: BaitConfig[] = [
     price: 500,
     icon: '✨',
     quantity: 5,
-    commonBonus: 0.72,
-    uncommonBonus: 0.82,
+    commonBonus: 1.0,
+    uncommonBonus: 1.0,
     rareBonus: 1.22,
     epicBonus: 1.35,
     legendaryBonus: 1.55,
@@ -196,7 +196,7 @@ export const lureConfigs: LureConfig[] = [
     description: '小魚を模したルアー。中〜大型魚に効果的。',
     price: 3000,
     icon: '🎣',
-    commonBonus: 0.97,
+    commonBonus: 1.0,
     uncommonBonus: 1.08,
     rareBonus: 1.14,
     epicBonus: 1.1,
@@ -208,7 +208,7 @@ export const lureConfigs: LureConfig[] = [
     description: '水面で音を立てて魚を誘うトップウォータールアー。',
     price: 5000,
     icon: '💦',
-    commonBonus: 0.94,
+    commonBonus: 1.0,
     uncommonBonus: 1.1,
     rareBonus: 1.18,
     epicBonus: 1.14,
@@ -220,7 +220,7 @@ export const lureConfigs: LureConfig[] = [
     description: '回転するブレードで光を反射。全体的に効果UP。',
     price: 10000,
     icon: '💎',
-    commonBonus: 0.9,
+    commonBonus: 1.0,
     uncommonBonus: 1.12,
     rareBonus: 1.22,
     epicBonus: 1.18,
@@ -294,7 +294,7 @@ export function getInventoryUpgradeById(id: string): InventoryUpgradeConfig | un
   return inventoryUpgradeConfigs.find(upgrade => upgrade.id === id);
 }
 
-// 次のサオを取得
+// 次の釣り竿を取得
 export function getNextRod(currentRodId: string): RodConfig | undefined {
   const currentIndex = rodConfigs.findIndex(rod => rod.id === currentRodId);
   if (currentIndex === -1 || currentIndex >= rodConfigs.length - 1) {

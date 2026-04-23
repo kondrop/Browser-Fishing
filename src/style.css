@@ -4046,6 +4046,7 @@ span.level-label-value {
 
 .book-status-hero-main {
   flex: 1 1 0;
+  width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -4152,34 +4153,123 @@ span.level-label-value {
   flex-shrink: 0;
 }
 
-/* ── カウンター（バッグ / 図鑑） ── */
-.book-status-hero-counters {
+/* ── 装備セクション（釣り竿 / ルアー） ── */
+.book-status-hero-equipment {
   flex: 0 0 auto;
+  width: 320px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  justify-content: stretch;
+}
+
+.book-status-equipment-item {
+  height: 100%;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: rgba(112, 74, 43, 0.10);
+  border: 0 none rgba(0, 0, 0, 0);
+  border-image: none;
+}
+
+.book-status-equipment-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 32px;
+}
+
+.book-status-equipment-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
   justify-content: center;
 }
 
-.book-status-counter {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 5px 12px;
-  background: rgba(112, 74, 43, 0.10);
-  border: 1px solid rgba(112, 74, 43, 0.18);
+.book-status-equipment-icon-canvas {
+  width: 28px;
+  height: 28px;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
-.book-status-counter-label {
+.book-status-equipment-icon-emoji {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.book-status-equipment-name {
+  margin: 0;
+  min-width: 0;
   font-size: 13px;
-  color: #5c4030;
+  line-height: 1.2;
+  color: var(--color-semantic-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.book-status-counter-value {
-  font-size: 26px;
-  font-family: 'Jersey 10', 'DotGothic16', sans-serif;
-  color: #320e0e;
-  font-variant-numeric: tabular-nums;
+#book-status-equipped-rod-name {
+  padding-top: 2px;
+}
+
+.book-status-change-btn.ui-frame-box {
+  /* スキル解放ボタンと同じく、ui-frame-box の塗りでグリーンを作る */
+  --frame-fill-inset: 0;
+  --frame-fill-color: #7cb86c;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 32px;
+  padding: 13px 28px 16px;
+  border-image: none;
+  border-image-width: 0;
+  border-image-outset: 0;
+  color: #fff;
+  font-family: 'DotGothic16', sans-serif !important;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+
+.book-status-change-btn.ui-frame-box:hover,
+.book-status-change-btn.ui-frame-box:focus,
+.book-status-change-btn.ui-frame-box:focus-visible,
+.book-status-change-btn.ui-frame-box:active {
+  color: #fff;
+  box-shadow: none !important;
+}
+
+.book-status-change-btn.ui-frame-box:focus,
+.book-status-change-btn.ui-frame-box:focus-visible {
+  outline: none;
+}
+
+.book-status-change-btn.ui-frame-box.is-nav-selected {
+  --frame-fill-color: #c2681f;
+}
+
+.book-status-change-btn.ui-frame-box::after {
+  box-shadow: none !important;
+}
+
+.book-status-change-btn.ui-frame-box:hover::after,
+.book-status-change-btn.ui-frame-box:active::after {
+  box-shadow: none !important;
+}
+
+.book-status-change-btn.ui-frame-box:active {
+  transform: translateY(1px);
 }
 
 /* ── 各セクション共通 ── */
@@ -4191,7 +4281,7 @@ span.level-label-value {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .book-status-section-title {
@@ -4223,7 +4313,7 @@ span.level-label-value {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 6px;
   position: relative;
   z-index: 1;
 }
@@ -4233,16 +4323,16 @@ span.level-label-value {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 12px 10px;
+  padding: 12px 14px;
   min-height: 42px;
   cursor: inherit;
   position: relative;
   border: none;
-  --frame-fill-color: #CBB792;
+  --frame-fill-color: #e8cfa6;
 }
 
 .book-status-stat-list li.ui-frame-box::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 /* ホバー: 選択と同じ塗り・枠（矢印 ::before は .is-selected のみ） */
@@ -4285,16 +4375,44 @@ span.level-label-value {
 .book-stat-name {
   font-size: var(--font-size-status-stat-name);
   color: var(--color-primitive-brown-400);
+  height: 23px;
 }
 
 .book-stat-val {
   font-size: var(--font-size-status-stat-value);
   font-weight: 400;
-  color: var(--color-semantic-text-stat-value);
+  color: var(--color-primitive-brown-400);
   font-variant-numeric: tabular-nums;
   font-synthesis: none;
   line-height: 1;
   font-family: var(--font-family-display-numeric);
+  width: 36px;
+  text-align: right;
+  display: inline-block;
+}
+
+.book-stat-val-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.book-status-stat-delta {
+  min-width: 44px;
+  font-family: 'DotGothic16', sans-serif;
+  font-size: 26px;
+  line-height: 1;
+  text-align: right;
+  color: transparent;
+}
+
+.book-status-stat-delta.is-plus {
+  color: #4ea65e;
+}
+
+.book-status-stat-delta.is-minus {
+  color: #d35757;
 }
 
 #book-status-power {
@@ -4302,20 +4420,43 @@ span.level-label-value {
 }
 
 .book-status-detail-note {
-  background: var(--color-primitive-natural-sand-400);
+  background: rgba(230, 213, 172, 1);
   color: var(--color-semantic-text-detail);
   min-height: 100%;
+  height: fit-content;
   padding: 10px 16px;
   box-sizing: border-box;
   border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
 }
 
 .book-status-detail-note-title {
   margin: 0 0 4px;
-  font-family: var(--font-family-display-numeric);
-  font-size: 24px;
+  margin-top: 2px;
+  font-family: 'DotGothic16', sans-serif;
+  font-size: 18px;
   line-height: 1.2;
+  color: var(--color-semantic-text-primary);
+  width: fit-content;
+  white-space: nowrap;
+}
+
+#book-status-detail-title {
   color: var(--color-primitive-orange-600);
+  font-size: 24px;
+}
+
+#book-status-change-rod {
+  font-family: "DotGothic16", sans-serif !important;
+  font-size: 16px;
+}
+
+#book-status-change-lure {
+  font-family: "DotGothic16", sans-serif !important;
+  font-size: 16px;
 }
 
 .book-status-detail-note-text {
@@ -4323,9 +4464,235 @@ span.level-label-value {
   font-size: var(--font-size-detail-note-body);
   line-height: 1.45;
   color: var(--color-semantic-text-detail);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-/* ── 装備名（サオ名など） ── */
+.book-status-detail-note-text::-webkit-scrollbar {
+  display: none;
+}
+
+.book-status-detail-fade {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  height: 36px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.book-status-detail-fade--top {
+  top: 34px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, rgba(230, 213, 172, 1) 94%, transparent) 0%,
+    color-mix(in srgb, rgba(230, 213, 172, 1) 52%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+.book-status-detail-fade--bottom {
+  bottom: 10px;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, rgba(230, 213, 172, 1) 94%, transparent) 0%,
+    color-mix(in srgb, rgba(230, 213, 172, 1) 52%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+.book-status-detail-fade.is-visible {
+  opacity: 1;
+}
+
+.book-status-equip-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.book-status-equip-option {
+  width: 100%;
+  min-height: 36px;
+  padding: 12px;
+  border: none;
+  background: transparent;
+  --frame-fill-color: #e8cfa6;
+  color: var(--color-semantic-text-detail);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: 'DotGothic16', sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 0;
+  isolation: isolate;
+}
+
+.book-status-equip-option.is-selected {
+  --frame-fill-color: #f2e2b6;
+}
+
+.book-status-equip-option.is-nav-selected {
+  --frame-fill-color: #efd28f;
+}
+
+.book-status-equip-option.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+.book-status-equip-option.is-selected.ui-frame-box::after,
+.book-status-equip-option.is-nav-selected.ui-frame-box::after,
+.book-status-equip-option:hover.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+.book-status-equip-option-state {
+  font-size: 16px;
+  color: var(--color-semantic-text-stat-value);
+}
+
+.book-status-equip-option-state:empty {
+  display: none;
+}
+
+.book-status-equip-option-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.book-status-equip-option-name > span:not(.book-status-equip-option-icon):not(.book-status-equip-option-count) {
+  font-size: 16px;
+  padding-top: 3px;
+}
+
+.book-status-equip-option-count {
+  margin-left: 6px;
+  font-family: var(--font-family-display-numeric);
+  font-size: 19px;
+  line-height: 1;
+  color: var(--color-primitive-brown-400);
+}
+
+.book-status-equip-option-icon {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+}
+
+.book-status-equip-option-icon-canvas {
+  width: 22px;
+  height: 22px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.book-status-equip-option-icon.is-placeholder {
+  border-radius: 4px;
+  background: rgba(112, 74, 43, 0.2);
+}
+
+.book-status-rarity-prob {
+  margin-top: 12px;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+}
+
+.book-status-rarity-prob-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.book-status-rarity-prob-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  justify-content: center;
+  align-items: center;
+  padding: 6px 4px;
+  background: rgba(112, 74, 43, 0.08);
+  border-radius: 8px;
+}
+
+.book-status-rarity-prob-label {
+  font-size: 15px;
+  line-height: 14px;
+  color: #704A2B;
+}
+
+.book-status-rarity-prob-value {
+  font-family: 'Jersey 10', 'DotGothic16', sans-serif;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--color-primitive-brown-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.book-status-rarity-prob-percent {
+  font-size: 20px;
+}
+
+.book-status-rarity-prob-value-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 5px;
+}
+
+.book-status-rarity-prob-delta {
+  font-family: 'DotGothic16', sans-serif;
+  font-size: 17px;
+  line-height: 1;
+  text-align: right;
+  color: transparent;
+  font-variant-numeric: tabular-nums;
+  display: none;
+}
+
+.book-status-rarity-prob-delta.has-delta {
+  display: inline-block;
+}
+
+.book-status-rarity-prob-delta.is-plus {
+  color: #4ea65e;
+}
+
+.book-status-rarity-prob-delta.is-minus {
+  color: #d35757;
+}
+
+.book-status-rarity-prob-value.is-plus {
+  color: #4ea65e;
+}
+
+.book-status-rarity-prob-value.is-minus {
+  color: #d35757;
+}
+
+#book-status-rarity-common {
+  line-height: 24px;
+}
+
+/* ── 装備名（釣り竿名など） ── */
 .book-status-line-strong {
   font-size: 16px;
   margin: 0 0 8px 0;

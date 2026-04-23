@@ -311,13 +311,13 @@ export const achievementConfigs: AchievementConfig[] = [
   },
 
   // ============================
-  // 1-6. サオ・装備系（Equipment）
+  // 1-6. 釣り竿・装備系（Equipment）
   // ============================
   {
     id: 'equipment_all_rods',
     category: 'equipment',
-    name: 'サオコレクター',
-    description: '全種類のサオを購入（5種類）',
+    name: '釣り竿コレクター',
+    description: '全種類の釣り竿を購入（5種類）',
     emoji: '🎣',
     condition: { type: 'all_rods', target: rodConfigs.length },
     reward: { money: 2000, exp: 500 },
@@ -344,7 +344,7 @@ export const achievementConfigs: AchievementConfig[] = [
     id: 'equipment_complete',
     category: 'equipment',
     name: '装備コンプリート',
-    description: '全種類のサオ・エサ・ルアーを購入',
+    description: '全種類の釣り竿・エサ・ルアーを購入',
     emoji: '⚔️',
     condition: { type: 'all_equipment', target: rodConfigs.length + baitConfigs.length + lureConfigs.length },
     reward: { money: 10000, exp: 3000 },

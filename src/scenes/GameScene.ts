@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
-import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, Habitat } from '../data/fish';
+import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, rarityWeights, Habitat } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
 import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, getLevelFightBarVelocityDragPerSecond, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp } from '../data/inventory';
 import {
@@ -153,6 +153,13 @@ export default class GameScene extends Phaser.Scene {
   private unifiedBookUIElement!: HTMLElement;
   private unifiedBookOpen: boolean = false;
   private unifiedBookTab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'status' = 'inventory';
+  private readonly unifiedBookTabOrder: Array<'inventory' | 'status' | 'skills' | 'achievement' | 'pedia'> = [
+    'inventory',
+    'status',
+    'skills',
+    'achievement',
+    'pedia',
+  ];
   private unifiedBookSelectedId: string | null = null;
   private unifiedBookSelectedIndex: number | null = null;
   private unifiedBookNavRepeatDir: 'up' | 'down' | 'left' | 'right' | null = null;
@@ -188,6 +195,13 @@ export default class GameScene extends Phaser.Scene {
   private uiMenuNavInputChannel: 'mouse' | 'keyboard' = 'mouse';
   private selectedStatusStatKey: 'power' | 'speed' | 'technique' | 'control' = 'power';
   private readonly statusStatOrder: Array<'power' | 'speed' | 'technique' | 'control'> = ['power', 'speed', 'technique', 'control'];
+  private statusEquipmentSelectorType: 'rod' | 'lure' | null = null;
+  private statusNavArea: 'stats' | 'equipmentButtons' | 'equipmentOptions' = 'stats';
+  private statusNavButtonType: 'rod' | 'lure' = 'rod';
+  private statusLastInteractedButtonType: 'rod' | 'lure' = 'rod';
+  private statusNavEquipOptionIndex: number = 0;
+  private statusPreviewEquipmentType: 'rod' | 'bait' | 'lure' | null = null;
+  private statusPreviewEquipmentId: string | null = null;
 
   // ショップUI（HTML/CSS）
   private shopUIElement!: HTMLElement;
@@ -464,7 +478,7 @@ export default class GameScene extends Phaser.Scene {
 
     // ショップアイテムの画像を読み込み（IDと日本語ファイル名のマッピング）
     const itemImages: { [id: string]: string } = {
-      // サオ（表示名） / 画像ファイル名は既存アセットに合わせる
+      // 釣り竿（表示名） / 画像ファイル名は既存アセットに合わせる
       'rod_basic': '木の竿',
       'rod_bamboo': '竹の竿',
       'rod_carbon': 'カーボンロッド',
@@ -948,6 +962,8 @@ export default class GameScene extends Phaser.Scene {
                 }
                 if (this.unifiedBookTab === 'skills' && this.skillNavArea === 'unlock') {
                     this.triggerSkillDetailAction();
+                } else if (this.unifiedBookTab === 'status') {
+                    this.triggerStatusKeyboardAction();
                 }
             } else if (this.inventoryOpen && !this.detailModalOpen) {
                 this.openDetailModal();
@@ -1826,12 +1842,12 @@ export default class GameScene extends Phaser.Scene {
 
     const waitCfg = config.waiting;
     
-    // 装備中のサオのボーナスを取得
+    // 装備中の釣り竿のボーナスを取得
     const equippedRod = getRodById(this.playerData.equippedRodId);
     const skillBonuses = getSkillStatBonuses(this.playerData);
     const powerStatus = 1.0 + (equippedRod?.powerStatAdd || 0) + skillBonuses.castDistSkillAdd;
     
-    // パワーに応じた距離（サオのボーナスを反映）
+    // パワーに応じた距離（釣り竿のボーナスを反映）
     const minDist = waitCfg['3-3_最小投擲距離'];
     const maxDist = waitCfg['3-4_最大投擲距離'];
     const baseDistance = minDist + (this.castPower * (maxDist - minDist));
@@ -3183,10 +3199,10 @@ export default class GameScene extends Phaser.Scene {
                 <span class="book-tab-label">バッグ</span>
               </span>
             </button>
-            <button class="book-tab-button ui-frame-box" data-tab="pedia" aria-label="図鑑">
+            <button class="book-tab-button ui-frame-box" data-tab="status" aria-label="ステータス">
               <span class="book-tab-button-inner">
-                <img class="book-tab-icon" src="/images/ui/icon/icon_encyclopedia.png" alt="" aria-hidden="true" />
-                <span class="book-tab-label">図鑑</span>
+                <img class="book-tab-icon" src="/images/ui/icon/icon_status.png" alt="" aria-hidden="true" />
+                <span class="book-tab-label">ステータス</span>
               </span>
             </button>
             <button class="book-tab-button ui-frame-box" data-tab="skills" aria-label="スキル">
@@ -3201,10 +3217,10 @@ export default class GameScene extends Phaser.Scene {
                 <span class="book-tab-label">実績</span>
               </span>
             </button>
-            <button class="book-tab-button ui-frame-box" data-tab="status" aria-label="ステータス">
+            <button class="book-tab-button ui-frame-box" data-tab="pedia" aria-label="図鑑">
               <span class="book-tab-button-inner">
-                <img class="book-tab-icon" src="/images/ui/icon/icon_status.png" alt="" aria-hidden="true" />
-                <span class="book-tab-label">ステータス</span>
+                <img class="book-tab-icon" src="/images/ui/icon/icon_encyclopedia.png" alt="" aria-hidden="true" />
+                <span class="book-tab-label">図鑑</span>
               </span>
             </button>
           </div>
@@ -3244,9 +3260,21 @@ export default class GameScene extends Phaser.Scene {
                         </div>
                       </div>
                     </div>
-                    <div class="book-status-hero-counters">
-                      <div class="book-status-counter"><span class="book-status-counter-label">バッグ</span><span id="book-status-bag-slots" class="book-status-counter-value"></span></div>
-                      <div class="book-status-counter"><span class="book-status-counter-label">図鑑</span><span id="book-status-pedia-count" class="book-status-counter-value"></span></div>
+                    <div class="book-status-hero-equipment">
+                      <div class="book-status-equipment-item">
+                        <div class="book-status-equipment-info">
+                          <div id="book-status-equipped-rod-icon" class="book-status-equipment-icon" aria-hidden="true"></div>
+                          <p id="book-status-equipped-rod-name" class="book-status-equipment-name">-</p>
+                        </div>
+                        <button type="button" id="book-status-change-rod" class="book-status-change-btn ui-frame-box">変更する</button>
+                      </div>
+                      <div class="book-status-equipment-item">
+                        <div class="book-status-equipment-info">
+                          <div id="book-status-equipped-lure-icon" class="book-status-equipment-icon" aria-hidden="true"></div>
+                          <p id="book-status-equipped-lure-name" class="book-status-equipment-name">-</p>
+                        </div>
+                        <button type="button" id="book-status-change-lure" class="book-status-change-btn ui-frame-box">変更する</button>
+                      </div>
                     </div>
                   </div>
                   <section class="book-status-section">
@@ -3254,14 +3282,26 @@ export default class GameScene extends Phaser.Scene {
                     <p class="book-status-hint">いまの装備とレベルを反映した実戦性能を、基準100の整数で示しています（100が標準）。</p>
                     <div class="book-status-two-col">
                       <ul class="book-status-stat-list">
-                        <li class="ui-frame-box" data-stat-key="power" role="button" tabindex="0" aria-selected="true"><span class="book-stat-name">パワー</span><span id="book-status-power" class="book-stat-val"></span></li>
-                        <li class="ui-frame-box" data-stat-key="speed" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">スピード</span><span id="book-status-speed" class="book-stat-val"></span></li>
-                        <li class="ui-frame-box" data-stat-key="technique" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">テクニック</span><span id="book-status-technique" class="book-stat-val"></span></li>
-                        <li class="ui-frame-box" data-stat-key="control" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">コントロール</span><span id="book-status-control" class="book-stat-val"></span></li>
+                        <li class="ui-frame-box" data-stat-key="power" role="button" tabindex="0" aria-selected="true"><span class="book-stat-name">パワー</span><span class="book-stat-val-wrap"><span class="book-status-stat-delta" aria-live="polite"></span><span id="book-status-power" class="book-stat-val"></span></span></li>
+                        <li class="ui-frame-box" data-stat-key="speed" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">スピード</span><span class="book-stat-val-wrap"><span class="book-status-stat-delta" aria-live="polite"></span><span id="book-status-speed" class="book-stat-val"></span></span></li>
+                        <li class="ui-frame-box" data-stat-key="technique" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">テクニック</span><span class="book-stat-val-wrap"><span class="book-status-stat-delta" aria-live="polite"></span><span id="book-status-technique" class="book-stat-val"></span></span></li>
+                        <li class="ui-frame-box" data-stat-key="control" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">コントロール</span><span class="book-stat-val-wrap"><span class="book-status-stat-delta" aria-live="polite"></span><span id="book-status-control" class="book-stat-val"></span></span></li>
                       </ul>
                       <div class="book-status-detail-note">
                         <p id="book-status-detail-title" class="book-status-detail-note-title">Info</p>
-                        <p id="book-status-detail-text" class="book-status-detail-note-text"></p>
+                        <div id="book-status-detail-text" class="book-status-detail-note-text"></div>
+                        <div class="book-status-detail-fade book-status-detail-fade--top" id="book-status-detail-fade-top" aria-hidden="true"></div>
+                        <div class="book-status-detail-fade book-status-detail-fade--bottom" id="book-status-detail-fade-bottom" aria-hidden="true"></div>
+                      </div>
+                    </div>
+                    <div class="book-status-detail-note book-status-rarity-prob">
+                      <p class="book-status-detail-note-title">出現率</p>
+                      <div class="book-status-rarity-prob-grid">
+                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label">COMMON</span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-common-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span><span id="book-status-rarity-common" class="book-status-rarity-prob-value">0.0%</span></span></div>
+                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label">UNCOMMON</span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-uncommon-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span><span id="book-status-rarity-uncommon" class="book-status-rarity-prob-value">0.0%</span></span></div>
+                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label">RARE</span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-rare-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span><span id="book-status-rarity-rare" class="book-status-rarity-prob-value">0.0%</span></span></div>
+                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label">EPIC</span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-epic-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span><span id="book-status-rarity-epic" class="book-status-rarity-prob-value">0.0%</span></span></div>
+                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label">LEGEND</span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-legendary-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span><span id="book-status-rarity-legendary" class="book-status-rarity-prob-value">0.0%</span></span></div>
                       </div>
                     </div>
                   </section>
@@ -3455,6 +3495,43 @@ export default class GameScene extends Phaser.Scene {
       this.syncSkillUnlockConfirmSelection();
     });
 
+    const statusChangeRodBtn = this.unifiedBookUIElement.querySelector('#book-status-change-rod') as HTMLButtonElement | null;
+    statusChangeRodBtn?.addEventListener('click', () => {
+      this.statusLastInteractedButtonType = 'rod';
+      this.openStatusEquipmentSelector('rod');
+    });
+    statusChangeRodBtn?.addEventListener('mouseenter', () => {
+      if (this.uiMenuNavInputChannel === 'keyboard') return;
+      this.statusNavButtonType = 'rod';
+      this.statusLastInteractedButtonType = 'rod';
+    });
+    statusChangeRodBtn?.addEventListener('pointerdown', () => {
+      this.statusNavButtonType = 'rod';
+      this.statusLastInteractedButtonType = 'rod';
+    });
+    statusChangeRodBtn?.addEventListener('focus', () => {
+      this.statusNavButtonType = 'rod';
+      this.statusLastInteractedButtonType = 'rod';
+    });
+    const statusChangeLureBtn = this.unifiedBookUIElement.querySelector('#book-status-change-lure') as HTMLButtonElement | null;
+    statusChangeLureBtn?.addEventListener('click', () => {
+      this.statusLastInteractedButtonType = 'lure';
+      this.openStatusEquipmentSelector('lure');
+    });
+    statusChangeLureBtn?.addEventListener('mouseenter', () => {
+      if (this.uiMenuNavInputChannel === 'keyboard') return;
+      this.statusNavButtonType = 'lure';
+      this.statusLastInteractedButtonType = 'lure';
+    });
+    statusChangeLureBtn?.addEventListener('pointerdown', () => {
+      this.statusNavButtonType = 'lure';
+      this.statusLastInteractedButtonType = 'lure';
+    });
+    statusChangeLureBtn?.addEventListener('focus', () => {
+      this.statusNavButtonType = 'lure';
+      this.statusLastInteractedButtonType = 'lure';
+    });
+
     // グローバルに参照を保存
     (window as any).gameScene = this;
   }
@@ -3475,6 +3552,15 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookTab = tab;
     this.unifiedBookSelectedId = null;
     this.unifiedBookSelectedIndex = null;
+    if (tab === 'status') {
+      this.statusNavArea = 'stats';
+      this.statusNavButtonType = 'rod';
+      this.statusLastInteractedButtonType = 'rod';
+      this.statusNavEquipOptionIndex = 0;
+      this.statusEquipmentSelectorType = null;
+      this.statusPreviewEquipmentType = null;
+      this.statusPreviewEquipmentId = null;
+    }
     this.setSkillNavArea('tree');
     this.achievementNavArea = 'left';
     this.achievementDetailSelectedIndex = 0;
@@ -3556,6 +3642,15 @@ export default class GameScene extends Phaser.Scene {
 
     const statusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
     if (statusPanel) {
+      this.statusEquipmentSelectorType = null;
+      this.statusNavArea = 'stats';
+      this.statusNavButtonType = 'rod';
+      this.statusLastInteractedButtonType = 'rod';
+      this.statusNavEquipOptionIndex = 0;
+      this.statusPreviewEquipmentType = null;
+      this.statusPreviewEquipmentId = null;
+      statusPanel.querySelectorAll('.book-status-change-btn').forEach((btn) => btn.classList.remove('is-nav-selected'));
+      statusPanel.querySelectorAll('.book-status-equip-option').forEach((btn) => btn.classList.remove('is-nav-selected'));
       statusPanel.querySelectorAll('.book-status-stat-list li').forEach((li) => {
         li.classList.remove('is-selected');
         li.setAttribute('aria-selected', 'false');
@@ -3590,8 +3685,10 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.unifiedBookTab === 'status') {
       const statusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
-      const first = statusPanel?.querySelector('.book-status-stat-list li') as HTMLElement | null;
-      first?.click();
+      if (statusPanel) {
+        this.statusNavArea = 'equipmentButtons';
+        this.syncStatusEquipmentButtonSelection(statusPanel);
+      }
       return;
     }
 
@@ -3635,9 +3732,6 @@ export default class GameScene extends Phaser.Scene {
   private fillBookStatusPanel(panel: HTMLElement) {
     const pd = this.playerData;
     const level = pd.level;
-    const barBonus = getLevelBarRangeBonus(level);
-    const gaugeBonus = getLevelGaugeSpeedBonus(level);
-    const skillBonuses = getSkillStatBonuses(pd);
     const displayName = this.getSelectedPlayerName() || 'Player';
 
     const nameEl = panel.querySelector('#book-status-player-name');
@@ -3661,45 +3755,231 @@ export default class GameScene extends Phaser.Scene {
     const fillEl = panel.querySelector('#book-status-exp-fill') as HTMLElement | null;
     if (fillEl) fillEl.style.width = `${getExpProgress(pd) * 100}%`;
 
-    const bagEl = panel.querySelector('#book-status-bag-slots');
-    if (bagEl) {
-      const used = getInventoryCount(pd);
-      bagEl.textContent = `${used} / ${pd.maxInventorySlots}`;
-    }
-
-    const pediaEl = panel.querySelector('#book-status-pedia-count');
-    if (pediaEl) {
-      const caughtNonJunk = Array.from(pd.caughtFishIds).filter(id => !id.startsWith('junk_')).length;
-      const total = getRealFishCount();
-      pediaEl.textContent = `${caughtNonJunk} / ${total}`;
-    }
-
     const rod = getRodById(pd.equippedRodId);
-    // 表示専用: 内部の加算値・0〜1比率を「基準100」の整数に（例 1.25→125、判定幅0.25→25）
-    const fmtBookStatIndex = (v: number) => String(Math.round(Math.max(0, v) * 100));
+    const bait = pd.equippedBaitId ? getBaitById(pd.equippedBaitId) : null;
+    const lure = pd.equippedLureId ? getLureById(pd.equippedLureId) : null;
 
-    // 実効能力（装備+レベル）
+    const rodNameEl = panel.querySelector('#book-status-equipped-rod-name');
+    if (rodNameEl) rodNameEl.textContent = rod?.name ?? '未装備';
+    const activeBaitOrLure = bait ?? lure;
+    const lureNameEl = panel.querySelector('#book-status-equipped-lure-name');
+    if (lureNameEl) lureNameEl.textContent = activeBaitOrLure?.name ?? '装備なし';
+    this.renderStatusEquipmentIcon(
+      panel.querySelector('#book-status-equipped-rod-icon') as HTMLElement | null,
+      rod?.id ?? null,
+      rod?.icon ?? '🎣',
+    );
+    this.renderStatusEquipmentIcon(
+      panel.querySelector('#book-status-equipped-lure-icon') as HTMLElement | null,
+      activeBaitOrLure?.id ?? null,
+      activeBaitOrLure?.icon ?? null,
+    );
+    const statusValues = this.calculateStatusIndexValues(pd.equippedRodId);
+
+    const powerEl = panel.querySelector('#book-status-power');
+    if (powerEl) powerEl.textContent = String(statusValues.power);
+    const speedEl = panel.querySelector('#book-status-speed');
+    if (speedEl) speedEl.textContent = String(statusValues.speed);
+    const techniqueEl = panel.querySelector('#book-status-technique');
+    if (techniqueEl) techniqueEl.textContent = String(statusValues.technique);
+    const controlEl = panel.querySelector('#book-status-control');
+    if (controlEl) controlEl.textContent = String(statusValues.control);
+
+    // 現在の装備・補正を反映したレアリティ出現率を表示
+    const rarityRates = this.calculateStatusRarityRateValues();
+    this.applyStatusRarityRateValues(panel, rarityRates);
+
+    this.setupStatusStatSelector(panel);
+    this.syncStatusDetailNoteHeight(panel);
+
+    // 詳細項目（キャスト/ファイト/装備）は非表示運用のため、ここでは更新しない
+  }
+
+  private syncStatusDetailNoteHeight(panel: HTMLElement) {
+    const statList = panel.querySelector('.book-status-stat-list') as HTMLElement | null;
+    const detailNote = panel.querySelector('.book-status-two-col .book-status-detail-note') as HTMLElement | null;
+    if (!statList || !detailNote) return;
+
+    const listHeight = Math.ceil(statList.getBoundingClientRect().height);
+    if (listHeight > 0) {
+      detailNote.style.height = `${listHeight}px`;
+      detailNote.style.maxHeight = `${listHeight}px`;
+    }
+    this.updateStatusDetailScrollFade(panel);
+  }
+
+  private calculateStatusIndexValues(rodId: string): Record<'power' | 'speed' | 'technique' | 'control', number> {
+    const pd = this.playerData;
+    const level = pd.level;
+    const rod = getRodById(rodId);
+    const skillBonuses = getSkillStatBonuses(pd);
+    const barBonus = getLevelBarRangeBonus(level);
+    const gaugeBonus = getLevelGaugeSpeedBonus(level);
     const fightCfg = config.fighting;
+
+    // 表示専用: 内部の加算値・0〜1比率を「基準100」の整数に（例 1.25→125）
+    const fmtBookStatIndex = (v: number) => Math.round(Math.max(0, v) * 100);
 
     const baseGaugeSpeed = fightCfg['5-10_ゲージ増加速度'];
     const rodCatchAdd = baseGaugeSpeed * (rod?.speedStatAdd ?? 0);
-
     const baseBarHeight = fightCfg['5-9_バー判定範囲'];
-    const effectiveBarHeight = Math.min(1.0, baseBarHeight + barBonus + skillBonuses.barRangeSkillAdd + (rod?.techniqueStatAdd ?? 0));
-    const effectiveControl = Math.max(0, getLevelFightBarVelocityDragPerSecond(level) + skillBonuses.fightBarDragSkillAdd + (rod?.controlStatAdd ?? 0));
+    const effectiveBarHeight = Math.min(
+      1.0,
+      baseBarHeight + barBonus + skillBonuses.barRangeSkillAdd + (rod?.techniqueStatAdd ?? 0),
+    );
+    const effectiveControl = Math.max(
+      0,
+      getLevelFightBarVelocityDragPerSecond(level) + skillBonuses.fightBarDragSkillAdd + (rod?.controlStatAdd ?? 0),
+    );
 
+    return {
+      power: fmtBookStatIndex(1 + (rod?.powerStatAdd ?? 0) + skillBonuses.castDistSkillAdd),
+      speed: fmtBookStatIndex(
+        1 + (rodCatchAdd + gaugeBonus + skillBonuses.gaugeSpeedSkillAdd) / Math.max(0.0001, baseGaugeSpeed),
+      ),
+      technique: fmtBookStatIndex(effectiveBarHeight),
+      control: Math.round(100 + effectiveControl * 12),
+    };
+  }
+
+  private setStatusPreviewEquipment(type: 'rod' | 'bait' | 'lure' | null, equipmentId: string | null, panel: HTMLElement) {
+    this.statusPreviewEquipmentType = type;
+    this.statusPreviewEquipmentId = equipmentId;
+    this.updateStatusPreviewStatDelta(panel);
+  }
+
+  private applyStatusPanelValues(
+    panel: HTMLElement,
+    values: Record<'power' | 'speed' | 'technique' | 'control', number>,
+  ) {
     const powerEl = panel.querySelector('#book-status-power');
-    if (powerEl) powerEl.textContent = fmtBookStatIndex(1 + (rod?.powerStatAdd ?? 0) + skillBonuses.castDistSkillAdd);
+    if (powerEl) powerEl.textContent = String(values.power);
     const speedEl = panel.querySelector('#book-status-speed');
-    if (speedEl) speedEl.textContent = fmtBookStatIndex(1 + (rodCatchAdd + gaugeBonus + skillBonuses.gaugeSpeedSkillAdd) / Math.max(0.0001, baseGaugeSpeed));
+    if (speedEl) speedEl.textContent = String(values.speed);
     const techniqueEl = panel.querySelector('#book-status-technique');
-    if (techniqueEl) techniqueEl.textContent = fmtBookStatIndex(effectiveBarHeight);
+    if (techniqueEl) techniqueEl.textContent = String(values.technique);
     const controlEl = panel.querySelector('#book-status-control');
-    if (controlEl) controlEl.textContent = String(Math.round(100 + effectiveControl * 12));
+    if (controlEl) controlEl.textContent = String(values.control);
+  }
 
-    this.setupStatusStatSelector(panel);
+  private calculateStatusRarityRateValues(
+    override?: { rodId?: string | null; baitId?: string | null; lureId?: string | null },
+  ): Record<'common' | 'uncommon' | 'rare' | 'epic' | 'legendary', number> {
+    const resolvedRodId = override?.rodId === undefined ? this.playerData.equippedRodId : override.rodId;
+    const resolvedBaitId = override?.baitId === undefined ? this.playerData.equippedBaitId : override.baitId;
+    const resolvedLureId = override?.lureId === undefined ? this.playerData.equippedLureId : override.lureId;
 
-    // 詳細項目（キャスト/ファイト/装備）は非表示運用のため、ここでは更新しない
+    const rod = resolvedRodId ? getRodById(resolvedRodId) : null;
+    const bait = resolvedBaitId ? getBaitById(resolvedBaitId) : null;
+    const lure = resolvedLureId ? getLureById(resolvedLureId) : null;
+    const rodRarityHitAdd = rod?.rarityHitRateAdd || { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 };
+    const addBonus = (a: number, b: number, c: number = 1.0) => {
+      const combined = 1.0 + (a - 1.0) + (b - 1.0) + (c - 1.0);
+      return Math.max(0.05, combined);
+    };
+    const adjustedRarityWeights = {
+      common: rarityWeights.common * addBonus(bait?.commonBonus || 1.0, lure?.commonBonus || 1.0, 1.0 + rodRarityHitAdd.common),
+      uncommon: rarityWeights.uncommon * addBonus(bait?.uncommonBonus || 1.0, lure?.uncommonBonus || 1.0, 1.0 + rodRarityHitAdd.uncommon),
+      rare: rarityWeights.rare * addBonus(bait?.rareBonus || 1.0, lure?.rareBonus || 1.0, 1.0 + rodRarityHitAdd.rare),
+      epic: rarityWeights.epic * addBonus(bait?.epicBonus || 1.0, lure?.epicBonus || 1.0, 1.0 + rodRarityHitAdd.epic),
+      legendary: rarityWeights.legendary * addBonus(
+        bait?.legendaryBonus || 1.0,
+        lure?.legendaryBonus || 1.0,
+        1.0 + rodRarityHitAdd.legendary,
+      ),
+    };
+    const totalRarityWeight =
+      adjustedRarityWeights.common +
+      adjustedRarityWeights.uncommon +
+      adjustedRarityWeights.rare +
+      adjustedRarityWeights.epic +
+      adjustedRarityWeights.legendary;
+    const safeTotal = Math.max(0.0001, totalRarityWeight);
+    return {
+      common: (adjustedRarityWeights.common / safeTotal) * 100,
+      uncommon: (adjustedRarityWeights.uncommon / safeTotal) * 100,
+      rare: (adjustedRarityWeights.rare / safeTotal) * 100,
+      epic: (adjustedRarityWeights.epic / safeTotal) * 100,
+      legendary: (adjustedRarityWeights.legendary / safeTotal) * 100,
+    };
+  }
+
+  private applyStatusRarityRateValues(
+    panel: HTMLElement,
+    values: Record<'common' | 'uncommon' | 'rare' | 'epic' | 'legendary', number>,
+    baselineValues?: Record<'common' | 'uncommon' | 'rare' | 'epic' | 'legendary', number>,
+  ) {
+    const rarityIdMap: Record<'common' | 'uncommon' | 'rare' | 'epic' | 'legendary', string> = {
+      common: '#book-status-rarity-common',
+      uncommon: '#book-status-rarity-uncommon',
+      rare: '#book-status-rarity-rare',
+      epic: '#book-status-rarity-epic',
+      legendary: '#book-status-rarity-legendary',
+    };
+    (Object.keys(rarityIdMap) as Array<'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'>).forEach((key) => {
+      const rateEl = panel.querySelector(rarityIdMap[key]) as HTMLElement | null;
+      if (!rateEl) return;
+      const formattedValue = values[key].toFixed(1);
+      rateEl.innerHTML = `${formattedValue}<span class="book-status-rarity-prob-percent">%</span>`;
+      const deltaEl = panel.querySelector(`${rarityIdMap[key]}-delta`) as HTMLElement | null;
+      if (!deltaEl) return;
+      deltaEl.textContent = '';
+      deltaEl.classList.remove('is-plus', 'is-minus', 'has-delta');
+      if (!baselineValues) return;
+      const delta = Math.round(values[key] * 10) - Math.round(baselineValues[key] * 10);
+      if (delta === 0) return;
+      deltaEl.textContent = delta > 0 ? `+${(delta / 10).toFixed(1)}%` : `${(delta / 10).toFixed(1)}%`;
+      deltaEl.classList.add('has-delta');
+      deltaEl.classList.toggle('is-plus', delta > 0);
+      deltaEl.classList.toggle('is-minus', delta < 0);
+    });
+  }
+
+  private clearStatusPreviewStatDelta(panel: HTMLElement) {
+    const currentValues = this.calculateStatusIndexValues(this.playerData.equippedRodId);
+    this.applyStatusPanelValues(panel, currentValues);
+    const currentRarityRates = this.calculateStatusRarityRateValues();
+    this.applyStatusRarityRateValues(panel, currentRarityRates);
+    const deltaEls = panel.querySelectorAll('.book-status-stat-delta');
+    deltaEls.forEach((el) => {
+      (el as HTMLElement).textContent = '';
+      el.classList.remove('is-plus', 'is-minus');
+    });
+  }
+
+  private updateStatusPreviewStatDelta(panel: HTMLElement) {
+    this.clearStatusPreviewStatDelta(panel);
+    if (!this.statusEquipmentSelectorType || !this.statusPreviewEquipmentType) return;
+
+    const currentValues = this.calculateStatusIndexValues(this.playerData.equippedRodId);
+    const currentRarityRates = this.calculateStatusRarityRateValues();
+    const previewRodId =
+      this.statusPreviewEquipmentType === 'rod' && this.statusPreviewEquipmentId
+        ? this.statusPreviewEquipmentId
+        : this.playerData.equippedRodId;
+    const previewValues = this.calculateStatusIndexValues(previewRodId);
+    const previewRarityOverrides =
+      this.statusPreviewEquipmentType === 'rod'
+        ? { rodId: this.statusPreviewEquipmentId ?? this.playerData.equippedRodId }
+        : this.statusPreviewEquipmentType === 'bait'
+          ? { baitId: this.statusPreviewEquipmentId, lureId: null }
+          : { lureId: this.statusPreviewEquipmentId, baitId: null };
+    const previewRarityRates = this.calculateStatusRarityRateValues(previewRarityOverrides);
+    this.applyStatusPanelValues(panel, previewValues);
+    this.applyStatusRarityRateValues(panel, previewRarityRates, currentRarityRates);
+
+    const statKeys: Array<'power' | 'speed' | 'technique' | 'control'> = ['power', 'speed', 'technique', 'control'];
+    statKeys.forEach((statKey) => {
+      const delta = previewValues[statKey] - currentValues[statKey];
+      if (delta === 0) return;
+      const li = panel.querySelector(`.book-status-stat-list li[data-stat-key="${statKey}"]`) as HTMLElement | null;
+      if (!li) return;
+      const deltaEl = li.querySelector('.book-status-stat-delta') as HTMLElement | null;
+      if (!deltaEl) return;
+      deltaEl.textContent = delta > 0 ? `+${delta}` : `${delta}`;
+      deltaEl.classList.toggle('is-plus', delta > 0);
+      deltaEl.classList.toggle('is-minus', delta < 0);
+    });
   }
 
   private setupStatusStatSelector(panel: HTMLElement) {
@@ -3729,10 +4009,13 @@ export default class GameScene extends Phaser.Scene {
         item.classList.toggle('is-selected', isSelected);
         item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
       });
+      this.syncStatusEquipmentButtonSelection(panel);
       const detailTextEl = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
       if (detailTextEl) {
         detailTextEl.textContent = statDetails[nextKey].text;
       }
+      const detailTitle = panel.querySelector('#book-status-detail-title') as HTMLElement | null;
+      if (detailTitle) detailTitle.textContent = 'Info';
     };
 
     if (list.dataset.statListBound !== '1') {
@@ -3744,6 +4027,8 @@ export default class GameScene extends Phaser.Scene {
         if (!li || !list.contains(li)) return;
         const key = li.dataset.statKey as 'power' | 'speed' | 'technique' | 'control' | undefined;
         if (!key) return;
+        this.statusEquipmentSelectorType = null;
+        this.statusNavArea = 'stats';
         applySelection(key);
       });
       list.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -3752,9 +4037,12 @@ export default class GameScene extends Phaser.Scene {
         if (!t) return;
         const li = t.closest('li[data-stat-key]') as HTMLElement | null;
         if (!li || !list.contains(li)) return;
+        if (this.statusNavArea !== 'stats' || this.statusEquipmentSelectorType || this.unifiedBookMainTabsNavActive) return;
         e.preventDefault();
         const key = li.dataset.statKey as 'power' | 'speed' | 'technique' | 'control' | undefined;
         if (!key) return;
+        this.statusEquipmentSelectorType = null;
+        this.statusNavArea = 'stats';
         applySelection(key);
       });
     }
@@ -3763,21 +4051,360 @@ export default class GameScene extends Phaser.Scene {
     if (!items.length) return;
 
     const detailTextEl = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
+    if (detailTextEl && detailTextEl.dataset.scrollFadeBound !== '1') {
+      detailTextEl.dataset.scrollFadeBound = '1';
+      detailTextEl.addEventListener('scroll', () => this.updateStatusDetailScrollFade(panel));
+    }
 
     if (this.unifiedBookMainTabsNavActive) {
+      this.statusNavArea = 'stats';
       items.forEach((item) => {
         item.classList.remove('is-selected');
         item.setAttribute('aria-selected', 'false');
       });
+      this.syncStatusEquipmentButtonSelection(panel);
       const detailTitle = panel.querySelector('#book-status-detail-title');
       if (detailTitle) detailTitle.textContent = 'Info';
       if (detailTextEl) detailTextEl.textContent = '';
+      this.updateStatusDetailScrollFade(panel);
       return;
     }
-    applySelection(this.selectedStatusStatKey);
+    if (this.statusEquipmentSelectorType) {
+      this.renderStatusEquipmentSelector(panel, this.statusEquipmentSelectorType);
+      this.syncStatusEquipmentButtonSelection(panel);
+      this.updateStatusPreviewStatDelta(panel);
+      this.updateStatusDetailScrollFade(panel);
+      return;
+    }
+    this.clearStatusPreviewStatDelta(panel);
+    if (this.statusNavArea === 'stats') {
+      applySelection(this.selectedStatusStatKey);
+      this.syncStatusEquipmentButtonSelection(panel);
+    } else if (this.statusNavArea === 'equipmentButtons') {
+      this.syncStatusStatSelection(panel);
+      this.syncStatusEquipmentButtonSelection(panel);
+    } else {
+      this.statusNavArea = 'stats';
+      this.syncStatusEquipmentButtonSelection(panel);
+      applySelection(this.selectedStatusStatKey);
+    }
+    this.updateStatusDetailScrollFade(panel);
+  }
+
+  private updateStatusDetailScrollFade(panel: HTMLElement) {
+    const detailText = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
+    const fadeTop = panel.querySelector('#book-status-detail-fade-top') as HTMLElement | null;
+    const fadeBottom = panel.querySelector('#book-status-detail-fade-bottom') as HTMLElement | null;
+    this.updateScrollFadeIndicators(detailText, fadeTop, fadeBottom);
+  }
+
+  private openStatusEquipmentSelector(type: 'rod' | 'lure') {
+    this.statusEquipmentSelectorType = type;
+    this.statusNavButtonType = type;
+    this.statusLastInteractedButtonType = type;
+    this.statusNavArea = 'equipmentOptions';
+    this.statusNavEquipOptionIndex = 0;
+    const panel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
+    if (!panel) return;
+    this.fillBookStatusPanel(panel);
+  }
+
+  private renderStatusEquipmentSelector(panel: HTMLElement, type: 'rod' | 'lure') {
+    const detailTitle = panel.querySelector('#book-status-detail-title') as HTMLElement | null;
+    const detailBody = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
+    if (!detailBody) return;
+
+    detailBody.textContent = '';
+    if (detailTitle) {
+      detailTitle.textContent = 'List';
+    }
+
+    const listEl = document.createElement('div');
+    listEl.className = 'book-status-equip-option-list';
+    const syncMouseDrivenOptionNav = () => {
+      if (this.statusNavArea !== 'equipmentOptions') return;
+      this.syncStatusEquipmentOptionSelection(panel);
+    };
+    listEl.addEventListener('wheel', syncMouseDrivenOptionNav, { passive: true });
+    listEl.addEventListener('pointerdown', syncMouseDrivenOptionNav);
+    listEl.addEventListener('pointermove', syncMouseDrivenOptionNav);
+    listEl.addEventListener('mouseleave', () => {
+      if (this.statusNavArea !== 'equipmentOptions') return;
+      this.setStatusPreviewEquipment(null, null, panel);
+      const options = Array.from(listEl.querySelectorAll('.book-status-equip-option')) as HTMLButtonElement[];
+      options.forEach((opt) => opt.classList.remove('is-nav-selected'));
+    });
+    const setMouseHoverOptionSelection = (activeOption: HTMLButtonElement | null) => {
+      const options = Array.from(listEl.querySelectorAll('.book-status-equip-option')) as HTMLButtonElement[];
+      options.forEach((opt) => {
+        opt.classList.toggle('is-nav-selected', !!activeOption && opt === activeOption);
+      });
+    };
+    const bindPreviewEvents = (option: HTMLButtonElement, equipType: 'rod' | 'bait' | 'lure', equipId: string | null) => {
+      option.addEventListener('mouseenter', () => {
+        // スクロールに伴う擬似 hover で入力チャネルを切り替えない
+        if (this.statusNavArea === 'equipmentOptions' && this.uiMenuNavInputChannel === 'keyboard') return;
+        setMouseHoverOptionSelection(option);
+        this.setStatusPreviewEquipment(equipType, equipId, panel);
+      });
+      option.addEventListener('focus', () => {
+        // キーボードナビ時は is-nav-selected 側の preview を正とする
+        if (this.statusNavArea === 'equipmentOptions' && this.uiMenuNavInputChannel === 'keyboard') return;
+        setMouseHoverOptionSelection(option);
+        this.setStatusPreviewEquipment(equipType, equipId, panel);
+      });
+      option.addEventListener('mouseleave', () => {
+        if (this.statusNavArea === 'equipmentOptions') {
+          this.syncStatusEquipmentOptionSelection(panel);
+          return;
+        }
+        this.setStatusPreviewEquipment(null, null, panel);
+      });
+      option.addEventListener('blur', () => {
+        if (this.statusNavArea !== 'equipmentOptions') {
+          this.setStatusPreviewEquipment(null, null, panel);
+        }
+      });
+    };
+
+    if (type === 'rod') {
+      const ownedRods = rodConfigs.filter((rod) => this.playerData.ownedRods.includes(rod.id));
+      ownedRods.forEach((rod) => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'book-status-equip-option ui-frame-box';
+        if (this.playerData.equippedRodId === rod.id) option.classList.add('is-selected');
+        option.dataset.equipType = 'rod';
+        option.dataset.equipId = rod.id;
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'book-status-equip-option-name';
+        nameEl.appendChild(this.createStatusEquipmentOptionIcon(rod.id));
+        const textEl = document.createElement('span');
+        textEl.textContent = rod.name;
+        nameEl.appendChild(textEl);
+        option.appendChild(nameEl);
+
+        const stateEl = document.createElement('span');
+        stateEl.className = 'book-status-equip-option-state';
+        stateEl.textContent = this.playerData.equippedRodId === rod.id ? '装備中' : '';
+        option.appendChild(stateEl);
+
+        option.addEventListener('click', () => this.equipFromStatusPanel('rod', rod.id));
+        bindPreviewEvents(option, 'rod', rod.id);
+        listEl.appendChild(option);
+      });
+    } else {
+      const unequipOption = document.createElement('button');
+      unequipOption.type = 'button';
+      unequipOption.className = 'book-status-equip-option ui-frame-box';
+      if (!this.playerData.equippedBaitId && !this.playerData.equippedLureId) unequipOption.classList.add('is-selected');
+      unequipOption.dataset.equipType = 'lure';
+      unequipOption.dataset.equipId = '';
+
+      const unequipName = document.createElement('span');
+      unequipName.className = 'book-status-equip-option-name';
+      unequipName.textContent = 'なし';
+      unequipOption.appendChild(unequipName);
+
+      const unequipState = document.createElement('span');
+      unequipState.className = 'book-status-equip-option-state';
+      unequipState.textContent = !this.playerData.equippedBaitId && !this.playerData.equippedLureId ? '装備中' : '';
+      unequipOption.appendChild(unequipState);
+
+      unequipOption.addEventListener('click', () => this.equipFromStatusPanel('lure', null));
+      bindPreviewEvents(unequipOption, 'lure', null);
+      listEl.appendChild(unequipOption);
+
+      const ownedBaits = this.playerData.baits
+        .filter((baitItem) => baitItem.count > 0)
+        .map((baitItem) => {
+          const bait = getBaitById(baitItem.baitId);
+          if (!bait) return null;
+          return { bait, count: baitItem.count };
+        })
+        .filter((entry): entry is { bait: NonNullable<ReturnType<typeof getBaitById>>; count: number } => !!entry)
+        .sort(
+          (a, b) =>
+            baitConfigs.findIndex((cfg) => cfg.id === a.bait.id) -
+            baitConfigs.findIndex((cfg) => cfg.id === b.bait.id),
+        );
+      ownedBaits.forEach(({ bait, count }) => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'book-status-equip-option ui-frame-box';
+        if (this.playerData.equippedBaitId === bait.id) option.classList.add('is-selected');
+        option.dataset.equipType = 'bait';
+        option.dataset.equipId = bait.id;
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'book-status-equip-option-name';
+        nameEl.appendChild(this.createStatusEquipmentOptionIcon(bait.id));
+        const textEl = document.createElement('span');
+        textEl.textContent = bait.name;
+        nameEl.appendChild(textEl);
+        const countEl = document.createElement('span');
+        countEl.className = 'book-status-equip-option-count';
+        countEl.textContent = `×${count}`;
+        nameEl.appendChild(countEl);
+        option.appendChild(nameEl);
+
+        const stateEl = document.createElement('span');
+        stateEl.className = 'book-status-equip-option-state';
+        stateEl.textContent = this.playerData.equippedBaitId === bait.id ? '装備中' : '';
+        option.appendChild(stateEl);
+
+        option.addEventListener('click', () => this.equipFromStatusPanel('bait', bait.id));
+        bindPreviewEvents(option, 'bait', bait.id);
+        listEl.appendChild(option);
+      });
+
+      const ownedLures = lureConfigs.filter((lure) => this.playerData.ownedLures.includes(lure.id));
+      ownedLures.forEach((lure) => {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'book-status-equip-option ui-frame-box';
+        if (this.playerData.equippedLureId === lure.id) option.classList.add('is-selected');
+        option.dataset.equipType = 'lure';
+        option.dataset.equipId = lure.id;
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'book-status-equip-option-name';
+        nameEl.appendChild(this.createStatusEquipmentOptionIcon(lure.id));
+        const textEl = document.createElement('span');
+        textEl.textContent = lure.name;
+        nameEl.appendChild(textEl);
+        option.appendChild(nameEl);
+
+        const stateEl = document.createElement('span');
+        stateEl.className = 'book-status-equip-option-state';
+        stateEl.textContent = this.playerData.equippedLureId === lure.id ? '装備中' : '';
+        option.appendChild(stateEl);
+
+        option.addEventListener('click', () => this.equipFromStatusPanel('lure', lure.id));
+        bindPreviewEvents(option, 'lure', lure.id);
+        listEl.appendChild(option);
+      });
+    }
+
+    if (!listEl.children.length) {
+      detailBody.textContent = '所持している装備がありません。';
+      this.setStatusPreviewEquipment(null, null, panel);
+      return;
+    }
+
+    detailBody.appendChild(listEl);
+    this.syncStatusEquipmentOptionSelection(panel);
+  }
+
+  private createStatusEquipmentOptionIcon(textureId: string): HTMLElement {
+    const wrap = document.createElement('span');
+    wrap.className = 'book-status-equip-option-icon';
+
+    if (!this.textures.exists(textureId)) {
+      wrap.classList.add('is-placeholder');
+      return wrap;
+    }
+
+    const frame = this.textures.getFrame(textureId);
+    const sourceImage = frame.source.image as HTMLImageElement;
+    if (!sourceImage) {
+      wrap.classList.add('is-placeholder');
+      return wrap;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'book-status-equip-option-icon-canvas';
+    canvas.width = 20;
+    canvas.height = 20;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      wrap.classList.add('is-placeholder');
+      return wrap;
+    }
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 20, 20);
+    ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, 20, 20);
+    wrap.appendChild(canvas);
+    return wrap;
+  }
+
+  private equipFromStatusPanel(type: 'rod' | 'bait' | 'lure', equipmentId: string | null) {
+    if (type === 'rod') {
+      if (!equipmentId || !this.playerData.ownedRods.includes(equipmentId)) return;
+      if (this.playerData.equippedRodId === equipmentId) return;
+      this.playerData.equippedRodId = equipmentId;
+      const rod = getRodById(equipmentId);
+      if (rod) this.showResult(`${rod.name}を装備した！`, 1500);
+    } else if (type === 'bait') {
+      if (!equipmentId || !this.playerData.baits.some((b) => b.baitId === equipmentId && b.count > 0)) return;
+      if (this.playerData.equippedBaitId === equipmentId) return;
+      this.playerData.equippedBaitId = equipmentId;
+      this.playerData.equippedLureId = null;
+      const bait = getBaitById(equipmentId);
+      if (bait) this.showResult(`${bait.name}を装備した！`, 1500);
+    } else {
+      if (equipmentId === null) {
+        if (this.playerData.equippedLureId === null && this.playerData.equippedBaitId === null) return;
+        this.playerData.equippedLureId = null;
+        this.playerData.equippedBaitId = null;
+        this.showResult('エサ/ルアーを外した', 1500);
+      } else {
+        if (!this.playerData.ownedLures.includes(equipmentId)) return;
+        if (this.playerData.equippedLureId === equipmentId) return;
+        this.playerData.equippedLureId = equipmentId;
+        this.playerData.equippedBaitId = null;
+        const lure = getLureById(equipmentId);
+        if (lure) this.showResult(`${lure.name}を装備した！`, 1500);
+      }
+    }
+
+    savePlayerData(this.playerData);
+    this.updateStatusUI();
+    if (this.shopOpen) this.updateShopContent();
+
+    const panel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
+    if (panel) {
+      this.setStatusPreviewEquipment(null, null, panel);
+      this.fillBookStatusPanel(panel);
+    }
+  }
+
+  private renderStatusEquipmentIcon(container: HTMLElement | null, textureId: string | null, fallbackIcon: string | null) {
+    if (!container) return;
+    container.innerHTML = '';
+    container.style.display = '';
+
+    if (textureId && this.textures.exists(textureId)) {
+      const canvas = document.createElement('canvas');
+      canvas.className = 'book-status-equipment-icon-canvas';
+      canvas.width = 32;
+      canvas.height = 32;
+      container.appendChild(canvas);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const frame = this.textures.getFrame(textureId);
+      const sourceImage = frame.source.image as HTMLImageElement;
+      if (!sourceImage) return;
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, 32, 32);
+      ctx.drawImage(sourceImage, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, 32, 32);
+      return;
+    }
+
+    if (!fallbackIcon) {
+      container.style.display = 'none';
+      return;
+    }
+    const emoji = document.createElement('span');
+    emoji.className = 'book-status-equipment-icon-emoji';
+    emoji.textContent = fallbackIcon;
+    container.appendChild(emoji);
   }
 
   private moveStatusStatSelection(panel: HTMLElement, delta: number) {
+    this.statusNavArea = 'stats';
+    this.syncStatusEquipmentButtonSelection(panel);
     const items = Array.from(panel.querySelectorAll('.book-status-stat-list li')) as HTMLElement[];
     if (!items.length) return;
     const currentIndex = Math.max(0, this.statusStatOrder.indexOf(this.selectedStatusStatKey));
@@ -3798,6 +4425,149 @@ export default class GameScene extends Phaser.Scene {
       nextItem.click();
     }
     nextItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  private syncStatusStatSelection(panel: HTMLElement) {
+    const items = Array.from(panel.querySelectorAll('.book-status-stat-list li[data-stat-key]')) as HTMLElement[];
+    if (!items.length) return;
+    const shouldHighlightStat =
+      !this.unifiedBookMainTabsNavActive &&
+      this.statusNavArea === 'stats' &&
+      !this.statusEquipmentSelectorType;
+    items.forEach((item) => {
+      const isSelected = shouldHighlightStat && item.dataset.statKey === this.selectedStatusStatKey;
+      item.classList.toggle('is-selected', isSelected);
+      item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+    });
+  }
+
+  private syncStatusEquipmentButtonSelection(panel: HTMLElement) {
+    const rodBtn = panel.querySelector('#book-status-change-rod') as HTMLElement | null;
+    const lureBtn = panel.querySelector('#book-status-change-lure') as HTMLElement | null;
+    const rodSelected = this.statusNavArea === 'equipmentButtons' && this.statusNavButtonType === 'rod';
+    const lureSelected = this.statusNavArea === 'equipmentButtons' && this.statusNavButtonType === 'lure';
+    rodBtn?.classList.toggle('is-nav-selected', rodSelected);
+    lureBtn?.classList.toggle('is-nav-selected', lureSelected);
+    this.syncStatusStatSelection(panel);
+    if (this.statusNavArea === 'equipmentButtons' && !this.statusEquipmentSelectorType) {
+      const detailTitle = panel.querySelector('#book-status-detail-title') as HTMLElement | null;
+      const detailText = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
+      const infoByButton: Record<'rod' | 'lure', string> = {
+        rod: '釣り竿を選んで変更できる。竿の性能はパワー・スピード・テクニック・コントロールに影響する。',
+        lure: 'エサやルアーを選んで変更できる。狙う魚や出現率のバランスを調整したい時に付け替える。',
+      };
+      if (detailTitle) detailTitle.textContent = 'Info';
+      if (detailText) detailText.textContent = infoByButton[this.statusNavButtonType] ?? '';
+      this.updateStatusDetailScrollFade(panel);
+    }
+  }
+
+  private syncStatusEquipmentOptionSelection(panel: HTMLElement) {
+    this.syncStatusStatSelection(panel);
+    const options = Array.from(panel.querySelectorAll('.book-status-equip-option')) as HTMLElement[];
+    if (!options.length) {
+      this.setStatusPreviewEquipment(null, null, panel);
+      return;
+    }
+    const keyboardOptionNavActive = this.statusNavArea === 'equipmentOptions' && this.uiMenuNavInputChannel === 'keyboard';
+    const maxIndex = options.length - 1;
+    this.statusNavEquipOptionIndex = Math.max(0, Math.min(maxIndex, this.statusNavEquipOptionIndex));
+    options.forEach((opt, index) => {
+      opt.classList.toggle(
+        'is-nav-selected',
+        keyboardOptionNavActive && index === this.statusNavEquipOptionIndex,
+      );
+    });
+    if (keyboardOptionNavActive) {
+      options[this.statusNavEquipOptionIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const selected = options[this.statusNavEquipOptionIndex];
+      const equipType = (selected?.dataset.equipType as 'rod' | 'bait' | 'lure' | undefined) ?? this.statusEquipmentSelectorType ?? 'rod';
+      const equipIdRaw = selected?.dataset.equipId;
+      const equipId = equipIdRaw === '' ? null : equipIdRaw ?? null;
+      this.setStatusPreviewEquipment(equipType, equipId, panel);
+    } else {
+      // マウス操作時は hover 中の項目を「未確定選択」として扱い、プレビューを維持する
+      const hovered = options.find((opt) => opt.matches(':hover')) ?? null;
+      const activeOption = hovered ?? options.find((opt) => opt.classList.contains('is-nav-selected')) ?? null;
+      if (activeOption) {
+        options.forEach((opt) => opt.classList.toggle('is-nav-selected', opt === activeOption));
+        const equipType = (activeOption.dataset.equipType as 'rod' | 'bait' | 'lure' | undefined) ?? this.statusEquipmentSelectorType ?? 'rod';
+        const equipIdRaw = activeOption.dataset.equipId;
+        const equipId = equipIdRaw === '' ? null : equipIdRaw ?? null;
+        this.setStatusPreviewEquipment(equipType, equipId, panel);
+      } else {
+        this.setStatusPreviewEquipment(null, null, panel);
+      }
+    }
+  }
+
+  private moveStatusEquipmentButtonSelection(panel: HTMLElement, delta: -1 | 1) {
+    this.statusNavArea = 'equipmentButtons';
+    const order: Array<'rod' | 'lure'> = ['rod', 'lure'];
+    const current = Math.max(0, order.indexOf(this.statusNavButtonType));
+    const next = Math.max(0, Math.min(order.length - 1, current + delta));
+    this.statusNavButtonType = order[next] ?? 'rod';
+    this.statusLastInteractedButtonType = this.statusNavButtonType;
+    this.syncStatusEquipmentButtonSelection(panel);
+  }
+
+  private moveStatusEquipmentOptionSelection(panel: HTMLElement, delta: -1 | 1) {
+    const options = Array.from(panel.querySelectorAll('.book-status-equip-option')) as HTMLElement[];
+    if (!options.length) return;
+    if (delta < 0 && this.statusNavEquipOptionIndex <= 0) {
+      this.statusEquipmentSelectorType = null;
+      this.statusNavArea = 'equipmentButtons';
+      this.fillBookStatusPanel(panel);
+      return;
+    }
+    this.statusNavArea = 'equipmentOptions';
+    const maxIndex = options.length - 1;
+    this.statusNavEquipOptionIndex = Math.max(0, Math.min(maxIndex, this.statusNavEquipOptionIndex + delta));
+    this.syncStatusEquipmentOptionSelection(panel);
+  }
+
+  private triggerStatusKeyboardAction() {
+    if (!this.unifiedBookUIElement || this.unifiedBookTab !== 'status') return;
+    // Enter 起点の操作は常にキーボード入力として扱い、hover 由来の分岐を除外する
+    this.noteUiMenuKeyboardNavigation();
+    const panel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
+    if (!panel) return;
+    if (this.statusNavArea === 'equipmentButtons') {
+      const rodBtn = panel.querySelector('#book-status-change-rod') as HTMLButtonElement | null;
+      const lureBtn = panel.querySelector('#book-status-change-lure') as HTMLButtonElement | null;
+      const activeEl = document.activeElement as HTMLElement | null;
+      const focusedButton =
+        activeEl && panel.contains(activeEl) && activeEl.classList.contains('book-status-change-btn')
+          ? (activeEl as HTMLButtonElement)
+          : null;
+      const navSelectedButton = panel.querySelector('.book-status-change-btn.is-nav-selected') as HTMLButtonElement | null;
+      const resolvedType: 'rod' | 'lure' =
+        focusedButton?.id === 'book-status-change-rod'
+          ? 'rod'
+          : focusedButton?.id === 'book-status-change-lure'
+            ? 'lure'
+            : this.statusLastInteractedButtonType
+              ? this.statusLastInteractedButtonType
+              : navSelectedButton?.id === 'book-status-change-rod'
+                ? 'rod'
+                : navSelectedButton?.id === 'book-status-change-lure'
+                  ? 'lure'
+                  : this.statusNavButtonType === 'lure'
+                    ? 'lure'
+                    : 'rod';
+      this.statusNavButtonType = resolvedType;
+      this.statusLastInteractedButtonType = resolvedType;
+      if (rodBtn && lureBtn) {
+        rodBtn.classList.toggle('is-nav-selected', resolvedType === 'rod');
+        lureBtn.classList.toggle('is-nav-selected', resolvedType === 'lure');
+      }
+      this.openStatusEquipmentSelector(resolvedType);
+      return;
+    }
+    if (this.statusNavArea === 'equipmentOptions') {
+      const options = Array.from(panel.querySelectorAll('.book-status-equip-option')) as HTMLButtonElement[];
+      options[this.statusNavEquipOptionIndex]?.click();
+    }
   }
 
   private selectSkillTree(treeId: SkillTreeId, index: number) {
@@ -4149,13 +4919,7 @@ export default class GameScene extends Phaser.Scene {
 
   /** スキルタブで左右が「これ以上進めない」とき、図鑑/実績など隣の Book タブへ */
   private switchUnifiedBookTabWhenSkillHorizontalEdge(delta: -1 | 1) {
-    const order: Array<'inventory' | 'pedia' | 'skills' | 'achievement' | 'status'> = [
-      'inventory',
-      'pedia',
-      'skills',
-      'achievement',
-      'status',
-    ];
+    const order = this.unifiedBookTabOrder;
     const i = order.indexOf(this.unifiedBookTab);
     if (i < 0) return;
     const next = i + delta;
@@ -5346,13 +6110,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (dir === 'right') {
-      const tabs: Array<'inventory' | 'pedia' | 'skills' | 'achievement' | 'status'> = [
-        'inventory',
-        'pedia',
-        'skills',
-        'achievement',
-        'status',
-      ];
+      const tabs = this.unifiedBookTabOrder;
       const currentTabIdx = tabs.indexOf(this.unifiedBookTab);
       const nextTabIdx = currentTabIdx + 1;
       if (nextTabIdx >= 0 && nextTabIdx < tabs.length) {
@@ -5513,6 +6271,14 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (this.unifiedBookTab === 'status') {
+      if (this.statusNavArea === 'equipmentOptions') {
+        const options = root.querySelectorAll('.book-status-equip-option.is-nav-selected');
+        if (options.length > 0) return options[0] as HTMLElement;
+      }
+      if (this.statusNavArea === 'equipmentButtons') {
+        const btn = root.querySelector('.book-status-change-btn.is-nav-selected') as HTMLElement | null;
+        if (btn) return btn;
+      }
       return root.querySelector('.book-status-stat-list li.is-selected') as HTMLElement | null;
     }
 
@@ -5613,7 +6379,7 @@ export default class GameScene extends Phaser.Scene {
     const qKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     const eKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     
-    const bookTabsCycle = ['inventory', 'pedia', 'skills', 'achievement', 'status'] as const;
+    const bookTabsCycle = this.unifiedBookTabOrder;
     const keepTabRow = this.unifiedBookMainTabsNavActive;
     if (Phaser.Input.Keyboard.JustDown(qKey)) {
       this.noteUiMenuKeyboardNavigation();
@@ -5676,13 +6442,7 @@ export default class GameScene extends Phaser.Scene {
       this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavRepeatIntervalMs;
     }
 
-    const bookTabOrder: Array<'inventory' | 'pedia' | 'skills' | 'achievement' | 'status'> = [
-      'inventory',
-      'pedia',
-      'skills',
-      'achievement',
-      'status',
-    ];
+    const bookTabOrder = this.unifiedBookTabOrder;
 
     if (this.unifiedBookMainTabsNavActive) {
       const ti = bookTabOrder.indexOf(this.unifiedBookTab);
@@ -5712,21 +6472,76 @@ export default class GameScene extends Phaser.Scene {
     if (this.unifiedBookListItems.length === 0) {
       if (this.unifiedBookTab === 'status') {
         const statusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
-        if (statusPanel && (dir === 'up' || dir === 'down')) {
-          this.moveStatusStatSelection(statusPanel, dir === 'up' ? -1 : 1);
-          return;
+        if (statusPanel) {
+          if (dir === 'up' || dir === 'down') {
+            if (this.statusNavArea === 'equipmentOptions') {
+              this.moveStatusEquipmentOptionSelection(statusPanel, dir === 'up' ? -1 : 1);
+            } else if (this.statusNavArea === 'equipmentButtons') {
+              if (dir === 'up') {
+                this.enterUnifiedBookMainTabsNav();
+              } else {
+                this.statusNavArea = 'stats';
+                this.syncStatusEquipmentButtonSelection(statusPanel);
+                this.setupStatusStatSelector(statusPanel);
+              }
+            } else {
+              if (dir === 'up') {
+                if (this.selectedStatusStatKey === 'power') {
+                  this.statusNavArea = 'equipmentButtons';
+                  this.syncStatusEquipmentButtonSelection(statusPanel);
+                } else {
+                  this.moveStatusStatSelection(statusPanel, -1);
+                }
+              } else {
+                this.moveStatusStatSelection(statusPanel, 1);
+              }
+            }
+            return;
+          }
+          if (dir === 'right') {
+            if (this.statusNavArea === 'stats') {
+              this.statusNavArea = 'equipmentButtons';
+              this.syncStatusEquipmentButtonSelection(statusPanel);
+              return;
+            }
+            if (this.statusNavArea === 'equipmentButtons') {
+              this.moveStatusEquipmentButtonSelection(statusPanel, 1);
+              return;
+            }
+          }
+          if (dir === 'left') {
+            if (this.statusNavArea === 'equipmentOptions') {
+              this.statusEquipmentSelectorType = null;
+              this.statusNavArea = 'equipmentButtons';
+              this.fillBookStatusPanel(statusPanel);
+              return;
+            }
+            if (this.statusNavArea === 'equipmentButtons') {
+              const prevType = this.statusNavButtonType;
+              this.moveStatusEquipmentButtonSelection(statusPanel, -1);
+              if (prevType === 'rod') {
+                this.statusNavArea = 'stats';
+                this.syncStatusEquipmentButtonSelection(statusPanel);
+                this.setupStatusStatSelector(statusPanel);
+              }
+              return;
+            }
+          }
         }
-        if (dir === 'left' || dir === 'right') {
-          const edgeTabs: Array<'inventory' | 'pedia' | 'skills' | 'achievement' | 'status'> = [
-            'inventory', 'pedia', 'skills', 'achievement', 'status',
-          ];
-          const ti = edgeTabs.indexOf(this.unifiedBookTab);
-          if (ti >= 0 && dir === 'left' && ti > 0) {
-            this.switchUnifiedBookTab(edgeTabs[ti - 1]);
-          }
-          if (ti >= 0 && dir === 'right' && ti < edgeTabs.length - 1) {
-            this.switchUnifiedBookTab(edgeTabs[ti + 1]);
-          }
+      }
+      if (dir === 'up') {
+        this.enterUnifiedBookMainTabsNav();
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+        return;
+      }
+      if (dir === 'left' || dir === 'right') {
+        const edgeTabs = this.unifiedBookTabOrder;
+        const ti = edgeTabs.indexOf(this.unifiedBookTab);
+        if (ti >= 0 && dir === 'left' && ti > 0) {
+          this.switchUnifiedBookTab(edgeTabs[ti - 1]);
+        }
+        if (ti >= 0 && dir === 'right' && ti < edgeTabs.length - 1) {
+          this.switchUnifiedBookTab(edgeTabs[ti + 1]);
         }
       }
       return;
@@ -5770,13 +6585,7 @@ export default class GameScene extends Phaser.Scene {
 
     // 端まで到達しているなら、左右入力で隣のタブへ遷移
     if (newIndex === currentIndex && (dir === 'left' || dir === 'right')) {
-      const tabs: Array<'inventory' | 'pedia' | 'skills' | 'achievement' | 'status'> = [
-        'inventory',
-        'pedia',
-        'skills',
-        'achievement',
-        'status',
-      ];
+      const tabs = this.unifiedBookTabOrder;
       const currentTabIdx = tabs.indexOf(this.unifiedBookTab);
       const nextTabIdx = dir === 'left' ? currentTabIdx - 1 : currentTabIdx + 1;
       if (nextTabIdx >= 0 && nextTabIdx < tabs.length) {
@@ -6205,7 +7014,7 @@ export default class GameScene extends Phaser.Scene {
           <div class="modal-header shop-modal-header-row book-list-header">Shop</div>
           <div class="shop-controls-row">
             <div class="shop-tabs">
-              <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="rod">サオ</button>
+              <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="rod">釣り竿</button>
               <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="bait">エサ</button>
               <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="lure">ルアー</button>
               <button class="shop-tab shop-tab-button nes-btn ui-frame-box" data-tab="inventory">バッグ</button>
@@ -6775,10 +7584,10 @@ export default class GameScene extends Phaser.Scene {
         const bait = baitConfigs[index];
         if (bait) {
           statChips.push(
-            { label: '所持', value: `${getBaitCount(this.playerData, bait.id)}個` },
-            { label: '購入', value: `x${bait.quantity}` },
+            { label: 'UNCOMMON', value: `${Math.round((bait.uncommonBonus - 1) * 100)}%` },
             { label: 'RARE', value: `${Math.round((bait.rareBonus - 1) * 100)}%` },
-            { label: 'EPIC', value: `${Math.round((bait.epicBonus - 1) * 100)}%` }
+            { label: 'EPIC', value: `${Math.round((bait.epicBonus - 1) * 100)}%` },
+            { label: 'LEGEND', value: `${Math.round((bait.legendaryBonus - 1) * 100)}%` }
           );
           noteText = bait.description;
         }
@@ -6880,6 +7689,7 @@ export default class GameScene extends Phaser.Scene {
       topRow.appendChild(titleGroup);
       topRow.appendChild(actionWrap);
 
+      const showStatRow = this.shopTab !== 'inventory';
       const statRow = document.createElement('div');
       statRow.className = 'shop-item-stat-row';
       statChips.forEach((chip) => {
@@ -6908,7 +7718,9 @@ export default class GameScene extends Phaser.Scene {
       noteRow.appendChild(noteTextEl);
 
       infoContainer.appendChild(topRow);
-      infoContainer.appendChild(statRow);
+      if (showStatRow) {
+        infoContainer.appendChild(statRow);
+      }
       infoContainer.appendChild(noteRow);
       contentWrap.appendChild(infoContainer);
       itemEl.appendChild(contentWrap);
@@ -6933,6 +7745,7 @@ export default class GameScene extends Phaser.Scene {
         this.purchaseOrEquipItem();
       });
       itemEl.addEventListener('mouseenter', () => {
+        if (this.uiMenuNavInputChannel !== 'mouse') return;
         this.shopNavArea = 'items';
         this.shopSelectedIndex = index;
         this.updateShopSelection();
@@ -7090,6 +7903,7 @@ export default class GameScene extends Phaser.Scene {
       addBait(this.playerData, bait.id, bait.quantity);
       // 自動で装備
       this.playerData.equippedBaitId = bait.id;
+      this.playerData.equippedLureId = null;
       
       // 実績チェック（装備系）
       const unlockedAchievements = checkAchievements(this.playerData, ['equipment']);
@@ -7122,6 +7936,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.playerData.ownedLures.includes(lure.id)) {
       // 所持している → 装備
       this.playerData.equippedLureId = lure.id;
+      this.playerData.equippedBaitId = null;
       savePlayerData(this.playerData);
       this.updateShopContent();
       this.showResult(`${lure.name}を装備した！`, 1500);
@@ -7130,6 +7945,7 @@ export default class GameScene extends Phaser.Scene {
       this.playerData.money -= lure.price;
       this.playerData.ownedLures.push(lure.id);
       this.playerData.equippedLureId = lure.id;
+      this.playerData.equippedBaitId = null;
       
       // 実績チェック（装備系）
       const unlockedAchievements = checkAchievements(this.playerData, ['equipment']);
