@@ -94,6 +94,11 @@ img {
   --color-rarity-epic: #aa55ff;
   --color-rarity-legendary: #ffaa00;
 
+  /* 生息地（詳細パネル habitatColorMap と揃える） */
+  --color-habitat-freshwater: #383680;
+  --color-habitat-saltwater: #19648b;
+  --color-habitat-stream: #327f75;
+
   --frame-fill-inset: 4px;
 }
 
@@ -188,10 +193,41 @@ img {
   -ms-interpolation-mode: nearest-neighbor;
 }
 
+/* nes-btn × ui-frame-box: NES の矩形背景・border-image・::after の張り出しが 9 スライス枠の内側からはみ出さないよう統一 */
+.nes-btn.ui-frame-box,
+.nes-btn.ui-frame-box:hover,
+.nes-btn.ui-frame-box:focus,
+.nes-btn.ui-frame-box:focus-visible,
+.nes-btn.ui-frame-box:active,
+.nes-btn.ui-frame-box:disabled,
+.nes-btn.ui-frame-box.is-disabled,
+.nes-btn.ui-frame-box.is-disabled:hover,
+.nes-btn.ui-frame-box.is-disabled:focus {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-image: none !important;
+  border-image-source: none !important;
+  border-image-outset: 0 !important;
+  border-image-width: 0 !important;
+  box-shadow: none !important;
+  isolation: isolate;
+}
+
+.nes-btn.ui-frame-box:focus,
+.nes-btn.ui-frame-box:focus-visible {
+  outline: none;
+}
+
+.nes-btn.ui-frame-box::after {
+  box-shadow: none !important;
+  inset: 0 !important;
+}
+
 /* 選択・タブアクティブ時の黄色塗りは廃止。枠は uiframe.png ↔ border.png、塗りは #CBB792 ↔ #e8cfa6（各セクションで指定） */
 
 /* 統合BookUI（左リスト）選択中: 塗りはクリーム（枠は下の #book-ui #book-list-scroll で border.png） */
-.book-list-item.selected.ui-frame-box::before {
+#book-ui #book-list-scroll .book-ui-node.book-list-item.is-selected.ui-frame-box::before,
+.book-ui-node.book-list-item.is-selected.ui-frame-box::before {
   --frame-fill-color: #e8cfa6;
 }
 
@@ -618,7 +654,7 @@ span.level-label-value {
   transform: scale(1.05);
 }
 
-.inventory-slot.selected .slot-bg {
+.inventory-slot.is-selected .slot-bg {
   border: none;
 }
 
@@ -687,13 +723,13 @@ span.level-label-value {
   border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-#inventory-modal .inventory-slot.selected .slot-bg.ui-frame-box::before,
-#book-modal .book-slot.selected .slot-bg.ui-frame-box::before {
+#inventory-modal .inventory-slot.is-selected .slot-bg.ui-frame-box::before,
+#book-modal .book-slot.is-selected .slot-bg.ui-frame-box::before {
   --frame-fill-color: #e8cfa6;
 }
 
-#inventory-modal .inventory-slot.selected .slot-bg.ui-frame-box::after,
-#book-modal .book-slot.selected .slot-bg.ui-frame-box::after {
+#inventory-modal .inventory-slot.is-selected .slot-bg.ui-frame-box::after,
+#book-modal .book-slot.is-selected .slot-bg.ui-frame-box::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
@@ -943,7 +979,7 @@ span.level-label-value {
   transform: scale(1.05);
 }
 
-.book-slot.selected .slot-bg {
+.book-slot.is-selected .slot-bg {
   border: none;
 }
 
@@ -963,10 +999,18 @@ span.level-label-value {
   max-width: 500px;
 }
 
-/* ショップモーダル */
+/* ショップモーダル（ビューポート幅に収める。固定760pxは狭画面ではみ出す） */
+#shop-modal.modal {
+  box-sizing: border-box;
+  padding: 0 12px;
+}
+
 .modal-content.shop-modal {
-  min-width: 760px;
-  max-width: 760px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: min(760px, calc(100vw - 24px));
+  min-width: 0;
+  flex-shrink: 1;
   height: 100%;
   padding: 20px 28px;
   display: flex;
@@ -1135,6 +1179,10 @@ span.level-label-value {
   filter: brightness(0.95);
 }
 
+.shop-item:has(.shop-item-content.is-selected):hover {
+  filter: none;
+}
+
 .shop-item.is-owned {
   cursor: default;
 }
@@ -1143,7 +1191,7 @@ span.level-label-value {
   filter: none;
 }
 
-.shop-item.selected .shop-item-content {
+.shop-item .shop-item-content.is-selected {
   border: none;
 }
 
@@ -1189,6 +1237,8 @@ span.level-label-value {
   justify-content: center;
   gap: var(--space-16);
   margin-bottom: var(--space-4);
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 .shop-item-title-group {
@@ -1211,7 +1261,20 @@ span.level-label-value {
   min-width: 0;
   height: 100%;
   display: flex;
-  align-items: center;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: 0.35em;
+}
+
+/* ショップ商品名の個数（×N）：括弧なし・価格行と揃えた英数字系フォント */
+.shop-item-name-qty {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #320e0e;
 }
 
 .shop-item-action {
@@ -1249,7 +1312,9 @@ span.level-label-value {
 }
 
 #shop-modal .shop-item-action-button.nes-btn.ui-frame-box {
-  --frame-fill-inset: 0;
+  /* タブ・商品行・所持金と同じ 9 スライス倍率（既定 4 より細い枠） */
+  --frame-scale: 3;
+  --frame-fill-inset: 3px;
   --frame-fill-color: #7cb86c;
   min-width: 140px;
   height: 40px;
@@ -1284,10 +1349,6 @@ span.level-label-value {
 
 #shop-modal .shop-item-action-button.nes-btn.ui-frame-box::after {
   box-shadow: none !important;
-}
-
-#shop-modal .shop-item-action-button.nes-btn.ui-frame-box::before {
-  inset: -1px;
 }
 
 .shop-item-action-button.is-equipped {
@@ -1342,17 +1403,27 @@ span.level-label-value {
 }
 
 .shop-item-stat-chip-label {
-  font-size: 14px;
+  font-size: 20px;
   color: var(--color-semantic-text-primary);
-  font-family: "DotGothic16", sans-serif !important;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
   font-weight: 400;
 }
 
 .shop-item-stat-chip-value {
+  display: inline-flex;
+  align-items: baseline;
   font-family: "Jersey 10", "DotGothic16", sans-serif !important;
   font-size: 28px;
   color: var(--color-primitive-orange-600);
   font-weight: 400;
+}
+
+.shop-item-stat-chip-percent {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--color-primitive-orange-600);
 }
 
 .shop-item-note {
@@ -1489,12 +1560,21 @@ span.level-label-value {
   border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-#shop-modal .shop-item.selected .shop-item-content.ui-frame-box::before {
+#shop-modal .shop-item .shop-item-content.ui-frame-box.is-selected::before {
   --frame-fill-color: #e8cfa6;
 }
 
-#shop-modal .shop-item.selected .shop-item-content.ui-frame-box::after {
+#shop-modal .shop-item .shop-item-content.ui-frame-box.is-selected::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* ショップ行は共通 book-ui-row。ノードは枠付きカード幅いっぱい（book-ui-node 既定の calc 幅を上書き） */
+#shop-modal .shop-item.book-ui-row .shop-item-content.book-ui-node.ui-frame-box {
+  width: 100%;
+  min-height: 0;
+  padding: 20px 24px;
+  gap: 15px;
+  align-items: flex-start;
 }
 
 /* 閉じるボタン */
@@ -1945,17 +2025,41 @@ span.level-label-value {
 }
 
 /* 統合BookUI（左リスト）の選択枠だけ border.png を使う */
-#book-ui #book-list-scroll .book-list-item.selected.ui-frame-box::after,
-#book-ui #book-list-scroll .achievement-category-item.achievement-category-selected.ui-frame-box::after {
+#book-ui #book-list-scroll .book-ui-node.book-list-item.is-selected.ui-frame-box::after,
+#book-ui #book-list-scroll .achievement-category-item.is-selected.ui-frame-box::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-/* 実績カテゴリ選択中の塗りは他タブのカード選択と統一 */
-#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.achievement-category-selected.ui-frame-box::before {
+/* 実績カテゴリ: スキルノードと同型（非選択 #f2e2b6 / 選択 #e8cfa6） */
+#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box.is-selected {
   --frame-fill-color: #e8cfa6;
 }
 
-/* 統合BookUI: 各タブで「選択中」のボタン・項目の不透明度を穏やかに明滅 */
+/*
+ * 左リスト（バッグ・図鑑）・実績カテゴリ: ホバーはステータス能力値リストと同型
+ *（非選択時に塗り #e8cfa6 + border.png）。.book-list-item 側の scale/filter は使わない。
+ */
+#book-ui #book-list-scroll .book-ui-node.book-list-item.ui-frame-box:not(.is-selected):hover {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui #book-list-scroll .book-ui-node.book-list-item.ui-frame-box:not(.is-selected):hover::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui[data-tab="achievement"]
+  #book-list-scroll
+  .achievement-category-item.book-ui-node.ui-frame-box:not(.is-selected):hover {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui[data-tab="achievement"]
+  #book-list-scroll
+  .achievement-category-item.book-ui-node.ui-frame-box:not(.is-selected):hover::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* 統合BookUI: 左リスト・スキルノード・上部タブは色・枠・指マーカーで足りるため明滅しない。スキル解放・カテゴリ・確認ダイアログのキー選択のみ明滅。 */
 @keyframes book-ui-selected-opacity-pulse {
   0%,
   100% {
@@ -1966,7 +2070,6 @@ span.level-label-value {
   }
 }
 
-#book-ui.is-open #book-list-scroll .book-list-item.selected.ui-frame-box,
 #book-ui.is-open[data-tab="skills"]
   #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:not(:disabled),
 #book-ui.is-open[data-tab="skills"]
@@ -1977,13 +2080,11 @@ span.level-label-value {
   #book-skill-category-tabs.is-nav-selected
   .book-skill-category-tab.is-active::after,
 #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
-#book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
-#book-ui.is-open.is-book-main-tabs-nav .book-tab-button.ui-frame-box.is-nav-selected {
+#book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
   animation: book-ui-selected-opacity-pulse 1.45s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #book-ui.is-open #book-list-scroll .book-list-item.selected.ui-frame-box,
   #book-ui.is-open[data-tab="skills"]
     #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:not(:disabled),
   #book-ui.is-open[data-tab="skills"]
@@ -1994,8 +2095,7 @@ span.level-label-value {
     #book-skill-category-tabs.is-nav-selected
     .book-skill-category-tab.is-active::after,
   #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
-  #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
-  #book-ui.is-open.is-book-main-tabs-nav .book-tab-button.ui-frame-box.is-nav-selected {
+  #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
     animation: none;
   }
 }
@@ -2087,11 +2187,9 @@ span.level-label-value {
   justify-content: center;
 }
 
-/* nes-btn の inset シャドウ / focus リングを外し、#book-skill-unlock と同じ枠・塗りに寄せる。
- * Book 共通の --frame-fill-inset:3px は --frame-fill-inset:0 で打ち消し、塗りと border-image の隙間は下の ::before を -1px で埋める */
+/* nes-btn の inset シャドウ / focus リングを外し、#book-skill-unlock と同じ枠・塗りに寄せる（塗りは #book-ui .ui-frame-box の --frame-fill-inset に従う） */
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box,
 #book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box {
-  --frame-fill-inset: 0;
   min-height: 33px;
   padding: 8px 14px;
   margin: 0;
@@ -2139,12 +2237,6 @@ span.level-label-value {
   /* 枠は .ui-frame-box 既定の border.png（#book-skill-unlock と同じ）。非選択に uiframe を当てると緑ボタンが濁って見える */
 }
 
-#book-ui #book-skill-unlock.nes-btn.ui-frame-box::before,
-#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box::before,
-#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box::before {
-  inset: -1px;
-}
-
 /* キーボード／フォーカスで選択中は塗りだけ変える（枠は常に border.png） */
 #book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
   --frame-fill-color: #e8cfa6;
@@ -2189,7 +2281,7 @@ span.level-label-value {
   flex: 1;
   min-height: 0;
   width: 100%;
-  gap: 0;
+  gap: var(--space-10);
 }
 
 /* メインコンテナ: 9スライス枠（BOOK_UI_STYLE_GUIDE / .ui-frame-box 既定の border.png + 塗り） */
@@ -2353,6 +2445,70 @@ span.level-label-value {
   background: transparent;
 }
 
+/* 左ペイン: 図鑑ソート行 + スクロールラッパを縦積み */
+.book-left-pane-list-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+}
+
+.book-pedia-sort-bar {
+  display: none;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-sort-bar {
+  display: flex;
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  cursor: pointer;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  color: #320e0e;
+  --frame-fill-color: #cbb792;
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box.is-active {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box.is-active::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box:not(.is-active):hover {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box:not(.is-active):hover::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box:focus,
+#book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .book-list-header {
   padding: 4px 16px;
   min-height: 34px;
@@ -2396,12 +2552,206 @@ span.level-label-value {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 4px 8px 16px 4px;
+  padding: 10px 4px 16px 4px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   column-gap: 2px;
   row-gap: 2px;
   align-content: start;
+}
+
+/* 図鑑タブ: 左リストは縦1列（[魚アイコン] [名前] [★…] の横並び） */
+#book-ui[data-tab="pedia"] #book-list-scroll {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  grid-template-columns: unset;
+  row-gap: unset;
+  column-gap: unset;
+}
+
+/* 縦 flex の子は既定 flex-shrink:1 でスクロール域より行数が多いと行高が潰れて重なるため 0 に固定 */
+#book-ui[data-tab="pedia"] #book-list-scroll > .book-ui-row {
+  aspect-ratio: unset;
+  width: 100%;
+  min-height: 0;
+  flex-shrink: 0;
+}
+
+/* 図鑑: ソート単位の見出し（魚行と同じスクロール内、選択ナビの対象外） */
+#book-ui[data-tab="pedia"] #book-list-scroll > .book-ui-row.book-pedia-section-row {
+  aspect-ratio: unset;
+  width: 100%;
+  min-height: 0;
+  flex-shrink: 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: stretch;
+  cursor: default;
+  pointer-events: none;
+  margin-bottom: 8px;
+}
+
+/* セクション（分け）と分けの間を 32px（親の column gap 4px と合算） */
+#book-ui[data-tab="pedia"] #book-list-scroll > .book-ui-row.book-pedia-section-row:not(:first-child) {
+  margin-top: calc(32px - 4px);
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-section-label {
+  flex: 1;
+  min-width: 0;
+  margin-top: 2px;
+  padding: 9px 14px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-primitive-brown-400) 20%, transparent);
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 20px;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  color: var(--color-semantic-text-primary);
+  box-sizing: border-box;
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-section-row[data-pedia-section="common"] .book-pedia-section-label {
+  background: color-mix(in srgb, var(--color-rarity-common) 20%, transparent);
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-section-row[data-pedia-section="uncommon"] .book-pedia-section-label {
+  background: color-mix(in srgb, var(--color-rarity-uncommon) 20%, transparent);
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-section-row[data-pedia-section="rare"] .book-pedia-section-label {
+  background: color-mix(in srgb, var(--color-rarity-rare) 20%, transparent);
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-section-row[data-pedia-section="epic"] .book-pedia-section-label {
+  background: color-mix(in srgb, var(--color-rarity-epic) 20%, transparent);
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-section-row[data-pedia-section="legendary"] .book-pedia-section-label {
+  background: color-mix(in srgb, var(--color-rarity-legendary) 20%, transparent);
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-section-row[data-pedia-section="freshwater"] .book-pedia-section-label {
+  background: color-mix(in srgb, var(--color-habitat-freshwater) 20%, transparent);
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-section-row[data-pedia-section="saltwater"] .book-pedia-section-label {
+  background: color-mix(in srgb, var(--color-habitat-saltwater) 20%, transparent);
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-section-row[data-pedia-section="stream"] .book-pedia-section-label {
+  background: color-mix(in srgb, var(--color-habitat-stream) 20%, transparent);
+}
+
+#book-ui[data-tab="pedia"] #book-list-scroll > .book-pedia-section-row:first-child .book-pedia-section-label {
+  margin-top: 0;
+}
+
+#book-ui[data-tab="pedia"] #book-list-scroll > .book-ui-row > .book-ui-node.book-list-item {
+  flex: 0 1 auto;
+  height: auto;
+  min-height: auto;
+  aspect-ratio: unset;
+  flex-shrink: 0;
+}
+
+/* グリッド用の .book-list-item { aspect-ratio:1 } が図鑑行にも掛かるため打ち消す */
+#book-ui[data-tab="pedia"] .book-list-item.book-list-item--pedia {
+  aspect-ratio: unset;
+}
+
+#book-ui[data-tab="pedia"] #book-list-scroll .book-ui-node.book-list-item.book-list-item--pedia.ui-frame-box {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  height: 56px;
+  min-height: 56px;
+  padding: 8px 14px 10px 8px;
+  box-sizing: border-box;
+}
+
+#book-ui[data-tab="pedia"] .book-list-item--pedia .book-list-item-icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  padding: 2px;
+  box-sizing: border-box;
+}
+
+#book-ui[data-tab="pedia"] .book-list-item--pedia .book-list-item-icon canvas,
+#book-ui[data-tab="pedia"] .book-list-item--pedia .book-list-item-icon img {
+  transform: none;
+  max-width: 44px;
+  max-height: 44px;
+}
+
+#book-ui[data-tab="pedia"] .book-list-item--pedia .book-list-item-emoji {
+  font-size: 28px;
+  line-height: 1;
+  transform: none;
+}
+
+#book-ui[data-tab="pedia"] .book-list-item--pedia .book-list-item-name {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  text-align: left;
+  font-size: 18px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#book-ui[data-tab="pedia"] .book-list-item-stars {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding-bottom: 0px;
+  font-size: 14px;
+  line-height: 1.2;
+  font-family: "DotGothic16", sans-serif;
+  white-space: nowrap;
+}
+
+/* 図鑑・非選択: 枠は淡色の uiframe2.png（子は完全不透明のまま） */
+#book-ui[data-tab="pedia"]
+  #book-list-scroll
+  .book-list-item--pedia.ui-frame-box:not(.is-selected)::after {
+  border-image: url(/images/ui/uiframe2.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* 枠トーンに合わせて塗り（非選択のみ） */
+#book-ui[data-tab="pedia"]
+  #book-list-scroll
+  .book-list-item--pedia.ui-frame-box:not(.is-selected)::before {
+  --frame-fill-color: #decda4;
+}
+
+/* ホバーはバッグ等と同型（uiframe2 ではなく border.png） */
+#book-ui[data-tab="pedia"]
+  #book-list-scroll
+  .book-list-item--pedia.ui-frame-box:not(.is-selected):hover::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* 図鑑では .book-list-item-unknown の全体 opacity を掛けない（名前・星はそのまま）。未発見はアイコンのみグレースケール */
+#book-ui[data-tab="pedia"] .book-list-item--pedia.book-list-item-unknown {
+  opacity: 1;
+  filter: none;
+}
+
+#book-ui[data-tab="pedia"] .book-list-item--pedia.book-list-item-unknown .book-list-item-icon {
+  filter: grayscale(100%);
 }
 
 /* 左リスト: バー非表示。下に続きがあるときだけグラデで示す（JS で .is-visible） */
@@ -2450,6 +2800,23 @@ span.level-label-value {
   opacity: 1;
 }
 
+/* 左リスト: 行（グリッドセル）＋スキルツリーと同型の book-ui-node */
+#book-ui #book-list-scroll > .book-ui-row {
+  aspect-ratio: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+#book-ui #book-list-scroll > .book-ui-row > .book-ui-node.book-list-item {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: unset;
+}
+
 .book-list-item {
   border: none;
   aspect-ratio: 1;
@@ -2458,12 +2825,6 @@ span.level-label-value {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.1s, filter 0.1s;
-}
-
-.book-list-item:hover {
-  transform: scale(1.05);
-  filter: brightness(0.95);
 }
 
 .book-list-item.empty-slot {
@@ -2477,7 +2838,7 @@ span.level-label-value {
   filter: none;
 }
 
-.book-list-item.selected {
+.book-ui-node.book-list-item.is-selected {
   border: none;
 }
 
@@ -2600,7 +2961,7 @@ span.level-label-value {
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
-  padding: 4px 8px 16px 4px;
+  padding: 10px 4px 16px 4px;
   width: 100%;
   box-sizing: border-box;
   grid-template-columns: unset;
@@ -2707,6 +3068,14 @@ span.level-label-value {
   font-size: 16px;
   line-height: 1.2;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.book-rarity-star {
+  display: inline-block;
+  line-height: 1;
 }
 
 .book-detail-rarity-label {
@@ -3091,12 +3460,25 @@ span.level-label-value {
   background: var(--color-semantic-bg-book-container);
   box-sizing: border-box;
   width: 100%;
-  transition: filter 0.1s, transform 0.1s;
   font-family: var(--font-family-body);
 }
 
-.achievement-category-item:hover {
-  filter: brightness(0.97);
+/* 実績カテゴリは単一ノード（行なし）。book-ui-node 既定の横並び・幅を上書き */
+#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+  gap: 8px;
+  padding: 16px;
+  /* #book-list-scroll 既定の #CBB792 を上書き（非選択は明るいクリーム） */
+  --frame-fill-color: #f2e2b6;
+}
+
+/* 左リスト共通の uiframe ではなく、スキルノード（.book-ui-node）と同じ border.png 枠に統一 */
+#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 .achievement-category-item__head {
@@ -3515,7 +3897,7 @@ span.level-label-value {
 #book-ui[data-tab="skills"] .book-skill-category-tab .book-skill-category-tab-initial,
 #book-ui[data-tab="skills"] .book-skill-sp-value,
 #book-ui[data-tab="skills"] .book-skill-summary-item b,
-#book-ui[data-tab="skills"] .book-skill-node-meta,
+#book-ui[data-tab="skills"] .book-ui-node-meta,
 #book-ui[data-tab="skills"] .book-skill-cost-num {
   font-family: "Jersey 10", "DotGothic16", sans-serif !important;
 }
@@ -3808,14 +4190,15 @@ span.level-label-value {
   width: 100%;
 }
 
-.book-skill-row {
+/* Book 操作行・ノード（スキルツリーを共通モデルとする） */
+.book-ui-row {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
 }
 
-.book-skill-node-name {
+.book-ui-node-name {
   font-size: 16px;
   color: #320e0e;
   line-height: 17px;
@@ -3824,7 +4207,7 @@ span.level-label-value {
   text-overflow: ellipsis;
 }
 
-.book-skill-node-meta {
+.book-ui-node-meta {
   font-size: 28px;
   color: #320e0e;
   line-height: 1;
@@ -3836,7 +4219,7 @@ span.level-label-value {
   color: #c2681f;
 }
 
-.book-skill-node.ui-frame-box {
+.book-ui-node.ui-frame-box {
   cursor: pointer;
   text-align: left;
   border: none;
@@ -3853,7 +4236,12 @@ span.level-label-value {
   --frame-fill-color: #f2e2b6;
 }
 
-.book-skill-node-marker {
+/* 左リストのカードは行内で全幅 */
+#book-ui #book-list-scroll > .book-ui-row > .book-ui-node.ui-frame-box.book-list-item {
+  width: 100%;
+}
+
+.book-ui-marker {
   width: 20px;
   height: 20px;
   flex: 0 0 20px;
@@ -3862,19 +4250,19 @@ span.level-label-value {
   justify-content: center;
 }
 
-.book-skill-node-marker-inner {
+.book-ui-marker-inner {
   width: 8px;
   height: 8px;
   transform: rotate(45deg);
   background: #cbb792;
 }
 
-.book-skill-node-marker.is-ability .book-skill-node-marker-inner {
+.book-ui-marker.is-ability .book-ui-marker-inner {
   width: 14px;
   height: 14px;
 }
 
-.book-skill-node-main {
+.book-ui-node-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3882,24 +4270,36 @@ span.level-label-value {
   gap: 8px;
 }
 
-#book-ui #book-skill-tree-grid .book-skill-row.state-selected .book-skill-node.ui-frame-box::after {
+#book-ui #book-skill-tree-grid .book-ui-row.state-selected .book-ui-node.ui-frame-box::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-#book-ui #book-skill-tree-grid .book-skill-row.state-selected .book-skill-node.ui-frame-box {
+#book-ui #book-skill-tree-grid .book-ui-row.state-selected .book-ui-node.ui-frame-box {
   --frame-fill-color: #e8cfa6;
 }
 
-#book-ui #book-skill-tree-grid .book-skill-row.state-obtained .book-skill-node-marker-inner {
+/* スキルツリーノード: ホバーはステータス能力値リストと同型（選択行以外・ロック行は除外） */
+#book-ui
+  #book-skill-tree-grid
+  .book-ui-row:not(.state-selected):not(.state-locked)
+  .book-ui-node.ui-frame-box:hover {
+  --frame-fill-color: #e8cfa6;
+}
+
+.book-skill-category-tab:not(.is-active):not(:disabled):hover::before {
+  background: #e8cfa6;
+}
+
+#book-ui #book-skill-tree-grid .book-ui-row.state-obtained .book-ui-marker-inner {
   background: #7cb86c;
   opacity: 1;
 }
 
-#book-ui #book-skill-tree-grid .book-skill-row.state-locked {
+#book-ui #book-skill-tree-grid .book-ui-row.state-locked {
   opacity: 0.3;
 }
 
-#book-ui #book-skill-tree-grid .book-skill-row .book-skill-node.ui-frame-box.is-available:not(.selected) {
+#book-ui #book-skill-tree-grid .book-ui-row .book-ui-node.ui-frame-box.is-available:not(.is-selected) {
   opacity: 1;
 }
 
@@ -3945,8 +4345,6 @@ span.level-label-value {
 
 /* nes.css の inset box-shadow / focus リングを外し、枠内塗りをグリーンに統一 */
 #book-ui #book-skill-unlock.nes-btn.ui-frame-box {
-  /* Book 共通の 3px インセットは塗りを細くするため 0。枠との隙間は ::before を -1px にして埋める（確認ダイアログのボタンと同型） */
-  --frame-fill-inset: 0;
   --frame-fill-color: #7cb86c;
   display: block;
   width: 100%;
@@ -4170,7 +4568,7 @@ span.level-label-value {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
   padding: 5px 12px;
   border-radius: 8px;
   background: rgba(112, 74, 43, 0.10);
@@ -4181,14 +4579,15 @@ span.level-label-value {
 .book-status-equipment-info {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   min-width: 0;
   min-height: 32px;
+  transform: translateX(-4px);
 }
 
 .book-status-equipment-icon {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -4196,8 +4595,8 @@ span.level-label-value {
 }
 
 .book-status-equipment-icon-canvas {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   display: block;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
@@ -4219,13 +4618,15 @@ span.level-label-value {
   text-overflow: ellipsis;
 }
 
-#book-status-equipped-rod-name {
+#book-status-equipped-rod-name,
+#book-status-equipped-lure-name {
+  font-size: 14px;
   padding-top: 2px;
 }
 
 .book-status-change-btn.ui-frame-box {
   /* スキル解放ボタンと同じく、ui-frame-box の塗りでグリーンを作る */
-  --frame-fill-inset: 0;
+  --frame-fill-inset: 3px;
   --frame-fill-color: #7cb86c;
   flex: 0 0 auto;
   width: 100%;
@@ -4313,7 +4714,7 @@ span.level-label-value {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   position: relative;
   z-index: 1;
 }
@@ -4328,14 +4729,15 @@ span.level-label-value {
   cursor: inherit;
   position: relative;
   border: none;
-  --frame-fill-color: #e8cfa6;
+  /* スキルノード既定と同型: 非選択=明るいクリーム / 選択=やや濃いクリーム（選択は .is-selected で上書き） */
+  --frame-fill-color: #f2e2b6;
 }
 
 .book-status-stat-list li.ui-frame-box::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-/* ホバー: 選択と同じ塗り・枠（矢印 ::before は .is-selected のみ） */
+/* ホバー: 選択時に近い塗り・枠（矢印は .book-stat-name::before） */
 .book-status-stat-list li:not(.is-selected):hover {
   --frame-fill-color: #e8cfa6;
 }
@@ -4358,10 +4760,15 @@ span.level-label-value {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-.book-status-stat-list li.is-selected::before {
+/* 選択矢印は ui-frame-box::before（塗り）と競合させないため .book-stat-name に載せる */
+.book-status-stat-list li.is-selected > .book-stat-name {
+  position: relative;
+}
+
+.book-status-stat-list li.is-selected > .book-stat-name::before {
   content: "";
   position: absolute;
-  left: 8px;
+  left: -20px;
   top: 50%;
   width: 12px;
   height: 16px;
@@ -4376,6 +4783,37 @@ span.level-label-value {
   font-size: var(--font-size-status-stat-name);
   color: var(--color-primitive-brown-400);
   height: 23px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.book-stat-name-label {
+  display: inline-block;
+  padding-top: 2px;
+}
+
+.book-stat-name-delta-icon {
+  width: 14px;
+  height: 12px;
+  display: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  flex: 0 0 auto;
+}
+
+#book-status-panel.is-status-previewing .book-status-stat-list li.is-delta-plus .book-stat-name-delta-icon,
+#book-status-panel.is-status-previewing .book-status-stat-list li.is-delta-minus .book-stat-name-delta-icon {
+  display: inline-block;
+}
+
+#book-status-panel.is-status-previewing .book-status-stat-list li.is-delta-plus .book-stat-name-delta-icon {
+  background-image: url('/images/ui/up.svg');
+}
+
+#book-status-panel.is-status-previewing .book-status-stat-list li.is-delta-minus .book-stat-name-delta-icon {
+  background-image: url('/images/ui/down.svg');
 }
 
 .book-stat-val {
@@ -4391,32 +4829,137 @@ span.level-label-value {
   display: inline-block;
 }
 
+.book-stat-val-current {
+  width: fit-content;
+}
+
 .book-stat-val-wrap {
   display: inline-flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.book-status-stat-arrow-wrap {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  padding-top: 2px;
+  gap: 0;
+}
+
+.book-status-stat-arrow {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--color-primitive-brown-400);
 }
 
 .book-status-stat-delta {
-  min-width: 44px;
-  font-family: 'DotGothic16', sans-serif;
-  font-size: 26px;
-  line-height: 1;
-  text-align: right;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: transparent;
 }
 
+.book-status-stat-delta::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0;
+}
+
 .book-status-stat-delta.is-plus {
-  color: #4ea65e;
+  color: transparent;
 }
 
 .book-status-stat-delta.is-minus {
+  color: transparent;
+}
+
+.book-status-stat-delta.is-plus::before {
+  background-image: url('/images/ui/up.svg');
+  opacity: 1;
+}
+
+.book-status-stat-delta.is-minus::before {
+  background-image: url('/images/ui/down.svg');
+  opacity: 1;
+}
+
+#book-status-panel:not(.is-status-previewing) .book-stat-val-current,
+#book-status-panel:not(.is-status-previewing) .book-status-stat-arrow-wrap {
+  display: none;
+}
+
+#book-status-panel:not(.is-status-previewing) .book-stat-val-wrap {
+  gap: 0;
+}
+
+#book-status-power,
+#book-status-speed,
+#book-status-technique,
+#book-status-control {
+  font-family: "Jersey 10" !important;
+  width: fit-content;
+}
+
+#book-status-power-current,
+#book-status-speed-current,
+#book-status-technique-current,
+#book-status-control-current {
+  width: 32px;
+  margin-left: 8px;
+}
+
+#book-status-panel.is-status-previewing .book-status-stat-list li:not(.is-delta-unchanged) .book-stat-val:not(.book-stat-val-current) {
+  animation: book-ui-selected-opacity-pulse 2.1s ease-in-out infinite;
+}
+
+#book-status-panel.is-status-previewing .book-status-stat-list li.is-delta-plus .book-stat-val:not(.book-stat-val-current) {
+  color: #4ea65e;
+}
+
+#book-status-panel.is-status-previewing .book-status-stat-list li.is-delta-minus .book-stat-val:not(.book-stat-val-current) {
   color: #d35757;
 }
 
-#book-status-power {
-  font-family: "Jersey 10" !important;
+@media (prefers-reduced-motion: reduce) {
+  #book-status-panel.is-status-previewing .book-status-stat-list li:not(.is-delta-unchanged) .book-stat-val:not(.book-stat-val-current) {
+    animation: none;
+  }
+
+  #book-status-panel.is-status-previewing .book-status-rarity-prob-item:not(.is-delta-unchanged) .book-status-rarity-prob-value:not(.book-status-rarity-prob-value-current) {
+    animation: none;
+  }
+}
+
+#book-status-panel.is-status-previewing .book-status-stat-list li.is-delta-unchanged .book-stat-val-current,
+#book-status-panel.is-status-previewing .book-status-stat-list li.is-delta-unchanged .book-status-stat-arrow-wrap {
+  display: none;
+}
+
+#book-status-panel.is-status-previewing .book-status-rarity-prob-item.is-delta-unchanged .book-status-rarity-prob-value-current,
+#book-status-panel.is-status-previewing .book-status-rarity-prob-item.is-delta-unchanged .book-status-rarity-prob-arrow-wrap {
+  display: none;
+}
+
+#book-status-panel.is-status-previewing .book-status-rarity-prob-item:not(.is-delta-unchanged) .book-status-rarity-prob-value:not(.book-status-rarity-prob-value-current) {
+  animation: book-ui-selected-opacity-pulse 2.1s ease-in-out infinite;
+}
+
+#book-status-panel.is-status-previewing .book-status-rarity-prob-item.is-delta-plus .book-status-rarity-prob-value:not(.book-status-rarity-prob-value-current) {
+  color: #4ea65e;
+}
+
+#book-status-panel.is-status-previewing .book-status-rarity-prob-item.is-delta-minus .book-status-rarity-prob-value:not(.book-status-rarity-prob-value-current) {
+  color: #d35757;
 }
 
 .book-status-detail-note {
@@ -4424,7 +4967,7 @@ span.level-label-value {
   color: var(--color-semantic-text-detail);
   min-height: 100%;
   height: fit-content;
-  padding: 10px 16px;
+  padding: 6px 16px;
   box-sizing: border-box;
   border-radius: 8px;
   display: flex;
@@ -4447,6 +4990,17 @@ span.level-label-value {
 #book-status-detail-title {
   color: var(--color-primitive-orange-600);
   font-size: 24px;
+  margin-bottom: 0;
+  margin-right: 0;
+  padding-left: 2px;
+}
+
+.book-status-rarity-prob-title {
+  color: var(--color-primitive-orange-600);
+  font-size: 24px;
+  margin-bottom: 0;
+  margin-right: 0;
+  padding-left: 2px;
 }
 
 #book-status-change-rod {
@@ -4489,7 +5043,7 @@ span.level-label-value {
 }
 
 .book-status-detail-fade--top {
-  top: 34px;
+  top: 30px;
   background: linear-gradient(
     to bottom,
     color-mix(in srgb, rgba(230, 213, 172, 1) 94%, transparent) 0%,
@@ -4499,7 +5053,7 @@ span.level-label-value {
 }
 
 .book-status-detail-fade--bottom {
-  bottom: 10px;
+  bottom: 6px;
   background: linear-gradient(
     to top,
     color-mix(in srgb, rgba(230, 213, 172, 1) 94%, transparent) 0%,
@@ -4515,13 +5069,13 @@ span.level-label-value {
 .book-status-equip-option-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   margin-top: 4px;
 }
 
 .book-status-equip-option {
   width: 100%;
-  min-height: 36px;
+  min-height: 42px;
   padding: 12px;
   border: none;
   background: transparent;
@@ -4608,10 +5162,20 @@ span.level-label-value {
   margin-top: 12px;
   min-height: 0;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 16px;
+  gap: 0px;
+}
+
+.book-status-rarity-prob-note {
+  padding-top: 0px;
+  padding-bottom: 16px;
+}
+
+/* 出現率ラベルだけ、共通タイトルより少し下げる（微調整込み） */
+.book-status-detail-note.book-status-rarity-prob > .book-status-detail-note-title {
+  margin-top: 8px;
 }
 
 .book-status-rarity-prob-grid {
@@ -4628,15 +5192,23 @@ span.level-label-value {
   gap: 0;
   justify-content: center;
   align-items: center;
-  padding: 6px 4px;
+  padding: 8px 4px 4px;
   background: rgba(112, 74, 43, 0.08);
   border-radius: 8px;
 }
 
 .book-status-rarity-prob-label {
-  font-size: 15px;
+  font-size: 17px;
   line-height: 14px;
   color: #704A2B;
+}
+
+.book-status-rarity-prob-label-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 14px;
 }
 
 .book-status-rarity-prob-value {
@@ -4653,31 +5225,74 @@ span.level-label-value {
 
 .book-status-rarity-prob-value-wrap {
   display: inline-flex;
-  align-items: baseline;
+  align-items: flex-end;
   justify-content: center;
   gap: 5px;
 }
 
-.book-status-rarity-prob-delta {
-  font-family: 'DotGothic16', sans-serif;
-  font-size: 17px;
+.book-status-rarity-prob-arrow-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.book-status-rarity-prob-arrow {
+  font-size: 22px;
   line-height: 1;
-  text-align: right;
+  color: var(--color-primitive-brown-400);
+}
+
+.book-status-rarity-prob-delta {
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: transparent;
-  font-variant-numeric: tabular-nums;
-  display: none;
+  width: 20px;
+}
+
+.book-status-rarity-prob-delta::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0;
 }
 
 .book-status-rarity-prob-delta.has-delta {
-  display: inline-block;
+  color: transparent;
 }
 
 .book-status-rarity-prob-delta.is-plus {
-  color: #4ea65e;
+  color: transparent;
 }
 
 .book-status-rarity-prob-delta.is-minus {
-  color: #d35757;
+  color: transparent;
+}
+
+.book-status-rarity-prob-delta.has-delta.is-plus::before {
+  background-image: url('/images/ui/up.svg');
+  opacity: 1;
+}
+
+.book-status-rarity-prob-delta.has-delta.is-minus::before {
+  background-image: url('/images/ui/down.svg');
+  opacity: 1;
+}
+
+#book-status-panel:not(.is-status-previewing) .book-status-rarity-prob-value-current,
+#book-status-panel:not(.is-status-previewing) .book-status-rarity-prob-arrow-wrap {
+  display: none;
+}
+
+#book-status-panel:not(.is-status-previewing) .book-status-rarity-prob-value-wrap {
+  gap: 0;
 }
 
 .book-status-rarity-prob-value.is-plus {

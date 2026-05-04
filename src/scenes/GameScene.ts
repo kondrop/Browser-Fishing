@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
-import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, rarityWeights, Habitat } from '../data/fish';
+import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, rarityWeights, Habitat, Rarity } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
 import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, getLevelFightBarVelocityDragPerSecond, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp } from '../data/inventory';
 import {
@@ -171,6 +171,8 @@ export default class GameScene extends Phaser.Scene {
   /** 選択が端でこれ以上動けないとき、上下キーでスクロールさせる量（px） */
   private readonly BOOK_EDGE_SCROLL_STEP_PX = 56;
   private unifiedBookListItems: HTMLElement[] = [];
+  /** 図鑑左リストの並び（レアリティ / 生息地） */
+  private unifiedBookPediaSortMode: 'rarity' | 'waters' = 'rarity';
   private unifiedBookListScrollElement!: HTMLElement;
   private unifiedBookListScrollFadeBottomElement: HTMLElement | null = null;
   private unifiedBookListScrollFadeTopElement: HTMLElement | null = null;
@@ -394,6 +396,21 @@ export default class GameScene extends Phaser.Scene {
       default:
         return 'var(--color-rarity-common)';
     }
+  }
+
+  /** 図鑑左リスト・詳細ヘッダ共通: 5段固定（点灯＝レア色、消灯＝#bababa） */
+  private buildBookRarityStarsInnerHtml(rarity: string): string {
+    const starCount = rarityStarCount[rarity as Rarity] ?? rarityStarCount[Rarity.COMMON];
+    const colorVal = this.getRarityColorCssValue(rarity);
+    let html = '';
+    for (let i = 0; i < 5; i++) {
+      if (i < starCount) {
+        html += `<span class="book-rarity-star book-rarity-star--on" style="color: ${colorVal}">★</span>`;
+      } else {
+        html += `<span class="book-rarity-star book-rarity-star--off" style="color: #bababa">★</span>`;
+      }
+    }
+    return html;
   }
 
   private saveCharacterSettings(id: string, name: string, color: string) {
@@ -1911,18 +1928,18 @@ export default class GameScene extends Phaser.Scene {
     const bait = this.playerData.equippedBaitId ? getBaitById(this.playerData.equippedBaitId) : null;
     const lure = this.playerData.equippedLureId ? getLureById(this.playerData.equippedLureId) : null;
 
-    // 装備ボーナスは乗算ではなく加算で合成する
+    // 装備ボーナスは加算で合成し、効きは専用関数で調整する
     const rodRarityHitAdd = equippedRod?.rarityHitRateAdd || { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 };
-    const addBonus = (a: number, b: number, c: number = 1.0) => {
-      const combined = 1.0 + (a - 1.0) + (b - 1.0) + (c - 1.0);
-      return Math.max(0.05, combined);
-    };
     const bonuses = {
-      commonBonus: addBonus(bait?.commonBonus || 1.0, lure?.commonBonus || 1.0, 1.0 + rodRarityHitAdd.common),
-      uncommonBonus: addBonus(bait?.uncommonBonus || 1.0, lure?.uncommonBonus || 1.0, 1.0 + rodRarityHitAdd.uncommon),
-      rareBonus: addBonus(bait?.rareBonus || 1.0, lure?.rareBonus || 1.0, 1.0 + rodRarityHitAdd.rare),
-      epicBonus: addBonus(bait?.epicBonus || 1.0, lure?.epicBonus || 1.0, 1.0 + rodRarityHitAdd.epic),
-      legendaryBonus: addBonus(bait?.legendaryBonus || 1.0, lure?.legendaryBonus || 1.0, 1.0 + rodRarityHitAdd.legendary),
+      commonBonus: this.combineRarityBonus(bait?.commonBonus || 1.0, lure?.commonBonus || 1.0, 1.0 + rodRarityHitAdd.common),
+      uncommonBonus: this.combineRarityBonus(bait?.uncommonBonus || 1.0, lure?.uncommonBonus || 1.0, 1.0 + rodRarityHitAdd.uncommon),
+      rareBonus: this.combineRarityBonus(bait?.rareBonus || 1.0, lure?.rareBonus || 1.0, 1.0 + rodRarityHitAdd.rare),
+      epicBonus: this.combineRarityBonus(bait?.epicBonus || 1.0, lure?.epicBonus || 1.0, 1.0 + rodRarityHitAdd.epic),
+      legendaryBonus: this.combineRarityBonus(
+        bait?.legendaryBonus || 1.0,
+        lure?.legendaryBonus || 1.0,
+        1.0 + rodRarityHitAdd.legendary,
+      ),
     };
 
     // どの魚が釣れるか決定（ボーナス適用）
@@ -2930,12 +2947,12 @@ export default class GameScene extends Phaser.Scene {
     
     // 前回選択されていたスロットからクラスを削除
     if (this.lastSelectedInventoryIndex >= 0 && this.inventorySlots[this.lastSelectedInventoryIndex]) {
-      this.inventorySlots[this.lastSelectedInventoryIndex].classList.remove('selected');
+      this.inventorySlots[this.lastSelectedInventoryIndex].classList.remove('is-selected');
     }
     
     // 選択されたスロットにクラスを追加
     if (this.inventorySlots[this.selectedSlotIndex]) {
-      this.inventorySlots[this.selectedSlotIndex].classList.add('selected');
+      this.inventorySlots[this.selectedSlotIndex].classList.add('is-selected');
     }
     
     this.lastSelectedInventoryIndex = this.selectedSlotIndex;
@@ -3229,10 +3246,16 @@ export default class GameScene extends Phaser.Scene {
             <div class="book-list-header" id="book-list-header">Bag</div>
             <div class="book-main-row">
             <div class="book-left-pane">
-              <div class="book-list-scroll-wrap">
-                <div class="book-list-scroll" id="book-list-scroll"></div>
-                <div class="book-list-scroll-fade book-list-scroll-fade--top" id="book-list-scroll-fade-top" aria-hidden="true"></div>
-                <div class="book-list-scroll-fade book-list-scroll-fade--bottom" id="book-list-scroll-fade-bottom" aria-hidden="true"></div>
+              <div class="book-left-pane-list-column">
+                <div id="book-pedia-sort-bar" class="book-pedia-sort-bar" role="tablist" aria-label="Encyclopedia sort">
+                  <button type="button" id="book-pedia-sort-rarity" class="book-pedia-sort-btn ui-frame-box is-active" data-pedia-sort="rarity" role="tab" aria-selected="true">Rarity</button>
+                  <button type="button" id="book-pedia-sort-waters" class="book-pedia-sort-btn ui-frame-box" data-pedia-sort="waters" role="tab" aria-selected="false">Waters</button>
+                </div>
+                <div class="book-list-scroll-wrap">
+                  <div class="book-list-scroll" id="book-list-scroll"></div>
+                  <div class="book-list-scroll-fade book-list-scroll-fade--top" id="book-list-scroll-fade-top" aria-hidden="true"></div>
+                  <div class="book-list-scroll-fade book-list-scroll-fade--bottom" id="book-list-scroll-fade-bottom" aria-hidden="true"></div>
+                </div>
               </div>
             </div>
             <div class="book-right-pane">
@@ -3282,10 +3305,10 @@ export default class GameScene extends Phaser.Scene {
                     <p class="book-status-hint">いまの装備とレベルを反映した実戦性能を、基準100の整数で示しています（100が標準）。</p>
                     <div class="book-status-two-col">
                       <ul class="book-status-stat-list">
-                        <li class="ui-frame-box" data-stat-key="power" role="button" tabindex="0" aria-selected="true"><span class="book-stat-name">パワー</span><span class="book-stat-val-wrap"><span class="book-status-stat-delta" aria-live="polite"></span><span id="book-status-power" class="book-stat-val"></span></span></li>
-                        <li class="ui-frame-box" data-stat-key="speed" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">スピード</span><span class="book-stat-val-wrap"><span class="book-status-stat-delta" aria-live="polite"></span><span id="book-status-speed" class="book-stat-val"></span></span></li>
-                        <li class="ui-frame-box" data-stat-key="technique" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">テクニック</span><span class="book-stat-val-wrap"><span class="book-status-stat-delta" aria-live="polite"></span><span id="book-status-technique" class="book-stat-val"></span></span></li>
-                        <li class="ui-frame-box" data-stat-key="control" role="button" tabindex="0" aria-selected="false"><span class="book-stat-name">コントロール</span><span class="book-stat-val-wrap"><span class="book-status-stat-delta" aria-live="polite"></span><span id="book-status-control" class="book-stat-val"></span></span></li>
+                        <li class="ui-frame-box" data-stat-key="power" role="button" tabindex="0" aria-selected="true"><div class="book-stat-name"><span class="book-stat-name-label">パワー</span><span class="book-stat-name-delta-icon" aria-hidden="true"></span></div><span class="book-stat-val-wrap"><span class="book-status-stat-arrow-wrap"><span class="book-status-stat-delta" aria-live="polite"></span></span><span id="book-status-power" class="book-stat-val">0</span><span id="book-status-power-current" class="book-stat-val book-stat-val-current">0</span></span></li>
+                        <li class="ui-frame-box" data-stat-key="speed" role="button" tabindex="0" aria-selected="false"><div class="book-stat-name"><span class="book-stat-name-label">スピード</span><span class="book-stat-name-delta-icon" aria-hidden="true"></span></div><span class="book-stat-val-wrap"><span class="book-status-stat-arrow-wrap"><span class="book-status-stat-delta" aria-live="polite"></span></span><span id="book-status-speed" class="book-stat-val">0</span><span id="book-status-speed-current" class="book-stat-val book-stat-val-current">0</span></span></li>
+                        <li class="ui-frame-box" data-stat-key="technique" role="button" tabindex="0" aria-selected="false"><div class="book-stat-name"><span class="book-stat-name-label">テクニック</span><span class="book-stat-name-delta-icon" aria-hidden="true"></span></div><span class="book-stat-val-wrap"><span class="book-status-stat-arrow-wrap"><span class="book-status-stat-delta" aria-live="polite"></span></span><span id="book-status-technique" class="book-stat-val">0</span><span id="book-status-technique-current" class="book-stat-val book-stat-val-current">0</span></span></li>
+                        <li class="ui-frame-box" data-stat-key="control" role="button" tabindex="0" aria-selected="false"><div class="book-stat-name"><span class="book-stat-name-label">コントロール</span><span class="book-stat-name-delta-icon" aria-hidden="true"></span></div><span class="book-stat-val-wrap"><span class="book-status-stat-arrow-wrap"><span class="book-status-stat-delta" aria-live="polite"></span></span><span id="book-status-control" class="book-stat-val">0</span><span id="book-status-control-current" class="book-stat-val book-stat-val-current">0</span></span></li>
                       </ul>
                       <div class="book-status-detail-note">
                         <p id="book-status-detail-title" class="book-status-detail-note-title">Info</p>
@@ -3294,14 +3317,14 @@ export default class GameScene extends Phaser.Scene {
                         <div class="book-status-detail-fade book-status-detail-fade--bottom" id="book-status-detail-fade-bottom" aria-hidden="true"></div>
                       </div>
                     </div>
-                    <div class="book-status-detail-note book-status-rarity-prob">
-                      <p class="book-status-detail-note-title">出現率</p>
+                    <div class="book-status-detail-note book-status-rarity-prob book-status-rarity-prob-note">
+                      <p class="book-status-detail-note-title book-status-rarity-prob-title">Catch Rates</p>
                       <div class="book-status-rarity-prob-grid">
-                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label">COMMON</span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-common-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span><span id="book-status-rarity-common" class="book-status-rarity-prob-value">0.0%</span></span></div>
-                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label">UNCOMMON</span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-uncommon-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span><span id="book-status-rarity-uncommon" class="book-status-rarity-prob-value">0.0%</span></span></div>
-                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label">RARE</span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-rare-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span><span id="book-status-rarity-rare" class="book-status-rarity-prob-value">0.0%</span></span></div>
-                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label">EPIC</span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-epic-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span><span id="book-status-rarity-epic" class="book-status-rarity-prob-value">0.0%</span></span></div>
-                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label">LEGEND</span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-legendary-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span><span id="book-status-rarity-legendary" class="book-status-rarity-prob-value">0.0%</span></span></div>
+                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label-wrap"><span class="book-status-rarity-prob-label">COMMON</span><span class="book-status-rarity-prob-arrow-wrap"><span id="book-status-rarity-common-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span></span></span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-common" class="book-status-rarity-prob-value">0.0%</span><span id="book-status-rarity-common-current" class="book-status-rarity-prob-value book-status-rarity-prob-value-current">0.0%</span></span></div>
+                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label-wrap"><span class="book-status-rarity-prob-label">UNCOMMON</span><span class="book-status-rarity-prob-arrow-wrap"><span id="book-status-rarity-uncommon-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span></span></span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-uncommon" class="book-status-rarity-prob-value">0.0%</span><span id="book-status-rarity-uncommon-current" class="book-status-rarity-prob-value book-status-rarity-prob-value-current">0.0%</span></span></div>
+                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label-wrap"><span class="book-status-rarity-prob-label">RARE</span><span class="book-status-rarity-prob-arrow-wrap"><span id="book-status-rarity-rare-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span></span></span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-rare" class="book-status-rarity-prob-value">0.0%</span><span id="book-status-rarity-rare-current" class="book-status-rarity-prob-value book-status-rarity-prob-value-current">0.0%</span></span></div>
+                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label-wrap"><span class="book-status-rarity-prob-label">EPIC</span><span class="book-status-rarity-prob-arrow-wrap"><span id="book-status-rarity-epic-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span></span></span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-epic" class="book-status-rarity-prob-value">0.0%</span><span id="book-status-rarity-epic-current" class="book-status-rarity-prob-value book-status-rarity-prob-value-current">0.0%</span></span></div>
+                        <div class="book-status-rarity-prob-item"><span class="book-status-rarity-prob-label-wrap"><span class="book-status-rarity-prob-label">LEGEND</span><span class="book-status-rarity-prob-arrow-wrap"><span id="book-status-rarity-legendary-delta" class="book-status-rarity-prob-delta" aria-live="polite"></span></span></span><span class="book-status-rarity-prob-value-wrap"><span id="book-status-rarity-legendary" class="book-status-rarity-prob-value">0.0%</span><span id="book-status-rarity-legendary-current" class="book-status-rarity-prob-value book-status-rarity-prob-value-current">0.0%</span></span></div>
                       </div>
                     </div>
                   </section>
@@ -3458,6 +3481,11 @@ export default class GameScene extends Phaser.Scene {
       });
     });
 
+    const pediaSortRarityBtn = this.unifiedBookUIElement.querySelector('#book-pedia-sort-rarity') as HTMLButtonElement | null;
+    const pediaSortWatersBtn = this.unifiedBookUIElement.querySelector('#book-pedia-sort-waters') as HTMLButtonElement | null;
+    pediaSortRarityBtn?.addEventListener('click', () => this.setUnifiedBookPediaSortMode('rarity'));
+    pediaSortWatersBtn?.addEventListener('click', () => this.setUnifiedBookPediaSortMode('waters'));
+
     const skillUnlockBtn = this.unifiedBookUIElement.querySelector('#book-skill-unlock');
     skillUnlockBtn?.addEventListener('click', () => {
       if (!this.skillSelectedNodeId) return;
@@ -3540,6 +3568,7 @@ export default class GameScene extends Phaser.Scene {
     tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'status',
     opts?: { keepMainTabNav?: boolean },
   ) {
+    const prevTab = this.unifiedBookTab;
     if (!opts?.keepMainTabNav) {
       this.exitUnifiedBookMainTabsNav();
     }
@@ -3597,7 +3626,7 @@ export default class GameScene extends Phaser.Scene {
     } else if (tab === 'skills') {
       this.unifiedBookUIElement.setAttribute('data-tab', 'skills');
     } else {
-      this.unifiedBookUIElement.removeAttribute('data-tab');
+      this.unifiedBookUIElement.setAttribute('data-tab', tab);
       this.restoreBookDetailStructure();
     }
 
@@ -3605,6 +3634,16 @@ export default class GameScene extends Phaser.Scene {
     this.updateUnifiedBookList();
     this.updateUnifiedBookDetail();
     if (tab === 'skills') {
+      if (prevTab !== 'skills') {
+        const skillPanel = this.unifiedBookUIElement.querySelector('#book-skill-panel') as HTMLElement | null;
+        const firstNode = skillPanel?.querySelector('#book-skill-tree-grid .book-ui-node') as HTMLElement | null;
+        if (firstNode) {
+          this.skillSelectedNodeId = null;
+          this.setSkillNavArea('tree');
+          firstNode.click();
+          firstNode.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
       requestAnimationFrame(() => {
         requestAnimationFrame(() => this.updateBookSkillTreeScrollFade());
       });
@@ -3637,7 +3676,8 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookSelectedIndex = null;
 
     for (const item of this.unifiedBookListItems) {
-      item.classList.remove('selected', 'achievement-category-selected');
+      item.classList.remove('state-selected', 'is-selected');
+      item.querySelector('.book-ui-node')?.classList.remove('is-selected');
     }
 
     const statusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
@@ -3800,11 +3840,9 @@ export default class GameScene extends Phaser.Scene {
     const detailNote = panel.querySelector('.book-status-two-col .book-status-detail-note') as HTMLElement | null;
     if (!statList || !detailNote) return;
 
-    const listHeight = Math.ceil(statList.getBoundingClientRect().height);
-    if (listHeight > 0) {
-      detailNote.style.height = `${listHeight}px`;
-      detailNote.style.maxHeight = `${listHeight}px`;
-    }
+    statList.style.height = 'fit-content';
+    detailNote.style.height = '220px';
+    detailNote.style.removeProperty('max-height');
     this.updateStatusDetailScrollFade(panel);
   }
 
@@ -3851,15 +3889,23 @@ export default class GameScene extends Phaser.Scene {
   private applyStatusPanelValues(
     panel: HTMLElement,
     values: Record<'power' | 'speed' | 'technique' | 'control', number>,
+    baselineValues?: Record<'power' | 'speed' | 'technique' | 'control', number>,
   ) {
-    const powerEl = panel.querySelector('#book-status-power');
-    if (powerEl) powerEl.textContent = String(values.power);
-    const speedEl = panel.querySelector('#book-status-speed');
-    if (speedEl) speedEl.textContent = String(values.speed);
-    const techniqueEl = panel.querySelector('#book-status-technique');
-    if (techniqueEl) techniqueEl.textContent = String(values.technique);
-    const controlEl = panel.querySelector('#book-status-control');
-    if (controlEl) controlEl.textContent = String(values.control);
+    const statIdMap: Record<'power' | 'speed' | 'technique' | 'control', string> = {
+      power: '#book-status-power',
+      speed: '#book-status-speed',
+      technique: '#book-status-technique',
+      control: '#book-status-control',
+    };
+    (Object.keys(statIdMap) as Array<'power' | 'speed' | 'technique' | 'control'>).forEach((key) => {
+      const nextValueEl = panel.querySelector(statIdMap[key]) as HTMLElement | null;
+      if (!nextValueEl) return;
+      nextValueEl.textContent = String(values[key]);
+      const currentValueEl = panel.querySelector(`${statIdMap[key]}-current`) as HTMLElement | null;
+      if (currentValueEl) {
+        currentValueEl.textContent = String(baselineValues ? baselineValues[key] : values[key]);
+      }
+    });
   }
 
   private calculateStatusRarityRateValues(
@@ -3873,16 +3919,12 @@ export default class GameScene extends Phaser.Scene {
     const bait = resolvedBaitId ? getBaitById(resolvedBaitId) : null;
     const lure = resolvedLureId ? getLureById(resolvedLureId) : null;
     const rodRarityHitAdd = rod?.rarityHitRateAdd || { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 };
-    const addBonus = (a: number, b: number, c: number = 1.0) => {
-      const combined = 1.0 + (a - 1.0) + (b - 1.0) + (c - 1.0);
-      return Math.max(0.05, combined);
-    };
     const adjustedRarityWeights = {
-      common: rarityWeights.common * addBonus(bait?.commonBonus || 1.0, lure?.commonBonus || 1.0, 1.0 + rodRarityHitAdd.common),
-      uncommon: rarityWeights.uncommon * addBonus(bait?.uncommonBonus || 1.0, lure?.uncommonBonus || 1.0, 1.0 + rodRarityHitAdd.uncommon),
-      rare: rarityWeights.rare * addBonus(bait?.rareBonus || 1.0, lure?.rareBonus || 1.0, 1.0 + rodRarityHitAdd.rare),
-      epic: rarityWeights.epic * addBonus(bait?.epicBonus || 1.0, lure?.epicBonus || 1.0, 1.0 + rodRarityHitAdd.epic),
-      legendary: rarityWeights.legendary * addBonus(
+      common: rarityWeights.common * this.combineRarityBonus(bait?.commonBonus || 1.0, lure?.commonBonus || 1.0, 1.0 + rodRarityHitAdd.common),
+      uncommon: rarityWeights.uncommon * this.combineRarityBonus(bait?.uncommonBonus || 1.0, lure?.uncommonBonus || 1.0, 1.0 + rodRarityHitAdd.uncommon),
+      rare: rarityWeights.rare * this.combineRarityBonus(bait?.rareBonus || 1.0, lure?.rareBonus || 1.0, 1.0 + rodRarityHitAdd.rare),
+      epic: rarityWeights.epic * this.combineRarityBonus(bait?.epicBonus || 1.0, lure?.epicBonus || 1.0, 1.0 + rodRarityHitAdd.epic),
+      legendary: rarityWeights.legendary * this.combineRarityBonus(
         bait?.legendaryBonus || 1.0,
         lure?.legendaryBonus || 1.0,
         1.0 + rodRarityHitAdd.legendary,
@@ -3919,25 +3961,45 @@ export default class GameScene extends Phaser.Scene {
     (Object.keys(rarityIdMap) as Array<'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'>).forEach((key) => {
       const rateEl = panel.querySelector(rarityIdMap[key]) as HTMLElement | null;
       if (!rateEl) return;
-      const formattedValue = values[key].toFixed(1);
+      const formattedValue = Math.round(values[key]).toString();
       rateEl.innerHTML = `${formattedValue}<span class="book-status-rarity-prob-percent">%</span>`;
+      const currentRateEl = panel.querySelector(`${rarityIdMap[key]}-current`) as HTMLElement | null;
+      if (currentRateEl) {
+        const currentValue = baselineValues ? Math.round(baselineValues[key]).toString() : formattedValue;
+        currentRateEl.innerHTML = `${currentValue}<span class="book-status-rarity-prob-percent">%</span>`;
+      }
       const deltaEl = panel.querySelector(`${rarityIdMap[key]}-delta`) as HTMLElement | null;
       if (!deltaEl) return;
+      const itemEl = deltaEl.closest('.book-status-rarity-prob-item') as HTMLElement | null;
       deltaEl.textContent = '';
       deltaEl.classList.remove('is-plus', 'is-minus', 'has-delta');
+      itemEl?.classList.remove('is-delta-unchanged', 'is-delta-plus', 'is-delta-minus');
       if (!baselineValues) return;
       const delta = Math.round(values[key] * 10) - Math.round(baselineValues[key] * 10);
-      if (delta === 0) return;
-      deltaEl.textContent = delta > 0 ? `+${(delta / 10).toFixed(1)}%` : `${(delta / 10).toFixed(1)}%`;
+      if (delta === 0) {
+        itemEl?.classList.add('is-delta-unchanged');
+        return;
+      }
+      deltaEl.textContent = '';
       deltaEl.classList.add('has-delta');
       deltaEl.classList.toggle('is-plus', delta > 0);
       deltaEl.classList.toggle('is-minus', delta < 0);
+      itemEl?.classList.toggle('is-delta-plus', delta > 0);
+      itemEl?.classList.toggle('is-delta-minus', delta < 0);
     });
   }
 
+  private combineRarityBonus(a: number, b: number, c: number = 1.0): number {
+    // 整数表示でも差が見えるよう、装備ボーナスの効きを強める。
+    const bonusDelta = (a - 1.0) + (b - 1.0) + (c - 1.0);
+    const combined = 1.0 + bonusDelta * 2.4;
+    return Math.max(0.05, combined);
+  }
+
   private clearStatusPreviewStatDelta(panel: HTMLElement) {
+    panel.classList.remove('is-status-previewing');
     const currentValues = this.calculateStatusIndexValues(this.playerData.equippedRodId);
-    this.applyStatusPanelValues(panel, currentValues);
+    this.applyStatusPanelValues(panel, currentValues, currentValues);
     const currentRarityRates = this.calculateStatusRarityRateValues();
     this.applyStatusRarityRateValues(panel, currentRarityRates);
     const deltaEls = panel.querySelectorAll('.book-status-stat-delta');
@@ -3945,11 +4007,16 @@ export default class GameScene extends Phaser.Scene {
       (el as HTMLElement).textContent = '';
       el.classList.remove('is-plus', 'is-minus');
     });
+    const statItems = panel.querySelectorAll('.book-status-stat-list li[data-stat-key]');
+    statItems.forEach((el) => el.classList.remove('is-delta-unchanged', 'is-delta-plus', 'is-delta-minus'));
+    const rarityItems = panel.querySelectorAll('.book-status-rarity-prob-item');
+    rarityItems.forEach((el) => el.classList.remove('is-delta-unchanged', 'is-delta-plus', 'is-delta-minus'));
   }
 
   private updateStatusPreviewStatDelta(panel: HTMLElement) {
     this.clearStatusPreviewStatDelta(panel);
     if (!this.statusEquipmentSelectorType || !this.statusPreviewEquipmentType) return;
+    panel.classList.add('is-status-previewing');
 
     const currentValues = this.calculateStatusIndexValues(this.playerData.equippedRodId);
     const currentRarityRates = this.calculateStatusRarityRateValues();
@@ -3965,18 +4032,21 @@ export default class GameScene extends Phaser.Scene {
           ? { baitId: this.statusPreviewEquipmentId, lureId: null }
           : { lureId: this.statusPreviewEquipmentId, baitId: null };
     const previewRarityRates = this.calculateStatusRarityRateValues(previewRarityOverrides);
-    this.applyStatusPanelValues(panel, previewValues);
+    this.applyStatusPanelValues(panel, previewValues, currentValues);
     this.applyStatusRarityRateValues(panel, previewRarityRates, currentRarityRates);
 
     const statKeys: Array<'power' | 'speed' | 'technique' | 'control'> = ['power', 'speed', 'technique', 'control'];
     statKeys.forEach((statKey) => {
-      const delta = previewValues[statKey] - currentValues[statKey];
-      if (delta === 0) return;
       const li = panel.querySelector(`.book-status-stat-list li[data-stat-key="${statKey}"]`) as HTMLElement | null;
       if (!li) return;
+      const delta = previewValues[statKey] - currentValues[statKey];
+      li.classList.toggle('is-delta-unchanged', delta === 0);
+      li.classList.toggle('is-delta-plus', delta > 0);
+      li.classList.toggle('is-delta-minus', delta < 0);
+      if (delta === 0) return;
       const deltaEl = li.querySelector('.book-status-stat-delta') as HTMLElement | null;
       if (!deltaEl) return;
-      deltaEl.textContent = delta > 0 ? `+${delta}` : `${delta}`;
+      deltaEl.textContent = '';
       deltaEl.classList.toggle('is-plus', delta > 0);
       deltaEl.classList.toggle('is-minus', delta < 0);
     });
@@ -4444,8 +4514,12 @@ export default class GameScene extends Phaser.Scene {
   private syncStatusEquipmentButtonSelection(panel: HTMLElement) {
     const rodBtn = panel.querySelector('#book-status-change-rod') as HTMLElement | null;
     const lureBtn = panel.querySelector('#book-status-change-lure') as HTMLElement | null;
-    const rodSelected = this.statusNavArea === 'equipmentButtons' && this.statusNavButtonType === 'rod';
-    const lureSelected = this.statusNavArea === 'equipmentButtons' && this.statusNavButtonType === 'lure';
+    const rodSelected =
+      (this.statusNavArea === 'equipmentButtons' && this.statusNavButtonType === 'rod') ||
+      this.statusEquipmentSelectorType === 'rod';
+    const lureSelected =
+      (this.statusNavArea === 'equipmentButtons' && this.statusNavButtonType === 'lure') ||
+      this.statusEquipmentSelectorType === 'lure';
     rodBtn?.classList.toggle('is-nav-selected', rodSelected);
     lureBtn?.classList.toggle('is-nav-selected', lureSelected);
     this.syncStatusStatSelection(panel);
@@ -4576,10 +4650,11 @@ export default class GameScene extends Phaser.Scene {
     this.setSkillNavArea('tree');
     // カテゴリ切替直後はツリー上のノード未選択。↓で一段目を選ぶまで選択なし。
     this.skillSelectedNodeId = null;
-    this.unifiedBookListItems.forEach((item, i) => {
+    this.unifiedBookListItems.forEach((row, i) => {
       const on = i === index;
-      item.classList.toggle('selected', on);
-      if (on) item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      row.classList.toggle('state-selected', on);
+      row.querySelector('.book-ui-node')?.classList.toggle('is-selected', on);
+      if (on) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
     this.renderSkillBookPanel();
   }
@@ -4594,13 +4669,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private updateSkillNodeVisualStates(grid: HTMLElement) {
-    const rows = grid.querySelectorAll('.book-skill-row');
+    const rows = grid.querySelectorAll('.book-ui-row');
     rows.forEach((row) => {
       const nodeId = row.getAttribute('data-node-id');
-      const button = row.querySelector('.book-skill-node') as HTMLElement | null;
+      const button = row.querySelector('.book-ui-node') as HTMLElement | null;
       if (!nodeId || !button) return;
       const isUnlocked = this.playerData.unlockedSkillNodes.has(nodeId as SkillNodeId);
-      const isSelected = button.classList.contains('selected');
+      const isSelected = button.classList.contains('is-selected');
       const isAvailable = button.classList.contains('is-available');
       row.classList.toggle('state-obtained', isUnlocked);
       row.classList.toggle('state-selected', isSelected);
@@ -4640,8 +4715,10 @@ export default class GameScene extends Phaser.Scene {
         this.unifiedBookSelectedIndex = treeIdx;
       }
       if (this.unifiedBookListItems.length > 0) {
-        this.unifiedBookListItems.forEach((item, i) => {
-          item.classList.toggle('selected', !noListSelection && i === treeIdx);
+        this.unifiedBookListItems.forEach((row, i) => {
+          const on = !noListSelection && i === treeIdx;
+          row.classList.toggle('state-selected', on);
+          row.querySelector('.book-ui-node')?.classList.toggle('is-selected', on);
         });
       }
     }
@@ -4677,18 +4754,18 @@ export default class GameScene extends Phaser.Scene {
 
     for (const def of nodes) {
       const row = document.createElement('div');
-      row.className = 'book-skill-row';
+      row.className = 'book-ui-row';
       row.setAttribute('data-node-id', def.id);
       row.setAttribute('data-slot', def.slot);
 
       const marker = document.createElement('span');
-      marker.className = `book-skill-node-marker ${def.kind === 'ability' ? 'is-ability' : 'is-passive'}`;
+      marker.className = `book-ui-marker ${def.kind === 'ability' ? 'is-ability' : 'is-passive'}`;
       marker.setAttribute('aria-hidden', 'true');
-      marker.innerHTML = '<span class="book-skill-node-marker-inner"></span>';
+      marker.innerHTML = '<span class="book-ui-marker-inner"></span>';
 
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'book-skill-node ui-frame-box';
+      btn.className = 'book-ui-node ui-frame-box';
       btn.setAttribute('data-node-id', def.id);
       btn.setAttribute('data-slot', def.slot);
       const unlockedHere = unlocked.has(def.id);
@@ -4697,22 +4774,22 @@ export default class GameScene extends Phaser.Scene {
       btn.classList.toggle('is-available', !unlockedHere && can);
       btn.classList.toggle('is-locked', !unlockedHere && !can);
       btn.innerHTML = `
-        <span class="book-skill-node-main">
-          <span class="book-skill-node-name">${def.name}</span>
-          <span class="book-skill-node-meta"><span class="book-skill-cost-num">${def.costSp}</span> SP</span>
+        <span class="book-ui-node-main">
+          <span class="book-ui-node-name">${def.name}</span>
+          <span class="book-ui-node-meta"><span class="book-skill-cost-num">${def.costSp}</span> SP</span>
         </span>
       `;
       const handleSelect = () => {
         this.skillSelectedNodeId = def.id;
-        grid.querySelectorAll('.book-skill-node').forEach((el) => {
-          el.classList.toggle('selected', el === btn);
+        grid.querySelectorAll('.book-ui-node').forEach((el) => {
+          el.classList.toggle('is-selected', el === btn);
         });
         this.updateSkillNodeVisualStates(grid);
         this.updateSkillDetailPanel(panel);
       };
       btn.addEventListener('click', handleSelect);
       row.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).closest('.book-skill-node')) return;
+        if ((e.target as HTMLElement).closest('.book-ui-node')) return;
         handleSelect();
       });
 
@@ -4727,18 +4804,18 @@ export default class GameScene extends Phaser.Scene {
         this.skillSelectedNodeId = null;
       }
     }
-    // 行 .book-skill-row にも data-node-id があるため、必ずノードボタンを対象にする
+    // 行 .book-ui-row にも data-node-id があるため、必ずノードボタンを対象にする
     let selBtn: HTMLElement | null = null;
     if (this.skillSelectedNodeId) {
       selBtn = grid.querySelector(
-        `.book-skill-node[data-node-id="${this.skillSelectedNodeId}"]`,
+        `.book-ui-node[data-node-id="${this.skillSelectedNodeId}"]`,
       ) as HTMLElement | null;
       if (!selBtn) {
         this.skillSelectedNodeId = null;
       }
     }
-    grid.querySelectorAll('.book-skill-node').forEach((el) => el.classList.remove('selected'));
-    if (selBtn) selBtn.classList.add('selected');
+    grid.querySelectorAll('.book-ui-node').forEach((el) => el.classList.remove('is-selected'));
+    if (selBtn) selBtn.classList.add('is-selected');
 
     this.updateSkillNodeVisualStates(grid);
 
@@ -4908,12 +4985,24 @@ export default class GameScene extends Phaser.Scene {
 
   /** スキルカテゴリを隣に切り替え。端では false（呼び出し側で Book タブ遷移などに使う） */
   private switchSkillTreeByDelta(delta: number): boolean {
+    const currentSelectedNode = this.skillSelectedNodeId ? getSkillNodeDef(this.skillSelectedNodeId) : null;
+    const selectedSlot = currentSelectedNode?.slot ?? null;
     let currentTree = (this.unifiedBookSelectedId as SkillTreeId) || SKILL_TREE_IDS[0];
     if (!SKILL_TREE_IDS.includes(currentTree)) currentTree = SKILL_TREE_IDS[0];
     const currentIdx = SKILL_TREE_IDS.indexOf(currentTree);
     const nextIdx = Math.max(0, Math.min(SKILL_TREE_IDS.length - 1, currentIdx + delta));
     if (nextIdx === currentIdx) return false;
     this.selectSkillTree(SKILL_TREE_IDS[nextIdx], nextIdx);
+    if (selectedSlot !== null && this.unifiedBookUIElement) {
+      const panel = this.unifiedBookUIElement.querySelector('#book-skill-panel') as HTMLElement | null;
+      const sameSlotNode = panel?.querySelector(
+        `#book-skill-tree-grid .book-ui-node[data-slot="${selectedSlot}"]`,
+      ) as HTMLButtonElement | null;
+      if (sameSlotNode) {
+        sameSlotNode.click();
+        sameSlotNode.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
     return true;
   }
 
@@ -5013,7 +5102,7 @@ export default class GameScene extends Phaser.Scene {
     if (!panel) return;
     const grid = panel.querySelector('#book-skill-tree-grid') as HTMLElement | null;
     if (grid) {
-      grid.querySelectorAll('.book-skill-node').forEach((el) => el.classList.remove('selected'));
+      grid.querySelectorAll('.book-ui-node').forEach((el) => el.classList.remove('is-selected'));
       this.updateSkillNodeVisualStates(grid);
     }
     this.updateSkillDetailPanel(panel);
@@ -5048,7 +5137,7 @@ export default class GameScene extends Phaser.Scene {
         if (!this.skillSelectedNodeId) {
           const skillPanel = this.unifiedBookUIElement.querySelector('#book-skill-panel') as HTMLElement | null;
           const firstNode = skillPanel?.querySelector(
-            '#book-skill-tree-grid .book-skill-node',
+            '#book-skill-tree-grid .book-ui-node',
           ) as HTMLElement | null;
           if (firstNode) {
             firstNode.click();
@@ -5073,9 +5162,17 @@ export default class GameScene extends Phaser.Scene {
       } else {
         const wasCategory = this.skillNavArea === 'category';
         if (!this.switchSkillTreeByDelta(-1)) {
-          this.switchUnifiedBookTabWhenSkillHorizontalEdge(-1);
-        } else if (wasCategory) {
+          if (wasCategory) {
+            const lastIdx = SKILL_TREE_IDS.length - 1;
+            this.selectSkillTree(SKILL_TREE_IDS[lastIdx], lastIdx);
+          } else {
+            this.switchUnifiedBookTabWhenSkillHorizontalEdge(-1);
+          }
+        }
+        if (wasCategory) {
+          this.clearSkillTreeRowKeyboardSelection();
           this.setSkillNavArea('category');
+          this.ensureSkillCategoryVisibleInRightPane();
         }
       }
       return;
@@ -5083,10 +5180,11 @@ export default class GameScene extends Phaser.Scene {
     if (dir === 'right') {
       if (this.skillNavArea === 'category') {
         if (!this.switchSkillTreeByDelta(1)) {
-          this.switchUnifiedBookTabWhenSkillHorizontalEdge(1);
-        } else {
-          this.setSkillNavArea('category');
+          this.selectSkillTree(SKILL_TREE_IDS[0], 0);
         }
+        this.clearSkillTreeRowKeyboardSelection();
+        this.setSkillNavArea('category');
+        this.ensureSkillCategoryVisibleInRightPane();
       } else if (this.skillNavArea === 'tree') {
         if (this.getSkillUnlockButton()) {
           this.setSkillNavArea('unlock');
@@ -5105,10 +5203,10 @@ export default class GameScene extends Phaser.Scene {
     if (!this.unifiedBookUIElement) return false;
     const panel = this.unifiedBookUIElement.querySelector('#book-skill-panel') as HTMLElement | null;
     if (!panel) return false;
-    const buttons = Array.from(panel.querySelectorAll('#book-skill-tree-grid .book-skill-node')) as HTMLElement[];
+    const buttons = Array.from(panel.querySelectorAll('#book-skill-tree-grid .book-ui-node')) as HTMLElement[];
     if (!buttons.length) return false;
 
-    let currentIdx = buttons.findIndex((btn) => btn.classList.contains('selected'));
+    let currentIdx = buttons.findIndex((btn) => btn.classList.contains('is-selected'));
     if (currentIdx < 0 && this.skillSelectedNodeId) {
       currentIdx = buttons.findIndex((btn) => btn.getAttribute('data-node-id') === this.skillSelectedNodeId);
     }
@@ -5189,9 +5287,24 @@ export default class GameScene extends Phaser.Scene {
         this.unifiedBookListScrollElement.appendChild(emptySlot);
       }
     } else if (this.unifiedBookTab === 'pedia') {
-      // 図鑑タブ
-      const fishList = this.getRealFishList();
+      // 図鑑タブ（ソート単位で見出し行を挿入。見出しは unifiedBookListItems に含めない）
+      this.syncBookPediaSortBarUI();
+      const fishList = this.getSortedPediaFishList(this.getRealFishList());
+      let lastSectionKey: string | null = null;
       fishList.forEach((fish, index) => {
+        const sectionKey =
+          this.unifiedBookPediaSortMode === 'rarity' ? String(fish.rarity) : String(fish.habitat);
+        if (sectionKey !== lastSectionKey) {
+          lastSectionKey = sectionKey;
+          const headingRow = document.createElement('div');
+          headingRow.className = 'book-ui-row book-pedia-section-row';
+          headingRow.setAttribute('data-pedia-section', sectionKey);
+          const label = document.createElement('div');
+          label.className = 'book-pedia-section-label';
+          label.textContent = this.getPediaSectionHeadingLabel(sectionKey);
+          headingRow.appendChild(label);
+          this.unifiedBookListScrollElement.appendChild(headingRow);
+        }
         const isCaught = this.playerData.caughtFishIds.has(fish.id);
         const item = this.createUnifiedBookListItem(fish, index, isCaught);
         this.unifiedBookListScrollElement.appendChild(item);
@@ -5199,10 +5312,13 @@ export default class GameScene extends Phaser.Scene {
       });
     } else if (this.unifiedBookTab === 'skills') {
       SKILL_TREE_IDS.forEach((treeId, index) => {
+        const row = document.createElement('div');
+        row.className = 'book-ui-row state-obtained';
+        row.setAttribute('data-tree-id', treeId);
+        row.setAttribute('data-index', String(index));
+
         const item = document.createElement('div');
-        item.className = 'book-list-item ui-frame-box';
-        item.setAttribute('data-tree-id', treeId);
-        item.setAttribute('data-index', String(index));
+        item.className = 'book-ui-node ui-frame-box book-list-item';
 
         const icon = document.createElement('div');
         icon.className = 'book-list-item-icon';
@@ -5234,9 +5350,10 @@ export default class GameScene extends Phaser.Scene {
 
         item.appendChild(icon);
         item.appendChild(info);
-        item.addEventListener('click', () => this.selectSkillTree(treeId, index));
-        this.unifiedBookListScrollElement.appendChild(item);
-        this.unifiedBookListItems.push(item);
+        row.appendChild(item);
+        row.addEventListener('click', () => this.selectSkillTree(treeId, index));
+        this.unifiedBookListScrollElement.appendChild(row);
+        this.unifiedBookListItems.push(row);
       });
     } else if (this.unifiedBookTab === 'achievement') {
       const categories = getAllCategories();
@@ -5273,11 +5390,18 @@ export default class GameScene extends Phaser.Scene {
       }
     } else if (this.unifiedBookTab === 'skills' && this.unifiedBookListItems.length > 0) {
       if (this.unifiedBookSelectedIndex === null || this.unifiedBookSelectedId === null) {
-        this.unifiedBookListItems.forEach((item) => item.classList.remove('selected'));
+        this.unifiedBookListItems.forEach((row) => {
+          row.classList.remove('state-selected');
+          row.querySelector('.book-ui-node')?.classList.remove('is-selected');
+        });
         this.renderSkillBookPanel();
       } else {
         const idx = Math.min(this.unifiedBookSelectedIndex, this.unifiedBookListItems.length - 1);
-        this.unifiedBookListItems.forEach((item, i) => item.classList.toggle('selected', i === idx));
+        this.unifiedBookListItems.forEach((row, i) => {
+          const on = i === idx;
+          row.classList.toggle('state-selected', on);
+          row.querySelector('.book-ui-node')?.classList.toggle('is-selected', on);
+        });
         const tid = this.unifiedBookListItems[idx]?.getAttribute('data-tree-id') as SkillTreeId | undefined;
         if (tid && SKILL_TREE_IDS.includes(tid)) {
           this.unifiedBookSelectedId = tid;
@@ -5384,13 +5508,22 @@ export default class GameScene extends Phaser.Scene {
   }
 
   createUnifiedBookListItem(fish: any, index: number, isCaught: boolean, size?: number): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'book-ui-row';
+    if (this.unifiedBookTab === 'pedia') {
+      row.classList.toggle('state-obtained', isCaught);
+      row.classList.toggle('state-locked', !isCaught);
+    } else {
+      row.classList.add('state-obtained');
+    }
+    row.setAttribute('data-fish-id', fish.id);
+    row.setAttribute('data-index', index.toString());
+
     const item = document.createElement('div');
-    item.className = 'book-list-item ui-frame-box';
+    item.className = 'book-ui-node ui-frame-box book-list-item';
     if (!isCaught && this.unifiedBookTab === 'pedia') {
       item.classList.add('book-list-item-unknown');
     }
-    item.setAttribute('data-fish-id', fish.id);
-    item.setAttribute('data-index', index.toString());
 
     // アイコン
     const icon = document.createElement('div');
@@ -5427,10 +5560,6 @@ export default class GameScene extends Phaser.Scene {
       icon.appendChild(emoji);
     }
 
-    // 情報
-    const info = document.createElement('div');
-    info.className = 'book-list-item-info';
-
     const name = document.createElement('div');
     name.className = 'book-list-item-name';
     if (isCaught || this.unifiedBookTab === 'inventory') {
@@ -5439,54 +5568,71 @@ export default class GameScene extends Phaser.Scene {
       name.textContent = '？？？';
     }
 
-    const meta = document.createElement('div');
-    meta.className = 'book-list-item-meta';
-    if (this.unifiedBookTab === 'inventory') {
-      // インベントリではサイズを表示（ゴミの場合は表示しない）
-      const sizeText = size !== undefined ? `${size}cm / ` : '';
-      // サイズを考慮した価格を計算
-      const isJunk = fish.id.startsWith('junk_');
-      let displayPrice = fish.price;
-      if (!isJunk && size !== undefined) {
-        const sizeRatio = size / fish.maxSize;
-        displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
-      }
-      displayPrice = Math.round(displayPrice * getSellPriceMultiplier(this.playerData));
-      meta.textContent = `${sizeText}💰 ${displayPrice}G`;
+    if (this.unifiedBookTab === 'pedia') {
+      item.classList.add('book-list-item--pedia');
+      const stars = document.createElement('div');
+      stars.className = 'book-list-item-stars';
+      stars.innerHTML = this.buildBookRarityStarsInnerHtml(fish.rarity);
+      item.appendChild(icon);
+      item.appendChild(name);
+      item.appendChild(stars);
     } else {
-      if (isCaught) {
-        const priceG = Math.round(fish.price * getSellPriceMultiplier(this.playerData));
-        const rarityKey = fish.rarity as keyof typeof rarityStars;
-        meta.textContent = `💰 ${priceG}G | ${rarityStars[rarityKey]}`;
+      const info = document.createElement('div');
+      info.className = 'book-list-item-info';
+      const meta = document.createElement('div');
+      meta.className = 'book-list-item-meta';
+      if (this.unifiedBookTab === 'inventory') {
+        // インベントリではサイズを表示（ゴミの場合は表示しない）
+        const sizeText = size !== undefined ? `${size}cm / ` : '';
+        // サイズを考慮した価格を計算
+        const isJunk = fish.id.startsWith('junk_');
+        let displayPrice = fish.price;
+        if (!isJunk && size !== undefined) {
+          const sizeRatio = size / fish.maxSize;
+          displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
+        }
+        displayPrice = Math.round(displayPrice * getSellPriceMultiplier(this.playerData));
+        meta.textContent = `${sizeText}💰 ${displayPrice}G`;
       } else {
-        meta.textContent = '未発見';
+        if (isCaught) {
+          const priceG = Math.round(fish.price * getSellPriceMultiplier(this.playerData));
+          const rarityKey = fish.rarity as keyof typeof rarityStars;
+          meta.textContent = `💰 ${priceG}G | ${rarityStars[rarityKey]}`;
+        } else {
+          meta.textContent = '未発見';
+        }
       }
+
+      info.appendChild(name);
+      info.appendChild(meta);
+
+      item.appendChild(icon);
+      item.appendChild(info);
     }
 
-    info.appendChild(name);
-    info.appendChild(meta);
-
-    item.appendChild(icon);
-    item.appendChild(info);
+    row.appendChild(item);
 
     // クリックイベント
-    item.addEventListener('click', () => {
+    row.addEventListener('click', () => {
       this.selectUnifiedBookItem(fish.id, index);
     });
 
-    return item;
+    return row;
   }
 
   createUnifiedBookEmptySlotItem(): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'book-ui-row state-empty';
     const item = document.createElement('div');
-    item.className = 'book-list-item ui-frame-box empty-slot';
+    item.className = 'book-ui-node ui-frame-box book-list-item empty-slot';
 
     // 空スロットは枠だけ（魚画像・名前を描画しない）
     const icon = document.createElement('div');
     icon.className = 'book-list-item-icon';
     item.appendChild(icon);
+    row.appendChild(item);
 
-    return item;
+    return row;
   }
 
   selectUnifiedBookItem(fishId: string, index: number) {
@@ -5505,14 +5651,13 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookSelectedId = fishId;
     this.unifiedBookSelectedIndex = index;
 
-    // 選択状態を更新
-    this.unifiedBookListItems.forEach((item, i) => {
-      if (i === index) {
-        item.classList.add('selected');
-        // スクロールして表示範囲内に
-        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      } else {
-        item.classList.remove('selected');
+    // 選択状態を更新（行 state-selected + ノード is-selected）
+    this.unifiedBookListItems.forEach((row, i) => {
+      const on = i === index;
+      row.classList.toggle('state-selected', on);
+      row.querySelector('.book-ui-node')?.classList.toggle('is-selected', on);
+      if (on) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     });
 
@@ -5675,17 +5820,7 @@ export default class GameScene extends Phaser.Scene {
       name.textContent = fish.name;
       
       // レアリティスター表示（釣果のある図鑑・インベントリは常に表示）
-      const starCount = rarityStarCount[fish.rarity];
-      const colorHex = this.getRarityColorCssValue(fish.rarity);
-      let starsHTML = '';
-      for (let i = 0; i < 5; i++) {
-        if (i < starCount) {
-          starsHTML += `<span style="color: ${colorHex}">★</span>`;
-        } else {
-          starsHTML += `<span style="color: #bababa">★</span>`;
-        }
-      }
-      rarityStarsElement.innerHTML = starsHTML;
+      rarityStarsElement.innerHTML = this.buildBookRarityStarsInnerHtml(fish.rarity);
 
       // インベントリタブの場合は個体のサイズ、図鑑タブの場合は記録を表示
       let displaySizeValue: string;
@@ -5699,8 +5834,8 @@ export default class GameScene extends Phaser.Scene {
             flatInventory.push({ fishId: item.fishId, size });
           }
         }
-        const selectedIndex = this.unifiedBookListItems.findIndex(item => 
-          item.getAttribute('data-fish-id') === fish.id && item.classList.contains('selected')
+        const selectedIndex = this.unifiedBookListItems.findIndex(
+          (row) => row.getAttribute('data-fish-id') === fish.id && row.classList.contains('state-selected'),
         );
         const selectedItem = selectedIndex >= 0 ? flatInventory[selectedIndex] : null;
         const itemSize = selectedItem?.size;
@@ -5751,8 +5886,8 @@ export default class GameScene extends Phaser.Scene {
             flatInventory.push({ fishId: item.fishId, size: s });
           }
         }
-        const selectedIndex = this.unifiedBookListItems.findIndex(item => 
-          item.getAttribute('data-fish-id') === fish.id && item.classList.contains('selected')
+        const selectedIndex = this.unifiedBookListItems.findIndex(
+          (row) => row.getAttribute('data-fish-id') === fish.id && row.classList.contains('state-selected'),
         );
         const selectedItem = selectedIndex >= 0 ? flatInventory[selectedIndex] : null;
         if (selectedItem?.size !== undefined && !isJunk) {
@@ -5798,18 +5933,7 @@ export default class GameScene extends Phaser.Scene {
       emoji.style.display = 'block';
 
       name.textContent = '？？？';
-      const starCount = rarityStarCount[fish.rarity];
-      // レアリティ1（COMMON）のアクティブな星の色を特別に設定（未捕獲の場合も）
-      const inactiveStarColor = this.getRarityColorCssValue(fish.rarity);
-      let starsHTML = '';
-      for (let i = 0; i < 5; i++) {
-        if (i < starCount) {
-          starsHTML += `<span style="color: ${inactiveStarColor}">★</span>`;
-        } else {
-          starsHTML += `<span style="color: #bababa">★</span>`;
-        }
-      }
-      rarityStarsElement.innerHTML = starsHTML;
+      rarityStarsElement.innerHTML = this.buildBookRarityStarsInnerHtml(fish.rarity);
 
       sizeText.textContent = '-';
       if (sizeUnitText) {
@@ -5916,7 +6040,7 @@ export default class GameScene extends Phaser.Scene {
 
   createAchievementCategoryItem(category: string, count: number, index: number): HTMLElement {
     const item = document.createElement('div');
-    item.className = 'achievement-category-item ui-frame-box';
+    item.className = 'achievement-category-item book-ui-node ui-frame-box';
     item.setAttribute('data-category', category);
     item.setAttribute('data-index', index.toString());
 
@@ -5968,10 +6092,10 @@ export default class GameScene extends Phaser.Scene {
     // 選択状態を更新
     this.unifiedBookListItems.forEach((item, i) => {
       if (i === index) {
-        item.classList.add('achievement-category-selected');
+        item.classList.add('is-selected');
         item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } else {
-        item.classList.remove('achievement-category-selected');
+        item.classList.remove('is-selected');
       }
     });
 
@@ -6296,7 +6420,7 @@ export default class GameScene extends Phaser.Scene {
         }
       }
       if (this.skillNavArea === 'tree') {
-        return root.querySelector('#book-skill-tree-grid .book-skill-node.selected') as HTMLElement | null;
+        return root.querySelector('#book-skill-tree-grid .book-ui-node.is-selected') as HTMLElement | null;
       }
       return null;
     }
@@ -6307,12 +6431,14 @@ export default class GameScene extends Phaser.Scene {
         if (row) return row;
       }
       const cat = root.querySelector(
-        '#book-list-scroll .achievement-category-item.achievement-category-selected',
+        '#book-list-scroll .achievement-category-item.is-selected',
       ) as HTMLElement | null;
       if (cat) return cat;
     }
 
-    return root.querySelector('#book-list-scroll .book-list-item.selected') as HTMLElement | null;
+    return root.querySelector(
+      '#book-list-scroll .book-ui-node.book-list-item.is-selected',
+    ) as HTMLElement | null;
   }
 
   private noteUiMenuKeyboardNavigation() {
@@ -6505,6 +6631,11 @@ export default class GameScene extends Phaser.Scene {
               return;
             }
             if (this.statusNavArea === 'equipmentButtons') {
+              if (this.statusNavButtonType === 'lure') {
+                this.switchUnifiedBookTab('skills');
+                this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+                return;
+              }
               this.moveStatusEquipmentButtonSelection(statusPanel, 1);
               return;
             }
@@ -6564,7 +6695,8 @@ export default class GameScene extends Phaser.Scene {
     const lastIndex = this.unifiedBookListItems.length - 1;
     if (currentIndex < 0 || currentIndex > lastIndex) currentIndex = 0;
 
-    const columns = this.unifiedBookTab === 'achievement' ? 1 : 3;
+    const columns =
+      this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'pedia' ? 1 : 3;
 
     if (dir === 'up' && currentIndex < columns && this.achievementNavArea === 'left') {
       this.enterUnifiedBookMainTabsNav();
@@ -6671,6 +6803,80 @@ export default class GameScene extends Phaser.Scene {
   // ゴミ以外の魚リストを取得
   getRealFishList() {
     return fishDatabase.filter(f => !f.id.startsWith('junk'));
+  }
+
+  private syncBookPediaSortBarUI() {
+    if (!this.unifiedBookUIElement) return;
+    const rarityBtn = this.unifiedBookUIElement.querySelector('#book-pedia-sort-rarity') as HTMLButtonElement | null;
+    const watersBtn = this.unifiedBookUIElement.querySelector('#book-pedia-sort-waters') as HTMLButtonElement | null;
+    const rarityOn = this.unifiedBookPediaSortMode === 'rarity';
+    rarityBtn?.classList.toggle('is-active', rarityOn);
+    watersBtn?.classList.toggle('is-active', !rarityOn);
+    rarityBtn?.setAttribute('aria-selected', rarityOn ? 'true' : 'false');
+    watersBtn?.setAttribute('aria-selected', rarityOn ? 'false' : 'true');
+  }
+
+  private setUnifiedBookPediaSortMode(mode: 'rarity' | 'waters') {
+    if (this.unifiedBookPediaSortMode === mode) return;
+    this.unifiedBookPediaSortMode = mode;
+    const keepId = this.unifiedBookSelectedId;
+    this.updateUnifiedBookList();
+    if (this.unifiedBookTab !== 'pedia' || this.unifiedBookListItems.length === 0) return;
+    if (keepId) {
+      const idx = this.unifiedBookListItems.findIndex((row) => row.getAttribute('data-fish-id') === keepId);
+      if (idx >= 0) this.selectUnifiedBookItem(keepId, idx);
+      else {
+        const first = this.unifiedBookListItems[0]?.getAttribute('data-fish-id');
+        if (first) this.selectUnifiedBookItem(first, 0);
+      }
+    }
+  }
+
+  private getSortedPediaFishList(source: FishConfig[]): FishConfig[] {
+    const RARITY_ORDER: Record<Rarity, number> = {
+      [Rarity.COMMON]: 0,
+      [Rarity.UNCOMMON]: 1,
+      [Rarity.RARE]: 2,
+      [Rarity.EPIC]: 3,
+      [Rarity.LEGENDARY]: 4,
+    };
+    const HABITAT_ORDER: Record<Habitat, number> = {
+      [Habitat.FRESHWATER]: 0,
+      [Habitat.STREAM]: 1,
+      [Habitat.SALTWATER]: 2,
+    };
+    const list = [...source];
+    if (this.unifiedBookPediaSortMode === 'rarity') {
+      list.sort((a, b) => {
+        const ra = RARITY_ORDER[a.rarity] ?? 99;
+        const rb = RARITY_ORDER[b.rarity] ?? 99;
+        if (ra !== rb) return ra - rb;
+        return a.name.localeCompare(b.name, 'ja');
+      });
+    } else {
+      list.sort((a, b) => {
+        const ha = HABITAT_ORDER[a.habitat] ?? 99;
+        const hb = HABITAT_ORDER[b.habitat] ?? 99;
+        if (ha !== hb) return ha - hb;
+        const ra = RARITY_ORDER[a.rarity] ?? 99;
+        const rb = RARITY_ORDER[b.rarity] ?? 99;
+        if (ra !== rb) return ra - rb;
+        return a.name.localeCompare(b.name, 'ja');
+      });
+    }
+    return list;
+  }
+
+  private getPediaSectionHeadingLabel(groupKey: string): string {
+    if (this.unifiedBookPediaSortMode === 'rarity') {
+      return groupKey.toUpperCase();
+    }
+    const watersSectionLabels: Record<string, string> = {
+      [Habitat.FRESHWATER]: 'Freshwater',
+      [Habitat.STREAM]: 'Stream',
+      [Habitat.SALTWATER]: 'Saltwater',
+    };
+    return watersSectionLabels[groupKey] ?? groupKey;
   }
 
   updateBookSlots() {
@@ -6821,12 +7027,12 @@ export default class GameScene extends Phaser.Scene {
     
     // 前回選択されていたスロットからクラスを削除
     if (this.lastSelectedBookIndex >= 0 && this.bookSlots[this.lastSelectedBookIndex]) {
-      this.bookSlots[this.lastSelectedBookIndex].classList.remove('selected');
+      this.bookSlots[this.lastSelectedBookIndex].classList.remove('is-selected');
     }
     
     // 選択されたスロットにクラスを追加
     if (this.bookSlots[this.bookSelectedIndex]) {
-      this.bookSlots[this.bookSelectedIndex].classList.add('selected');
+      this.bookSlots[this.bookSelectedIndex].classList.add('is-selected');
     }
     
     this.lastSelectedBookIndex = this.bookSelectedIndex;
@@ -7509,7 +7715,17 @@ export default class GameScene extends Phaser.Scene {
     this.shopItemElements = [];
     this.lastSelectedShopIndex = -1;
     
-    let items: { id: string; name: string; icon: string; price: number; info: string; owned: boolean; equipped: boolean }[] = [];
+    let items: {
+      id: string;
+      name: string;
+      icon: string;
+      price: number;
+      info: string;
+      owned: boolean;
+      equipped: boolean;
+      /** エサタブ: 1回の購入で入る個数（表示用） */
+      packQuantity?: number;
+    }[] = [];
 
     if (this.shopTab === 'rod') {
       items = rodConfigs.map(rod => ({
@@ -7524,7 +7740,8 @@ export default class GameScene extends Phaser.Scene {
     } else if (this.shopTab === 'bait') {
       items = baitConfigs.map(bait => ({
         id: bait.id,
-        name: `${bait.name} (×${bait.quantity})`,
+        name: bait.name,
+        packQuantity: bait.quantity,
         icon: bait.icon,
         price: bait.price,
         info: `所持: ${getBaitCount(this.playerData, bait.id)}個 [消費]`,
@@ -7573,32 +7790,42 @@ export default class GameScene extends Phaser.Scene {
         const rod = rodConfigs[index];
         if (rod) {
           statChips.push(
-            { label: 'パワー', value: `+${Math.round(rod.powerStatAdd * 100)}` },
-            { label: 'スピード', value: `+${Math.round(rod.speedStatAdd * 100)}` },
-            { label: 'コントロール', value: `+${Math.round(rod.controlStatAdd * 12)}` },
-            { label: 'テクニック', value: `+${Math.round(rod.techniqueStatAdd * 100)}` }
+            { label: 'POWER', value: `+${Math.round(rod.powerStatAdd * 100)}` },
+            { label: 'SPEED', value: `+${Math.round(rod.speedStatAdd * 100)}` },
+            { label: 'CONTROL', value: `+${Math.round(rod.controlStatAdd * 12)}` },
+            { label: 'TECH', value: `+${Math.round(rod.techniqueStatAdd * 100)}` }
           );
           noteText = rod.description;
         }
       } else if (this.shopTab === 'bait') {
         const bait = baitConfigs[index];
         if (bait) {
+          const formatPercentDelta = (bonus: number): string => {
+            const delta = Math.round((bonus - 1) * 100);
+            if (delta > 0) return `+${delta}%`;
+            return `${delta}%`;
+          };
           statChips.push(
-            { label: 'UNCOMMON', value: `${Math.round((bait.uncommonBonus - 1) * 100)}%` },
-            { label: 'RARE', value: `${Math.round((bait.rareBonus - 1) * 100)}%` },
-            { label: 'EPIC', value: `${Math.round((bait.epicBonus - 1) * 100)}%` },
-            { label: 'LEGEND', value: `${Math.round((bait.legendaryBonus - 1) * 100)}%` }
+            { label: 'UNCOMMON', value: formatPercentDelta(bait.uncommonBonus) },
+            { label: 'RARE', value: formatPercentDelta(bait.rareBonus) },
+            { label: 'EPIC', value: formatPercentDelta(bait.epicBonus) },
+            { label: 'LEGEND', value: formatPercentDelta(bait.legendaryBonus) }
           );
           noteText = bait.description;
         }
       } else if (this.shopTab === 'lure') {
         const lure = lureConfigs[index];
         if (lure) {
+          const formatPercentDelta = (bonus: number): string => {
+            const delta = Math.round((bonus - 1) * 100);
+            if (delta > 0) return `+${delta}%`;
+            return `${delta}%`;
+          };
           statChips.push(
-            { label: 'UNCOMMON', value: `${Math.round((lure.uncommonBonus - 1) * 100)}%` },
-            { label: 'RARE', value: `${Math.round((lure.rareBonus - 1) * 100)}%` },
-            { label: 'EPIC', value: `${Math.round((lure.epicBonus - 1) * 100)}%` },
-            { label: 'LEGEND', value: `${Math.round((lure.legendaryBonus - 1) * 100)}%` }
+            { label: 'UNCOMMON', value: formatPercentDelta(lure.uncommonBonus) },
+            { label: 'RARE', value: formatPercentDelta(lure.rareBonus) },
+            { label: 'EPIC', value: formatPercentDelta(lure.epicBonus) },
+            { label: 'LEGEND', value: formatPercentDelta(lure.legendaryBonus) }
           );
           noteText = lure.description;
         }
@@ -7617,14 +7844,14 @@ export default class GameScene extends Phaser.Scene {
       }
 
       const itemEl = document.createElement('div');
-      itemEl.className = 'shop-item';
+      itemEl.className = 'shop-item book-ui-row';
       if (item.owned && this.shopTab !== 'bait') {
         itemEl.classList.add('is-owned');
       }
       itemEl.setAttribute('data-index', index.toString());
 
       const contentWrap = document.createElement('div');
-      contentWrap.className = 'shop-item-content ui-frame-box';
+      contentWrap.className = 'shop-item-content ui-frame-box book-ui-node';
 
       const iconContainer = document.createElement('div');
       iconContainer.className = 'shop-item-icon';
@@ -7653,7 +7880,15 @@ export default class GameScene extends Phaser.Scene {
 
       const nameEl = document.createElement('div');
       nameEl.className = 'shop-item-name';
-      nameEl.textContent = item.name;
+      if (this.shopTab === 'bait' && item.packQuantity != null) {
+        nameEl.appendChild(document.createTextNode(item.name));
+        const qtyEl = document.createElement('span');
+        qtyEl.className = 'shop-item-name-qty';
+        qtyEl.textContent = `×${item.packQuantity}`;
+        nameEl.appendChild(qtyEl);
+      } else {
+        nameEl.textContent = item.name;
+      }
 
       const actionWrap = document.createElement('div');
       actionWrap.className = 'shop-item-action';
@@ -7700,7 +7935,20 @@ export default class GameScene extends Phaser.Scene {
         chipLabelEl.textContent = chip.label;
         const chipValueEl = document.createElement('span');
         chipValueEl.className = 'shop-item-stat-chip-value';
-        chipValueEl.textContent = chip.value;
+        const v = chip.value;
+        if (v.includes('%')) {
+          const i = v.lastIndexOf('%');
+          const numPart = v.slice(0, i);
+          const rest = v.slice(i + 1);
+          chipValueEl.appendChild(document.createTextNode(numPart));
+          const pctEl = document.createElement('span');
+          pctEl.className = 'shop-item-stat-chip-percent';
+          pctEl.textContent = '%';
+          chipValueEl.appendChild(pctEl);
+          if (rest) chipValueEl.appendChild(document.createTextNode(rest));
+        } else {
+          chipValueEl.textContent = v;
+        }
         chipEl.appendChild(chipLabelEl);
         chipEl.appendChild(chipValueEl);
         statRow.appendChild(chipEl);
@@ -7820,17 +8068,20 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
     
-    // 前回選択されていたアイテムからクラスを削除
+    // 前回選択されていた行・ノードからクラスを削除
     if (this.lastSelectedShopIndex >= 0 && this.shopItemElements[this.lastSelectedShopIndex]) {
-      this.shopItemElements[this.lastSelectedShopIndex].classList.remove('selected');
+      const prevRow = this.shopItemElements[this.lastSelectedShopIndex];
+      prevRow.classList.remove('state-selected');
+      prevRow.querySelector('.shop-item-content')?.classList.remove('is-selected');
     }
-    
-    // 選択されたアイテムにクラスを追加
+
+    // 選択された行・ノードにクラスを追加（Book UI と同型: 行 state-selected + ノード is-selected）
     if (this.shopItemElements[this.shopSelectedIndex]) {
-      const selectedEl = this.shopItemElements[this.shopSelectedIndex];
-      selectedEl.classList.add('selected');
+      const row = this.shopItemElements[this.shopSelectedIndex];
+      row.classList.add('state-selected');
+      row.querySelector('.shop-item-content')?.classList.add('is-selected');
       // キーボード移動時に選択中アイテムが常に見えるようにする
-      selectedEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
     
     this.lastSelectedShopIndex = this.shopSelectedIndex;
