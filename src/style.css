@@ -577,6 +577,29 @@ span.level-label-value {
   transition: visibility 0s 0s, opacity 0.3s ease-out, background 0.3s ease-out;
 }
 
+/* Phaser キー操作に切り替え中: モーダル HTML へポインタを届かせない（実カーソル位置の :hover が残らない） */
+body.ui-menu-input-keyboard #book-ui,
+body.ui-menu-input-keyboard #inventory-modal,
+body.ui-menu-input-keyboard #detail-modal,
+body.ui-menu-input-keyboard #book-modal,
+body.ui-menu-input-keyboard #book-detail-modal,
+body.ui-menu-input-keyboard #shop-modal,
+body.ui-menu-input-keyboard #achievement-modal,
+body.ui-menu-input-keyboard #character-modal {
+  pointer-events: none !important;
+}
+
+body.ui-menu-input-keyboard #book-ui *,
+body.ui-menu-input-keyboard #inventory-modal *,
+body.ui-menu-input-keyboard #detail-modal *,
+body.ui-menu-input-keyboard #book-modal *,
+body.ui-menu-input-keyboard #book-detail-modal *,
+body.ui-menu-input-keyboard #shop-modal *,
+body.ui-menu-input-keyboard #achievement-modal *,
+body.ui-menu-input-keyboard #character-modal * {
+  pointer-events: none !important;
+}
+
 .modal-content {
   border: none;
   padding: 20px;
@@ -2059,6 +2082,67 @@ span.level-label-value {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
+/* キー操作中: スキル / 実績 / 図鑑の左リストでホバー見た目を出さない（キー選択と併存させない） */
+#book-ui.is-book-kb-input #book-list-scroll .book-ui-node.book-list-item.ui-frame-box:not(.is-selected):hover {
+  --frame-fill-color: #cbb792;
+}
+
+#book-ui.is-book-kb-input #book-list-scroll .book-ui-node.book-list-item.ui-frame-box:not(.is-selected):hover::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui.is-book-kb-input[data-tab="achievement"]
+  #book-list-scroll
+  .achievement-category-item.book-ui-node.ui-frame-box:not(.is-selected):hover {
+  --frame-fill-color: #cbb792;
+}
+
+#book-ui.is-book-kb-input[data-tab="achievement"]
+  #book-list-scroll
+  .achievement-category-item.book-ui-node.ui-frame-box:not(.is-selected):hover::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui.is-book-kb-input[data-tab="pedia"]
+  #book-list-scroll
+  .book-list-item--pedia.ui-frame-box:not(.is-selected):hover::before {
+  --frame-fill-color: #decda4;
+}
+
+#book-ui.is-book-kb-input[data-tab="pedia"]
+  #book-list-scroll
+  .book-list-item--pedia.ui-frame-box:not(.is-selected):hover::after {
+  border-image: url(/images/ui/uiframe2.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* キー操作中: スキルツリー・カテゴリ◇・解放ボタンのホバーを抑止 */
+#book-ui.is-book-kb-input[data-tab="skills"]
+  #book-skill-tree-grid
+  .book-ui-row:not(.state-selected):not(.state-locked)
+  .book-ui-node.ui-frame-box:hover {
+  --frame-fill-color: #f2e2b6;
+}
+
+#book-ui.is-book-kb-input[data-tab="skills"] .book-skill-category-tab:not(.is-active):not(:disabled):hover::before {
+  background: #d8c7a7;
+}
+
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:hover,
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:active,
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:focus,
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:focus-visible {
+  --frame-fill-color: #7cb86c;
+  transform: none;
+}
+
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:hover,
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:active,
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:focus,
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:focus-visible {
+  --frame-fill-color: #c2681f;
+  transform: none;
+}
+
 /* 統合BookUI: 左リスト・スキルノード・上部タブは色・枠・指マーカーで足りるため明滅しない。スキル解放・カテゴリ・確認ダイアログのキー選択のみ明滅。 */
 @keyframes book-ui-selected-opacity-pulse {
   0%,
@@ -2507,6 +2591,31 @@ span.level-label-value {
 #book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box:focus-visible {
   outline: none;
   box-shadow: none;
+}
+
+/* キーでソート行を操作中: Book UI の枠切り替え + マウスホバー見た目を抑止 */
+#book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box.is-nav-selected {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box.is-nav-selected::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui[data-tab="pedia"].is-pedia-sort-kb-nav .book-pedia-sort-btn.ui-frame-box:not(.is-active):hover {
+  --frame-fill-color: #cbb792;
+}
+
+#book-ui[data-tab="pedia"].is-pedia-sort-kb-nav .book-pedia-sort-btn.ui-frame-box:not(.is-active):hover::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui[data-tab="pedia"].is-pedia-sort-kb-nav .book-pedia-sort-btn.ui-frame-box.is-active:hover {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui[data-tab="pedia"].is-pedia-sort-kb-nav .book-pedia-sort-btn.ui-frame-box.is-active:hover::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 .book-list-header {
@@ -4673,6 +4782,23 @@ span.level-label-value {
   transform: translateY(1px);
 }
 
+/* キー操作中はカーソルが載っていてもホバー見た目にしない（矢印選択と併存させない） */
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:hover,
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:active,
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:focus,
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:focus-visible {
+  --frame-fill-color: #7cb86c;
+  transform: none;
+}
+
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box.is-nav-selected:hover,
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box.is-nav-selected:active,
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box.is-nav-selected:focus,
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box.is-nav-selected:focus-visible {
+  --frame-fill-color: #c2681f;
+  transform: none;
+}
+
 /* ── 各セクション共通 ── */
 .book-status-section {
   padding: 0;
@@ -4746,9 +4872,21 @@ span.level-label-value {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
+#book-status-panel.is-status-kb-nav-input .book-status-stat-list li:not(.is-selected):hover {
+  --frame-fill-color: #f2e2b6;
+}
+
+#book-status-panel.is-status-kb-nav-input .book-status-stat-list li:not(.is-selected):hover.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
 .book-status-stat-list li:focus-visible {
   outline: 2px solid rgba(194, 104, 31, 0.7);
   outline-offset: -2px;
+}
+
+#book-status-panel.is-status-kb-nav-input .book-status-stat-list li:focus-visible {
+  outline: none;
 }
 
 .book-status-stat-list li.is-selected {

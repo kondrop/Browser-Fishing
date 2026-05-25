@@ -43,14 +43,33 @@ export default class GameScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite;
   private playerShadow!: Phaser.GameObjects.Image;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private fishingRod!: Phaser.GameObjects.Line;
-  private float!: Phaser.GameObjects.Arc;
+  /** 背面に担いだ竿（Graphics） */
+  private fishingRodGfx!: Phaser.GameObjects.Graphics;
+  /** 糸・浮き（キャラ手前） */
+  private fishingLineGfx!: Phaser.GameObjects.Graphics;
+  private fishingRig = {
+    anchor: { x: 0, y: 0 },
+    /** しなりなしの竿先（直線区間の終点） */
+    rodStraightTip: { x: 0, y: 0 },
+    /** しなった先端（糸の出どころ） */
+    rodTip: { x: 0, y: 0 },
+    float: { x: 0, y: 0 },
+    targetFloat: { x: 0, y: 0 },
+    castDistance: 0,
+    phase: 0,
+    castPullback: 0,
+    rodBend: 0,
+    castSnapT: 1,
+    /** 左右移動時の糸・浮き慣性オフセット */
+    floatInertiaX: 0,
+    floatInertiaY: 0,
+  };
   
   // プレイヤーの向き（'up', 'down', 'left', 'right'）
   private playerFacing: 'up' | 'down' | 'left' | 'right' = 'up';
   // 上下移動時も維持する左右の向き（スプライトの反転用）
   private lastHorizontalFacing: 'left' | 'right' = 'right';
-  
+
   private state: FishingStateValue = FishingState.IDLE;
   private biteTimer?: Phaser.Time.TimerEvent;
   private biteTimeout?: Phaser.Time.TimerEvent;
@@ -173,6 +192,8 @@ export default class GameScene extends Phaser.Scene {
   private unifiedBookListItems: HTMLElement[] = [];
   /** 図鑑左リストの並び（レアリティ / 生息地） */
   private unifiedBookPediaSortMode: 'rarity' | 'waters' = 'rarity';
+  /** 図鑑タブ: ソート行と魚リストのどちらをキー操作しているか */
+  private pediaNavArea: 'sort' | 'list' = 'list';
   private unifiedBookListScrollElement!: HTMLElement;
   private unifiedBookListScrollFadeBottomElement: HTMLElement | null = null;
   private unifiedBookListScrollFadeTopElement: HTMLElement | null = null;
@@ -703,6 +724,10 @@ export default class GameScene extends Phaser.Scene {
     body.setCollideWorldBounds(true);
     this.player.setDepth(10);
 
+    this.fishingRodGfx = this.add.graphics().setDepth(11);
+    this.fishingLineGfx = this.add.graphics().setDepth(12);
+    this.initCarriedRodRig();
+
     // 足元の影（プレイヤーに追従）
     const shadowOffsetY = playerSize * playerScale * 0.38;
     this.playerShadow = this.add
@@ -889,7 +914,16 @@ export default class GameScene extends Phaser.Scene {
 
     const markUiMenuMousePointer = (e?: PointerEvent) => {
       if (e && e.type === 'pointermove' && e.movementX === 0 && e.movementY === 0) return;
+      const prev = this.uiMenuNavInputChannel;
       this.uiMenuNavInputChannel = 'mouse';
+      if (prev !== 'mouse') {
+        this.syncBookPediaSortBarUI();
+      }
+      if (prev === 'keyboard' && this.unifiedBookOpen && this.unifiedBookTab === 'status') {
+        this.refreshStatusPanelBookInputModeStyles();
+      }
+      this.refreshBookTabsKbInputChrome();
+      this.syncUiMenuKeyboardPointerSuppression();
     };
     document.addEventListener('pointerdown', () => markUiMenuMousePointer(), { capture: true });
     document.addEventListener('pointermove', (ev) => markUiMenuMousePointer(ev as PointerEvent), { capture: true });
@@ -1283,6 +1317,8 @@ export default class GameScene extends Phaser.Scene {
       // visibilityとopacityで制御するため、displayの設定は不要
     }
 
+    this.syncUiMenuKeyboardPointerSuppression();
+
     // Phaser側の入力制御
     this.updatePhaserInputState();
   }
@@ -1668,6 +1704,9 @@ export default class GameScene extends Phaser.Scene {
         this.exclamation.setScale(1 + Math.sin(time / 50) * 0.2);
     }
 
+    this.updateFishingRig(time, delta);
+    this.drawFishingRig();
+
     this.refreshKbSelectionPointer();
   }
 
@@ -1814,11 +1853,675 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // --- 釣りリグ（背面担ぎ・Graphics） ---
+
+  /** 背中付け根（プレイヤー中心からのオフセット、スケール前） */
+  private static readonly ROD_ANCHOR_OFFSET_X = 1;
+  private static readonly ROD_ANCHOR_OFFSET_Y = 7.5;
+  /** 竿先（付け根からのななめ後ろへの伸び・担ぎ/アイドル） */
+  private static readonly ROD_TIP_OFFSET_X = 20;
+  private static readonly ROD_TIP_OFFSET_Y = 27;
+  /** 待機中は ROD_TIP_OFFSET と同じ長さで X だけ反転（後ろ上 → 前上） */
+  /** 竿身の太さ（付け根→先端で三段階） */
+  private static readonly ROD_SHAFT_THICK_GRIP = 4;
+  private static readonly ROD_SHAFT_THICK_MID = 3;
+  private static readonly ROD_SHAFT_THICK_TIP = 2;
+  private static readonly ROD_GRIP_SIZE = 5;
+  /** 先端のしなり量（スケール前・px） */
+  private static readonly ROD_TIP_CURVE_BASE = 4;
+  /** 担い時・通常時の糸の長さ（スケール前・px） */
+  private static readonly ROD_CARRIED_LINE_LENGTH = 12;
+  /** 左右移動の慣性（スケール前・px） */
+  private static readonly ROD_FLOAT_INERTIA_MAX_X = 6;
+  private static readonly ROD_FLOAT_INERTIA_MAX_Y = -1.0;
+  /** キャスティング：持ち手（anchor）中心の揺れ・最大角度（ラジアン） */
+  private static readonly ROD_CAST_GRIP_SWAY_MAX = 0.14;
+
+  private getFishingRigScale(): number {
+    return Math.abs(this.player.scaleX);
+  }
+
+  private getRodPalette(): {
+    grip: number;
+    shaftGrip: number;
+    shaftMid: number;
+    shaftTip: number;
+    ring: number;
+  } {
+    switch (this.playerData.equippedRodId) {
+      case 'rod_bamboo':
+        return {
+          grip: 0x3a5c10,
+          shaftGrip: 0x4e8018,
+          shaftMid: 0x6ab020,
+          shaftTip: 0x90d830,
+          ring: 0xc8f070,
+        };
+      case 'rod_carbon':
+        return {
+          grip: 0x1a1e28,
+          shaftGrip: 0x303848,
+          shaftMid: 0x505868,
+          shaftTip: 0x788898,
+          ring: 0xb0b8c8,
+        };
+      case 'rod_master':
+        return {
+          grip: 0x5c1018,
+          shaftGrip: 0x8c1828,
+          shaftMid: 0xc02838,
+          shaftTip: 0xe84858,
+          ring: 0xffcc44,
+        };
+      case 'rod_legendary':
+        return {
+          grip: 0x4a1878,
+          shaftGrip: 0x6a28a8,
+          shaftMid: 0x9848d0,
+          shaftTip: 0xc878f0,
+          ring: 0xffe066,
+        };
+      case 'rod_basic':
+      default:
+        return {
+          grip: 0x3a2410,
+          shaftGrip: 0x5c3818,
+          shaftMid: 0x805028,
+          shaftTip: 0xa87038,
+          ring: 0xdddddd,
+        };
+    }
+  }
+
+  /** 顔の反対側＝背中（スプライトは左右のみ） */
+  private getBackSign(): number {
+    return this.player.flipX ? 1 : -1;
+  }
+
+  /** アイドル8コマごとの Y オフセット（スプライト基準px・コマ切り） */
+  private static readonly ROD_IDLE_FRAME_Y = [0, 0, 1, 2, 2, 1, 0, -1];
+  /** 歩行4コマ（フレーム 9-12）ごとの Y オフセット */
+  private static readonly ROD_WALK_FRAME_Y = [0, 2, 1, 0];
+
+  /**
+   * スプライトと同じコマ数でガクッと動く付け根オフセット（補間なし）
+   * player-idle: 0-7 @ 6fps / player-walk: 9-12 @ 8fps
+   */
+  private getRodAnchorAnimOffset(): { x: number; y: number } {
+    const animKey = this.player.anims.currentAnim?.key;
+    const frame = this.player.anims.currentFrame?.index ?? 0;
+    const s = this.getFishingRigScale();
+
+    if (animKey === 'player-idle' && frame >= 0 && frame <= 7) {
+      return {
+        x: 0,
+        y: Math.round(GameScene.ROD_IDLE_FRAME_Y[frame] * s),
+      };
+    }
+    if (animKey === 'player-walk' && frame >= 9 && frame <= 12) {
+      return {
+        x: 0,
+        y: Math.round(GameScene.ROD_WALK_FRAME_Y[frame - 9] * s),
+      };
+    }
+    return { x: 0, y: 0 };
+  }
+
+  private syncFishingRigAnchor(): void {
+    const s = this.getFishingRigScale();
+    const backSign = this.getBackSign();
+    const animOffset = this.getRodAnchorAnimOffset();
+    this.fishingRig.anchor.x = Math.round(
+      this.player.x + backSign * GameScene.ROD_ANCHOR_OFFSET_X * s + animOffset.x,
+    );
+    this.fishingRig.anchor.y = Math.round(
+      this.player.y + GameScene.ROD_ANCHOR_OFFSET_Y * s + animOffset.y,
+    );
+  }
+
+  /** 待機中：アイドル時の垂れ方向を反転（前＋上） */
+  private getRodWaitingDroopDirection(): { x: number; y: number } {
+    const faceSign = -this.getBackSign();
+    const x = faceSign * 0.75;
+    const y = -1;
+    const len = Math.hypot(x, y) || 1;
+    return { x: x / len, y: y / len };
+  }
+
+  /** 先端が倒れる方向（正規化） */
+  private getRodLeanDirection(fromX: number, fromY: number): { x: number; y: number } {
+    if (this.state === FishingState.WAITING) {
+      return this.getRodWaitingDroopDirection();
+    }
+    const showLine =
+      this.state === FishingState.BITE ||
+      this.state === FishingState.FIGHTING;
+    if (showLine) {
+      const dx = this.fishingRig.float.x - fromX;
+      const dy = this.fishingRig.float.y - fromY;
+      const len = Math.hypot(dx, dy);
+      if (len > 2) {
+        return { x: dx / len, y: dy / len };
+      }
+      const tdx = this.fishingRig.targetFloat.x - fromX;
+      const tdy = this.fishingRig.targetFloat.y - fromY;
+      const tlen = Math.hypot(tdx, tdy);
+      if (tlen > 2) {
+        return { x: tdx / tlen, y: tdy / tlen };
+      }
+    }
+    // 担い・キャスティング準備：後ろに構え、先端が下方向に垂れる（アイドルと同じ）
+    return { x: 0, y: 1 };
+  }
+
+  private getRodTipCurveAmount(): number {
+    const base = GameScene.ROD_TIP_CURVE_BASE;
+    const bend = this.fishingRig.rodBend;
+    if (this.state === FishingState.BITE) {
+      return base + 2.5 + bend;
+    }
+    if (this.state === FishingState.FIGHTING) {
+      return base + 1.5 + bend;
+    }
+    if (this.state === FishingState.WAITING) {
+      return base * 0.5;
+    }
+    if (this.state === FishingState.CASTING) {
+      return base * 0.45;
+    }
+    return base * 0.45;
+  }
+
+  /** 弓形の膨らみ向き（付け根→先端の法線方向の符号） */
+  private getRodCurveBulgeSign(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+  ): number {
+    const segDx = endX - startX;
+    const segDy = endY - startY;
+    const segLen = Math.hypot(segDx, segDy) || 1;
+    const perpX = -segDy / segLen;
+    const perpY = segDx / segLen;
+    let lean = this.getRodLeanDirection(startX, startY);
+    const lineDx = this.fishingRig.float.x - startX;
+    const lineDy = this.fishingRig.float.y - startY;
+    const lineLen = Math.hypot(lineDx, lineDy);
+    if (lineLen > 2) {
+      const lineDir = { x: lineDx / lineLen, y: lineDy / lineLen };
+      // 糸がほぼ縦でも左右は顔向きで決める（投擲先の上下には依存しない）
+      lean =
+        Math.abs(lineDx) < Math.abs(lineDy) * 0.45
+          ? this.getRodWaitingDroopDirection()
+          : lineDir;
+    }
+    const dot = perpX * lean.x + perpY * lean.y;
+    return dot >= 0 ? -1 : 1;
+  }
+
+  /** 放物線（二次ベジェ）の制御点 */
+  private getRodCurveControlPoint(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    bulgeSign: number,
+  ): { x: number; y: number } {
+    const segDx = endX - startX;
+    const segDy = endY - startY;
+    const segLen = Math.hypot(segDx, segDy) || 1;
+    const perpX = (-segDy / segLen) * bulgeSign;
+    const perpY = (segDx / segLen) * bulgeSign;
+    const bulgeMul = this.state === FishingState.WAITING ? 1.0 : 2.5;
+    const bulge = this.getRodTipCurveAmount() * this.getFishingRigScale() * bulgeMul;
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+    return {
+      x: midX + perpX * bulge,
+      y: midY + perpY * bulge,
+    };
+  }
+
+  private syncFishingRigRodTipBase(): void {
+    const s = this.getFishingRigScale();
+    const backSign = this.getBackSign();
+    const faceSign = -backSign;
+    let straightX: number;
+    let straightY: number;
+    if (this.state === FishingState.WAITING) {
+      straightX =
+        this.fishingRig.anchor.x +
+        Math.round(faceSign * GameScene.ROD_TIP_OFFSET_X * s);
+      straightY =
+        this.fishingRig.anchor.y -
+        Math.round(GameScene.ROD_TIP_OFFSET_Y * s);
+    } else {
+      straightX =
+        this.fishingRig.anchor.x +
+        Math.round(backSign * GameScene.ROD_TIP_OFFSET_X * s);
+      straightY =
+        this.fishingRig.anchor.y -
+        Math.round(GameScene.ROD_TIP_OFFSET_Y * s);
+    }
+    this.fishingRig.rodStraightTip.x = straightX;
+    this.fishingRig.rodStraightTip.y = straightY;
+    // 糸の出どころ＝直線延長上の先端（しなりは描画のみ）
+    this.fishingRig.rodTip.x = straightX;
+    this.fishingRig.rodTip.y = straightY;
+  }
+
+  private rotatePointAround(
+    px: number,
+    py: number,
+    cx: number,
+    cy: number,
+    angle: number,
+  ): { x: number; y: number } {
+    const dx = px - cx;
+    const dy = py - cy;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return {
+      x: cx + dx * cos - dy * sin,
+      y: cy + dx * sin + dy * cos,
+    };
+  }
+
+  /** ゲージの増減に合わせ、持ち手を中心に竿全体を小さく揺らす */
+  private applyCastingGripSway(): void {
+    const { anchor, float } = this.fishingRig;
+    // 背面方向は flipX で反転。ゲージ最大＝最も背面へ引く
+    const sway =
+      (this.castPower - 0.5) *
+      2 *
+      GameScene.ROD_CAST_GRIP_SWAY_MAX *
+      this.getBackSign();
+    const tipRot = this.rotatePointAround(
+      this.fishingRig.rodStraightTip.x,
+      this.fishingRig.rodStraightTip.y,
+      anchor.x,
+      anchor.y,
+      sway,
+    );
+    this.fishingRig.rodStraightTip.x = Math.round(tipRot.x);
+    this.fishingRig.rodStraightTip.y = Math.round(tipRot.y);
+    this.fishingRig.rodTip.x = this.fishingRig.rodStraightTip.x;
+    this.fishingRig.rodTip.y = this.fishingRig.rodStraightTip.y;
+    const floatRot = this.rotatePointAround(float.x, float.y, anchor.x, anchor.y, sway);
+    this.fishingRig.float.x = Math.round(floatRot.x);
+    this.fishingRig.float.y = Math.round(floatRot.y);
+  }
+
+  private computeFloatTarget(distance: number): { x: number; y: number } {
+    let x = this.player.x;
+    let y = this.player.y;
+    switch (this.playerFacing) {
+      case 'up':
+        y -= distance;
+        break;
+      case 'down':
+        y += distance;
+        break;
+      case 'left':
+        x -= distance;
+        break;
+      case 'right':
+        x += distance;
+        break;
+    }
+    return { x: Math.round(x), y: Math.round(y) };
+  }
+
+  /** 竿先から短い糸＋浮き（常時・釣り前） */
+  private syncCarriedFloatPosition(): void {
+    const lean = this.getRodLeanDirection(
+      this.fishingRig.rodTip.x,
+      this.fishingRig.rodTip.y,
+    );
+    const lineLen = GameScene.ROD_CARRIED_LINE_LENGTH * this.getFishingRigScale();
+    this.fishingRig.float.x = Math.round(this.fishingRig.rodTip.x + lean.x * lineLen);
+    this.fishingRig.float.y = Math.round(this.fishingRig.rodTip.y + lean.y * lineLen);
+    this.fishingRig.targetFloat.x = this.fishingRig.float.x;
+    this.fishingRig.targetFloat.y = this.fishingRig.float.y;
+  }
+
+  /** 左右移動中のみ：浮きが進行方向の反対へ遅れ、糸が斜めに見える */
+  private updateCarriedFloatInertia(delta: number): void {
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    const moveSpeed = config.main['1-5_移動速度'];
+    const s = this.getFishingRigScale();
+    const vx = body.velocity.x;
+    const isHorizontalMove = Math.abs(vx) > 8;
+    const follow = 1 - Math.exp(-14 * (delta / 1000));
+
+    if (isHorizontalMove) {
+      const ratio = Phaser.Math.Clamp(vx / moveSpeed, -1, 1);
+      const targetX = -ratio * GameScene.ROD_FLOAT_INERTIA_MAX_X * s;
+      const targetY = Math.abs(ratio) * GameScene.ROD_FLOAT_INERTIA_MAX_Y * s;
+      this.fishingRig.floatInertiaX = Phaser.Math.Linear(
+        this.fishingRig.floatInertiaX,
+        targetX,
+        follow,
+      );
+      this.fishingRig.floatInertiaY = Phaser.Math.Linear(
+        this.fishingRig.floatInertiaY,
+        targetY,
+        follow,
+      );
+      return;
+    }
+
+    this.fishingRig.floatInertiaX = Phaser.Math.Linear(this.fishingRig.floatInertiaX, 0, follow * 1.35);
+    this.fishingRig.floatInertiaY = Phaser.Math.Linear(this.fishingRig.floatInertiaY, 0, follow * 1.35);
+  }
+
+  private applyCarriedFloatWithInertia(): void {
+    this.syncCarriedFloatPosition();
+    this.fishingRig.float.x += Math.round(this.fishingRig.floatInertiaX);
+    this.fishingRig.float.y += Math.round(this.fishingRig.floatInertiaY);
+  }
+
+  /** 背面に担いだ竿の初期姿勢（常時表示用） */
+  private initCarriedRodRig(): void {
+    this.fishingRig.phase = 0;
+    this.fishingRig.castPullback = 0;
+    this.fishingRig.rodBend = 0;
+    this.fishingRig.castSnapT = 1;
+    this.fishingRig.floatInertiaX = 0;
+    this.fishingRig.floatInertiaY = 0;
+    this.syncFishingRigAnchor();
+    this.syncFishingRigRodTipBase();
+    this.applyCarriedFloatWithInertia();
+  }
+
+  /** 釣り終了時：遠投用の糸を戻し、短い糸＋浮きに復帰 */
+  private resetFishingLineState(): void {
+    this.fishingRig.castSnapT = 1;
+    this.fishingRig.castPullback = 0;
+    this.fishingRig.rodBend = 0;
+    this.fishingRig.floatInertiaX = 0;
+    this.fishingRig.floatInertiaY = 0;
+    this.syncFishingRigAnchor();
+    this.syncFishingRigRodTipBase();
+    this.applyCarriedFloatWithInertia();
+  }
+
+  private prepareCastingRig(): void {
+    this.fishingRig.castSnapT = 0;
+    this.fishingRig.castPullback = 0;
+    this.fishingRig.rodBend = 0;
+    this.fishingRig.floatInertiaX = 0;
+    this.fishingRig.floatInertiaY = 0;
+    this.syncFishingRigAnchor();
+    this.syncFishingRigRodTipBase();
+    this.applyCarriedFloatWithInertia();
+  }
+
+  private setupFishingRigAfterCast(distance: number): void {
+    const target = this.computeFloatTarget(distance);
+    this.fishingRig.castDistance = distance;
+    this.fishingRig.targetFloat.x = target.x;
+    this.fishingRig.targetFloat.y = target.y;
+    this.fishingRig.castSnapT = 0;
+    this.fishingRig.castPullback = 0;
+    this.syncFishingRigAnchor();
+    this.syncFishingRigRodTipBase();
+    this.fishingRig.float.x = this.fishingRig.rodTip.x;
+    this.fishingRig.float.y = this.fishingRig.rodTip.y;
+  }
+
+  private updateFishingRig(_time: number, delta: number): void {
+    const dt = delta / 1000;
+    this.fishingRig.phase += dt;
+
+    this.syncFishingRigAnchor();
+
+    if (
+      this.state === FishingState.IDLE ||
+      this.state === FishingState.SUCCESS ||
+      this.state === FishingState.FAIL
+    ) {
+      this.fishingRig.castPullback = Phaser.Math.Linear(this.fishingRig.castPullback, 0, 0.15);
+      this.fishingRig.rodBend = Phaser.Math.Linear(this.fishingRig.rodBend, 0, 0.15);
+      this.syncFishingRigRodTipBase();
+      this.updateCarriedFloatInertia(delta);
+      this.applyCarriedFloatWithInertia();
+      this.syncFishingRigRodTipBase();
+      return;
+    }
+
+    if (this.state === FishingState.CASTING) {
+      this.fishingRig.castPullback = 0;
+      this.fishingRig.rodBend = 0;
+      this.fishingRig.floatInertiaX = Phaser.Math.Linear(this.fishingRig.floatInertiaX, 0, 0.25);
+      this.fishingRig.floatInertiaY = Phaser.Math.Linear(this.fishingRig.floatInertiaY, 0, 0.25);
+      this.syncFishingRigRodTipBase();
+      this.applyCarriedFloatWithInertia();
+      this.applyCastingGripSway();
+      return;
+    }
+
+    if (this.fishingRig.castSnapT < 1) {
+      this.fishingRig.castSnapT = Math.min(1, this.fishingRig.castSnapT + delta / 280);
+    }
+    const snapEase = 1 - Math.pow(1 - this.fishingRig.castSnapT, 3);
+
+    let wobbleX = 0;
+    let wobbleY = 0;
+
+    if (this.state === FishingState.WAITING) {
+      const wobbleAmp = 4;
+      wobbleX = Math.sin(this.fishingRig.phase * 4) * wobbleAmp;
+      this.fishingRig.rodBend = Phaser.Math.Linear(this.fishingRig.rodBend, 0, 0.12);
+      this.fishingRig.castPullback = Phaser.Math.Linear(this.fishingRig.castPullback, 0, 0.1);
+    } else if (this.state === FishingState.BITE) {
+      wobbleX = Math.sin(this.fishingRig.phase * 35) * 8;
+      wobbleY = Math.cos(this.fishingRig.phase * 28) * 6;
+      this.fishingRig.rodBend = Phaser.Math.Linear(this.fishingRig.rodBend, 3, 0.25);
+    } else if (this.state === FishingState.FIGHTING) {
+      const tension = 1 - this.catchProgress;
+      const fishPull = (this.fishBarPosition - 0.5) * 6;
+      wobbleX = Math.sin(this.fishingRig.phase * 12) * (2 + tension * 4);
+      wobbleY = Math.cos(this.fishingRig.phase * 10) * (2 + tension * 3) + fishPull;
+      this.fishingRig.rodBend = Phaser.Math.Linear(this.fishingRig.rodBend, 2 + tension * 4, 0.08);
+    } else {
+      this.fishingRig.rodBend = Phaser.Math.Linear(this.fishingRig.rodBend, 0, 0.15);
+    }
+
+    const destX = this.fishingRig.targetFloat.x + wobbleX;
+    const destY = this.fishingRig.targetFloat.y + wobbleY;
+    const snapT = this.state === FishingState.WAITING ||
+      this.state === FishingState.BITE ||
+      this.state === FishingState.FIGHTING
+      ? snapEase
+      : 1;
+
+    this.syncFishingRigRodTipBase();
+
+    this.fishingRig.float.x = Math.round(
+      Phaser.Math.Linear(this.fishingRig.rodTip.x, destX, snapT),
+    );
+    this.fishingRig.float.y = Math.round(
+      Phaser.Math.Linear(this.fishingRig.rodTip.y, destY, snapT),
+    );
+
+    if (this.state !== FishingState.WAITING) {
+      this.syncFishingRigRodTipBase();
+    }
+  }
+
+  private drawPixelLine(
+    g: Phaser.GameObjects.Graphics,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    color: number,
+  ): void {
+    let x = Math.round(x0);
+    let y = Math.round(y0);
+    const xe = Math.round(x1);
+    const ye = Math.round(y1);
+    const dx = Math.abs(xe - x);
+    const dy = Math.abs(ye - y);
+    const sx = x < xe ? 1 : -1;
+    const sy = y < ye ? 1 : -1;
+    let err = dx - dy;
+    g.fillStyle(color, 1);
+    while (true) {
+      g.fillRect(x, y, 1, 1);
+      if (x === xe && y === ye) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        x += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        y += sy;
+      }
+    }
+  }
+
+  /** 竿身の進行度 0=グリップ側 … 1=先端（太さ・色とも三段階） */
+  private getRodShaftStyleAlongRod(
+    t: number,
+    palette: ReturnType<GameScene['getRodPalette']>,
+  ): { thick: number; color: number } {
+    if (t < 1 / 3) {
+      return { thick: GameScene.ROD_SHAFT_THICK_GRIP, color: palette.shaftGrip };
+    }
+    if (t < 2 / 3) {
+      return { thick: GameScene.ROD_SHAFT_THICK_MID, color: palette.shaftMid };
+    }
+    return { thick: GameScene.ROD_SHAFT_THICK_TIP, color: palette.shaftTip };
+  }
+
+  /** 付け根→先端を1本の二次ベジェでサンプル（連続した弓形） */
+  private collectRodShaftPixelsArc(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    bulgeSign: number,
+  ): Array<{ x: number; y: number; t: number }> {
+    const ctrl = this.getRodCurveControlPoint(startX, startY, endX, endY, bulgeSign);
+    const arcLen = Math.hypot(endX - startX, endY - startY);
+    const steps = Math.max(20, Math.round(arcLen * 1.6));
+    const samples: Array<{ x: number; y: number; t: number }> = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const u = 1 - t;
+      const x = u * u * startX + 2 * u * t * ctrl.x + t * t * endX;
+      const y = u * u * startY + 2 * u * t * ctrl.y + t * t * endY;
+      samples.push({ x: Math.round(x), y: Math.round(y), t });
+    }
+    const pixels: Array<{ x: number; y: number; t: number }> = [];
+    const seen = new Set<string>();
+    for (const s of samples) {
+      const key = `${s.x},${s.y}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pixels.push(s);
+    }
+    return pixels;
+  }
+
+  private drawRodOnBack(
+    g: Phaser.GameObjects.Graphics,
+    palette: ReturnType<GameScene['getRodPalette']>,
+  ): void {
+    const { anchor, rodStraightTip, rodTip } = this.fishingRig;
+    const ax = anchor.x;
+    const ay = anchor.y;
+    const backSign = this.getBackSign();
+    const gripSize = GameScene.ROD_GRIP_SIZE;
+    const gripHalf = Math.floor(gripSize / 2);
+
+    g.fillStyle(palette.grip, 1);
+    g.fillRect(ax - gripHalf, ay - gripHalf, gripSize, gripSize);
+
+    const bulgeSign = this.getRodCurveBulgeSign(ax, ay, rodStraightTip.x, rodStraightTip.y);
+    const shaftPixels = this.collectRodShaftPixelsArc(
+      ax,
+      ay,
+      rodStraightTip.x,
+      rodStraightTip.y,
+      bulgeSign,
+    );
+    shaftPixels.forEach((p) => {
+      const { thick, color } = this.getRodShaftStyleAlongRod(p.t, palette);
+      const off = Math.floor(thick / 2);
+      g.fillStyle(color, 1);
+      g.fillRect(p.x - off, p.y - off, thick, thick);
+    });
+
+    const endX = Math.round(rodTip.x);
+    const endY = Math.round(rodTip.y);
+    const tipThick = GameScene.ROD_SHAFT_THICK_TIP;
+    const tipOff = Math.floor(tipThick / 2);
+    g.fillStyle(palette.ring, 1);
+    g.fillRect(endX - tipOff, endY - tipOff, tipThick, tipThick);
+    g.fillStyle(palette.shaftTip, 0.6);
+    g.fillRect(endX - tipOff + 1, endY - tipOff + 1, Math.max(1, tipThick - 2), Math.max(1, tipThick - 2));
+    g.fillStyle(palette.grip, 0.85);
+    g.fillRect(ax + backSign * 2 - 1, ay - 1, 2, 3);
+  }
+
+  private drawFishingFloat(g: Phaser.GameObjects.Graphics, fx: number, fy: number): void {
+    const cx = Math.round(fx);
+    const cy = Math.round(fy);
+    const s = Math.max(1, Math.round(this.getFishingRigScale()));
+    const w = 3 + s;
+    const redH = 2 + Math.floor(s * 0.5);
+    const yellowH = 2 + Math.floor(s * 0.5);
+    g.fillStyle(0xffd200, 1);
+    g.fillRect(cx - Math.floor(w / 2), cy, w, yellowH);
+    g.fillStyle(0xff3333, 1);
+    g.fillRect(cx - Math.floor(w / 2), cy - redH, w, redH);
+    g.fillStyle(0xffffff, 0.9);
+    g.fillRect(cx, cy - redH + 1, 1, 1);
+  }
+
+  private drawFishingRig(): void {
+    const { rodTip, float } = this.fishingRig;
+    const palette = this.getRodPalette();
+    const lineColor = 0xdddddd;
+
+    this.fishingRodGfx.clear();
+    this.fishingLineGfx.clear();
+
+    this.drawRodOnBack(this.fishingRodGfx, palette);
+
+    this.drawPixelLine(this.fishingLineGfx, rodTip.x, rodTip.y, float.x, float.y, lineColor);
+    const lineWidth = config.waiting['3-1_ライン太さ'];
+    if (lineWidth >= 2) {
+      const perpX = float.x - rodTip.x;
+      const perpY = float.y - rodTip.y;
+      const len = Math.hypot(perpX, perpY) || 1;
+      const ox = Math.round((-perpY / len));
+      const oy = Math.round((perpX / len));
+      this.drawPixelLine(
+        this.fishingLineGfx,
+        rodTip.x + ox,
+        rodTip.y + oy,
+        float.x + ox,
+        float.y + oy,
+        lineColor,
+      );
+    }
+
+    this.drawFishingFloat(this.fishingLineGfx, float.x, float.y);
+  }
+
   // --- 投擲処理 ---
   startCasting() {
+    this.player.setFlipX(this.lastHorizontalFacing === 'left');
     this.state = FishingState.CASTING;
     this.castPower = 0;
     this.castDirection = 1;
+    this.prepareCastingRig();
     this.powerBarBg.setVisible(true);
     this.powerBarFill.setVisible(true);
     this.hintText.setText('SPACE を離して投げる！').setVisible(true);
@@ -1875,54 +2578,7 @@ export default class GameScene extends Phaser.Scene {
       distance *= 1.25;
     }
     
-    // 向きに応じた終点座標を計算
-    let endX = this.player.x;
-    let endY = this.player.y;
-    let lineStartX = this.player.x;
-    let lineStartY = this.player.y;
-    
-    switch (this.playerFacing) {
-      case 'up':
-        endY = this.player.y - distance;
-        lineStartY = this.player.y - 16;
-        break;
-      case 'down':
-        endY = this.player.y + distance;
-        lineStartY = this.player.y + 16;
-        break;
-      case 'left':
-        endX = this.player.x - distance;
-        lineStartX = this.player.x - 16;
-        break;
-      case 'right':
-        endX = this.player.x + distance;
-        lineStartX = this.player.x + 16;
-        break;
-    }
-
-    const lineWidth = waitCfg['3-1_ライン太さ'];
-    this.fishingRod = this.add.line(0, 0, lineStartX, lineStartY, endX, endY, 0xffffff)
-        .setOrigin(0).setLineWidth(lineWidth);
-    
-    const floatSize = waitCfg['3-2_浮きサイズ'];
-    this.float = this.add.circle(endX, endY, floatSize, 0xff0000).setStrokeStyle(2, 0xffffff);
-
-    // 浮きのゆらぎ（向きに応じてアニメーション方向を変更）
-    const wobbleProps: { x?: number; y?: number } = {};
-    if (this.playerFacing === 'up' || this.playerFacing === 'down') {
-      wobbleProps.y = endY + 4;
-    } else {
-      wobbleProps.x = endX + 4;
-    }
-    
-    this.tweens.add({
-        targets: this.float,
-        ...wobbleProps,
-        duration: 600,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut'
-    });
+    this.setupFishingRigAfterCast(distance);
 
     // エサとルアーのボーナスを計算（消費はファイト開始時）
     const bait = this.playerData.equippedBaitId ? getBaitById(this.playerData.equippedBaitId) : null;
@@ -1963,17 +2619,6 @@ export default class GameScene extends Phaser.Scene {
     
     // ヒント表示
     this.hintText.setText('🎣 SPACE を押せ！').setVisible(true);
-    
-    // 浮きを激しく揺らす
-    this.tweens.killTweensOf(this.float);
-    this.tweens.add({
-        targets: this.float,
-        x: this.float.x + 8,
-        y: this.float.y - 5,
-        duration: 80,
-        yoyo: true,
-        repeat: -1
-    });
 
     // 反応時間
     const reactionTime = config.bite['4-3_反応時間'] * 1000;
@@ -2410,8 +3055,7 @@ export default class GameScene extends Phaser.Scene {
   cleanupFishingTools() {
     if (this.biteTimer) this.biteTimer.remove();
     if (this.biteTimeout) this.biteTimeout.remove();
-    if (this.fishingRod) this.fishingRod.destroy();
-    if (this.float) this.float.destroy();
+    this.resetFishingLineState();
     this.exclamation.setVisible(false);
     this.powerBarBg.setVisible(false);
     this.powerBarFill.setVisible(false);
@@ -3483,8 +4127,16 @@ export default class GameScene extends Phaser.Scene {
 
     const pediaSortRarityBtn = this.unifiedBookUIElement.querySelector('#book-pedia-sort-rarity') as HTMLButtonElement | null;
     const pediaSortWatersBtn = this.unifiedBookUIElement.querySelector('#book-pedia-sort-waters') as HTMLButtonElement | null;
-    pediaSortRarityBtn?.addEventListener('click', () => this.setUnifiedBookPediaSortMode('rarity'));
-    pediaSortWatersBtn?.addEventListener('click', () => this.setUnifiedBookPediaSortMode('waters'));
+    pediaSortRarityBtn?.addEventListener('click', () => {
+      this.pediaNavArea = 'sort';
+      this.setUnifiedBookPediaSortMode('rarity');
+      this.syncBookPediaSortBarUI();
+    });
+    pediaSortWatersBtn?.addEventListener('click', () => {
+      this.pediaNavArea = 'sort';
+      this.setUnifiedBookPediaSortMode('waters');
+      this.syncBookPediaSortBarUI();
+    });
 
     const skillUnlockBtn = this.unifiedBookUIElement.querySelector('#book-skill-unlock');
     skillUnlockBtn?.addEventListener('click', () => {
@@ -3560,6 +4212,28 @@ export default class GameScene extends Phaser.Scene {
       this.statusLastInteractedButtonType = 'lure';
     });
 
+    const bookStatusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
+    bookStatusPanel?.addEventListener('pointerenter', () => {
+      if (!this.unifiedBookOpen || this.unifiedBookTab !== 'status') return;
+      if (this.uiMenuNavInputChannel === 'mouse') return;
+      this.uiMenuNavInputChannel = 'mouse';
+      this.refreshStatusPanelBookInputModeStyles();
+      this.syncBookPediaSortBarUI();
+      this.syncUiMenuKeyboardPointerSuppression();
+    });
+
+    this.unifiedBookUIElement.addEventListener('pointerenter', () => {
+      if (!this.unifiedBookOpen) return;
+      const t = this.unifiedBookTab;
+      if (t !== 'skills' && t !== 'achievement' && t !== 'pedia') return;
+      if (this.unifiedBookMainTabsNavActive) return;
+      if (this.uiMenuNavInputChannel === 'mouse') return;
+      this.uiMenuNavInputChannel = 'mouse';
+      this.refreshBookTabsKbInputChrome();
+      this.syncBookPediaSortBarUI();
+      this.syncUiMenuKeyboardPointerSuppression();
+    });
+
     // グローバルに参照を保存
     (window as any).gameScene = this;
   }
@@ -3589,6 +4263,9 @@ export default class GameScene extends Phaser.Scene {
       this.statusEquipmentSelectorType = null;
       this.statusPreviewEquipmentType = null;
       this.statusPreviewEquipmentId = null;
+    }
+    if (tab === 'pedia') {
+      this.pediaNavArea = 'list';
     }
     this.setSkillNavArea('tree');
     this.achievementNavArea = 'left';
@@ -3652,6 +4329,10 @@ export default class GameScene extends Phaser.Scene {
     if (this.unifiedBookMainTabsNavActive) {
       this.syncUnifiedBookMainTabsNavUI();
     }
+
+    this.refreshStatusPanelBookInputModeStyles();
+    this.syncBookPediaSortBarUI();
+    this.refreshBookTabsKbInputChrome();
   }
 
   private enterUnifiedBookMainTabsNav() {
@@ -3660,12 +4341,14 @@ export default class GameScene extends Phaser.Scene {
     this.resetUnifiedBookTabScrollToTop();
     this.clearUnifiedBookMenuSelectionForMainTabNav();
     this.syncUnifiedBookMainTabsNavUI();
+    this.refreshBookTabsKbInputChrome();
   }
 
   private exitUnifiedBookMainTabsNav() {
     if (!this.unifiedBookMainTabsNavActive) return;
     this.unifiedBookMainTabsNavActive = false;
     this.syncUnifiedBookMainTabsNavUI();
+    this.refreshBookTabsKbInputChrome();
   }
 
   /** 上部タブをキー選択中は、左ペイン／ステータス／スキルツリーの選択表示を外す */
@@ -3716,6 +4399,11 @@ export default class GameScene extends Phaser.Scene {
         .forEach((el) => el.classList.remove('achievement-detail-item--kb-selected'));
     }
 
+    if (this.unifiedBookTab === 'pedia') {
+      this.pediaNavArea = 'list';
+      this.syncBookPediaSortBarUI();
+    }
+
     this.updateUnifiedBookDetail();
   }
 
@@ -3749,6 +4437,12 @@ export default class GameScene extends Phaser.Scene {
     if (this.unifiedBookTab === 'achievement') {
       const firstCategory = this.unifiedBookListItems[0]?.getAttribute('data-category');
       if (firstCategory) this.selectAchievementCategory(firstCategory, 0);
+      return;
+    }
+
+    if (this.unifiedBookTab === 'pedia') {
+      this.pediaNavArea = 'sort';
+      this.syncBookPediaSortBarUI();
       return;
     }
 
@@ -4073,12 +4767,6 @@ export default class GameScene extends Phaser.Scene {
 
     const applySelection = (nextKey: 'power' | 'speed' | 'technique' | 'control') => {
       this.selectedStatusStatKey = nextKey;
-      const curItems = Array.from(list.querySelectorAll('li[data-stat-key]')) as HTMLElement[];
-      curItems.forEach((item) => {
-        const isSelected = item.dataset.statKey === nextKey;
-        item.classList.toggle('is-selected', isSelected);
-        item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-      });
       this.syncStatusEquipmentButtonSelection(panel);
       const detailTextEl = panel.querySelector('#book-status-detail-text') as HTMLElement | null;
       if (detailTextEl) {
@@ -4111,6 +4799,7 @@ export default class GameScene extends Phaser.Scene {
         e.preventDefault();
         const key = li.dataset.statKey as 'power' | 'speed' | 'technique' | 'control' | undefined;
         if (!key) return;
+        this.noteUiMenuKeyboardNavigation();
         this.statusEquipmentSelectorType = null;
         this.statusNavArea = 'stats';
         applySelection(key);
@@ -4503,7 +5192,8 @@ export default class GameScene extends Phaser.Scene {
     const shouldHighlightStat =
       !this.unifiedBookMainTabsNavActive &&
       this.statusNavArea === 'stats' &&
-      !this.statusEquipmentSelectorType;
+      !this.statusEquipmentSelectorType &&
+      this.uiMenuNavInputChannel === 'keyboard';
     items.forEach((item) => {
       const isSelected = shouldHighlightStat && item.dataset.statKey === this.selectedStatusStatKey;
       item.classList.toggle('is-selected', isSelected);
@@ -4514,12 +5204,16 @@ export default class GameScene extends Phaser.Scene {
   private syncStatusEquipmentButtonSelection(panel: HTMLElement) {
     const rodBtn = panel.querySelector('#book-status-change-rod') as HTMLElement | null;
     const lureBtn = panel.querySelector('#book-status-change-lure') as HTMLElement | null;
+    const equipBtnKbNav =
+      this.statusNavArea === 'equipmentButtons' &&
+      !this.statusEquipmentSelectorType &&
+      this.uiMenuNavInputChannel === 'keyboard';
     const rodSelected =
-      (this.statusNavArea === 'equipmentButtons' && this.statusNavButtonType === 'rod') ||
-      this.statusEquipmentSelectorType === 'rod';
+      this.statusEquipmentSelectorType === 'rod' ||
+      (equipBtnKbNav && this.statusNavButtonType === 'rod');
     const lureSelected =
-      (this.statusNavArea === 'equipmentButtons' && this.statusNavButtonType === 'lure') ||
-      this.statusEquipmentSelectorType === 'lure';
+      this.statusEquipmentSelectorType === 'lure' ||
+      (equipBtnKbNav && this.statusNavButtonType === 'lure');
     rodBtn?.classList.toggle('is-nav-selected', rodSelected);
     lureBtn?.classList.toggle('is-nav-selected', lureSelected);
     this.syncStatusStatSelection(panel);
@@ -5635,7 +6329,7 @@ export default class GameScene extends Phaser.Scene {
     return row;
   }
 
-  selectUnifiedBookItem(fishId: string, index: number) {
+  selectUnifiedBookItem(fishId: string, index: number, opts?: { pediaNavKeepSortArea?: boolean }) {
     // 実績タブの場合は別処理
     if (this.unifiedBookTab === 'achievement') {
       const category = this.unifiedBookListItems[index]?.getAttribute('data-category');
@@ -5646,6 +6340,11 @@ export default class GameScene extends Phaser.Scene {
     }
     if (this.unifiedBookTab === 'skills') {
       return;
+    }
+
+    if (this.unifiedBookTab === 'pedia' && !opts?.pediaNavKeepSortArea) {
+      this.pediaNavArea = 'list';
+      this.syncBookPediaSortBarUI();
     }
 
     this.unifiedBookSelectedId = fishId;
@@ -6314,6 +7013,9 @@ export default class GameScene extends Phaser.Scene {
     this.closeSkillUnlockConfirm();
     this.exitUnifiedBookMainTabsNav();
     this.unifiedBookOpen = false;
+    this.refreshStatusPanelBookInputModeStyles();
+    this.syncBookPediaSortBarUI();
+    this.refreshBookTabsKbInputChrome();
     this.unifiedBookSelectedId = null;
     this.unifiedBookSelectedIndex = null;
     this.unifiedBookNavRepeatDir = null;
@@ -6436,13 +7138,63 @@ export default class GameScene extends Phaser.Scene {
       if (cat) return cat;
     }
 
+    if (this.unifiedBookTab === 'pedia' && this.pediaNavArea === 'sort') {
+      const sel = this.unifiedBookPediaSortMode === 'rarity' ? '#book-pedia-sort-rarity' : '#book-pedia-sort-waters';
+      return root.querySelector(sel) as HTMLElement | null;
+    }
+
     return root.querySelector(
       '#book-list-scroll .book-ui-node.book-list-item.is-selected',
     ) as HTMLElement | null;
   }
 
   private noteUiMenuKeyboardNavigation() {
+    const prev = this.uiMenuNavInputChannel;
     this.uiMenuNavInputChannel = 'keyboard';
+    this.refreshStatusPanelBookInputModeStyles();
+    this.refreshBookTabsKbInputChrome();
+    this.syncUiMenuKeyboardPointerSuppression();
+    if (prev !== 'keyboard') {
+      this.syncBookPediaSortBarUI();
+    }
+  }
+
+  /**
+   * キー操作時は HTML モーダルへポインタを届かせない（:hover 残りを防ぐ）。マウス系イベントで解除。
+   * modalStack 更新時も `updateModalStates` から同期する。
+   */
+  private syncUiMenuKeyboardPointerSuppression() {
+    const htmlUiOpen = this.modalStack.length > 0;
+    const suppress = this.uiMenuNavInputChannel === 'keyboard' && htmlUiOpen;
+    document.body.classList.toggle('ui-menu-input-keyboard', suppress);
+  }
+
+  /** スキル / 実績 / 図鑑: キー操作中は左リスト・ツリー等のホバー見た目を抑える（#book-ui.is-book-kb-input） */
+  private refreshBookTabsKbInputChrome() {
+    if (!this.unifiedBookUIElement) return;
+    const kb =
+      this.unifiedBookOpen &&
+      !this.unifiedBookMainTabsNavActive &&
+      this.uiMenuNavInputChannel === 'keyboard' &&
+      (this.unifiedBookTab === 'skills' ||
+        this.unifiedBookTab === 'achievement' ||
+        this.unifiedBookTab === 'pedia');
+    this.unifiedBookUIElement.classList.toggle('is-book-kb-input', kb);
+  }
+
+  /** ステータスタブ: キー操作中はマウス風ホバー見た目を抑え、マウス操作中はキー用の選択表示を抑える */
+  private refreshStatusPanelBookInputModeStyles() {
+    if (!this.unifiedBookUIElement) return;
+    const panel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
+    if (!panel) return;
+    const kbChrome =
+      this.unifiedBookOpen &&
+      this.unifiedBookTab === 'status' &&
+      this.uiMenuNavInputChannel === 'keyboard';
+    panel.classList.toggle('is-status-kb-nav-input', kbChrome);
+    if (this.unifiedBookOpen && this.unifiedBookTab === 'status') {
+      this.syncStatusEquipmentButtonSelection(panel);
+    }
   }
 
   private positionKbSelectionPointer(host: HTMLElement | null) {
@@ -6690,6 +7442,71 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
+    if (this.unifiedBookTab === 'pedia') {
+      if (this.pediaNavArea === 'sort') {
+        if (dir === 'up') {
+          this.enterUnifiedBookMainTabsNav();
+          return;
+        }
+        if (dir === 'down') {
+          this.pediaNavArea = 'list';
+          this.syncBookPediaSortBarUI();
+          if (this.unifiedBookListItems.length > 0) {
+            const lastIdx = this.unifiedBookListItems.length - 1;
+            let idx = this.unifiedBookSelectedIndex ?? 0;
+            if (idx < 0 || idx > lastIdx) idx = 0;
+            const item = this.unifiedBookListItems[idx];
+            const fishId = item?.getAttribute('data-fish-id');
+            if (fishId) {
+              this.selectUnifiedBookItem(fishId, idx);
+            }
+          }
+          this.refreshKbSelectionPointer();
+          return;
+        }
+        if (dir === 'left') {
+          if (this.unifiedBookPediaSortMode === 'waters') {
+            this.setUnifiedBookPediaSortMode('rarity');
+          } else {
+            const tabs = this.unifiedBookTabOrder;
+            const ti = tabs.indexOf('pedia');
+            if (ti > 0) {
+              this.switchUnifiedBookTab(tabs[ti - 1]);
+              this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+            }
+          }
+          return;
+        }
+        if (dir === 'right') {
+          if (this.unifiedBookPediaSortMode === 'rarity') {
+            this.setUnifiedBookPediaSortMode('waters');
+          } else {
+            const tabs = this.unifiedBookTabOrder;
+            const ti = tabs.indexOf('pedia');
+            if (ti >= 0 && ti < tabs.length - 1) {
+              this.switchUnifiedBookTab(tabs[ti + 1]);
+              this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+            }
+          }
+          return;
+        }
+        return;
+      }
+
+      if (this.pediaNavArea === 'list' && dir === 'up') {
+        const lastIdx = this.unifiedBookListItems.length - 1;
+        let cur = this.unifiedBookSelectedIndex ?? 0;
+        if (lastIdx < 0) cur = 0;
+        if (cur < 0 || cur > lastIdx) cur = 0;
+        if (this.unifiedBookListItems.length === 0 || cur === 0) {
+          this.pediaNavArea = 'sort';
+          this.syncBookPediaSortBarUI();
+          this.refreshKbSelectionPointer();
+          return;
+        }
+      }
+    }
+
     // 現在の選択インデックスを取得（インベントリは同じ `fish.id` が複数枚あり得るため index 基準）
     let currentIndex = this.unifiedBookSelectedIndex ?? 0;
     const lastIndex = this.unifiedBookListItems.length - 1;
@@ -6807,28 +7624,37 @@ export default class GameScene extends Phaser.Scene {
 
   private syncBookPediaSortBarUI() {
     if (!this.unifiedBookUIElement) return;
-    const rarityBtn = this.unifiedBookUIElement.querySelector('#book-pedia-sort-rarity') as HTMLButtonElement | null;
-    const watersBtn = this.unifiedBookUIElement.querySelector('#book-pedia-sort-waters') as HTMLButtonElement | null;
+    const root = this.unifiedBookUIElement;
+    const rarityBtn = root.querySelector('#book-pedia-sort-rarity') as HTMLButtonElement | null;
+    const watersBtn = root.querySelector('#book-pedia-sort-waters') as HTMLButtonElement | null;
     const rarityOn = this.unifiedBookPediaSortMode === 'rarity';
     rarityBtn?.classList.toggle('is-active', rarityOn);
     watersBtn?.classList.toggle('is-active', !rarityOn);
     rarityBtn?.setAttribute('aria-selected', rarityOn ? 'true' : 'false');
     watersBtn?.setAttribute('aria-selected', rarityOn ? 'false' : 'true');
+
+    const kbSortNav =
+      this.unifiedBookTab === 'pedia' &&
+      this.pediaNavArea === 'sort' &&
+      this.uiMenuNavInputChannel === 'keyboard';
+    root.classList.toggle('is-pedia-sort-kb-nav', kbSortNav);
+    rarityBtn?.classList.toggle('is-nav-selected', kbSortNav && rarityOn);
+    watersBtn?.classList.toggle('is-nav-selected', kbSortNav && !rarityOn);
   }
 
   private setUnifiedBookPediaSortMode(mode: 'rarity' | 'waters') {
     if (this.unifiedBookPediaSortMode === mode) return;
+    const preservePediaSortNav =
+      this.unifiedBookTab === 'pedia' && this.pediaNavArea === 'sort' && this.uiMenuNavInputChannel === 'keyboard';
     this.unifiedBookPediaSortMode = mode;
-    const keepId = this.unifiedBookSelectedId;
     this.updateUnifiedBookList();
     if (this.unifiedBookTab !== 'pedia' || this.unifiedBookListItems.length === 0) return;
-    if (keepId) {
-      const idx = this.unifiedBookListItems.findIndex((row) => row.getAttribute('data-fish-id') === keepId);
-      if (idx >= 0) this.selectUnifiedBookItem(keepId, idx);
-      else {
-        const first = this.unifiedBookListItems[0]?.getAttribute('data-fish-id');
-        if (first) this.selectUnifiedBookItem(first, 0);
-      }
+    const firstId = this.unifiedBookListItems[0]?.getAttribute('data-fish-id');
+    if (firstId) {
+      this.selectUnifiedBookItem(firstId, 0, { pediaNavKeepSortArea: preservePediaSortNav });
+    }
+    if (preservePediaSortNav) {
+      this.syncBookPediaSortBarUI();
     }
   }
 
