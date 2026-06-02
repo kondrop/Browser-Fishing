@@ -13,7 +13,7 @@ export interface RodConfig {
   powerStatAdd: number;      // 投擲距離に効くパワー加算
   speedStatAdd: number;      // 捕獲ゲージ上昇に効くスピード加算
   techniqueStatAdd: number;  // 判定帯の広さに効くテクニック加算
-  controlStatAdd: number;    // バー操作安定性に効くコントロール加算
+  controlStatAdd: number;    // 目標速度への追従速度（レスポンス）に効くコントロール加算
   // レアリティ別ヒット率加算（1.0に対する加算値。例: 0.06 => +6%）
   rarityHitRateAdd: {
     common: number;

@@ -6,12 +6,16 @@ import type { AchievementConfig, AchievementCondition } from './achievementConfi
 import { achievementConfigs } from './achievementConfig';
 import { fishConfigs } from './fishConfig';
 import { getExpMultiplierForFish, getSellPriceMultiplier } from './skills';
+import { config } from '../config';
 
-export interface InventoryItem {
+/** バッグ内の1匹（入手順で inventory 配列に格納） */
+export interface InventoryEntry {
   fishId: string;
-  count: number;
-  sizes: number[];  // 各個体のサイズ（cm）の配列。ゴミの場合は空配列
+  size?: number; // cm。ゴミは未設定
 }
+
+/** @deprecated InventoryEntry を使用 */
+export type InventoryItem = InventoryEntry;
 
 export interface BaitItem {
   baitId: string;
@@ -19,7 +23,7 @@ export interface BaitItem {
 }
 
 export interface PlayerData {
-  inventory: InventoryItem[];
+  inventory: InventoryEntry[];
   caughtFishIds: Set<string>;  // 図鑑用：一度でも釣った魚のID
   money: number;
   totalCaught: number;         // 総釣果数
@@ -80,11 +84,29 @@ export function createInitialPlayerData(): PlayerData {
   };
 }
 
-// ランダムサイズを生成（最大サイズの50%〜100%）
-export function generateRandomSize(maxSize: number): number {
-  const minSize = maxSize * 0.5;
-  const maxSizeActual = maxSize;
-  const randomSize = minSize + Math.random() * (maxSizeActual - minSize);
+/** 実投擲距離を 0〜1（基準最大距離基準、超過は1で丸め）に正規化 */
+export function getCastDistanceRatio(distance: number): number {
+  const waitCfg = config.waiting;
+  const minDist = waitCfg['3-3_最小投擲距離'];
+  const maxDist = waitCfg['3-4_最大投擲距離'];
+  const span = Math.max(0, maxDist - minDist);
+  if (span <= 0) return 0;
+  return Math.max(0, Math.min(1, (distance - minDist) / span));
+}
+
+// ランダムサイズを生成（最大サイズに対する比率で抽選）
+// castDistanceRatio: 投擲距離比率 0〜1。指定時は遠いほど下限が引き上がる（大きい個体になりやすい）
+export function generateRandomSize(maxSize: number, castDistanceRatio?: number): number {
+  const waitCfg = config.waiting;
+  const baseMinRatio = waitCfg['3-7_投擲サイズ_最小比率ベース'];
+  const fullCastMinRatio = waitCfg['3-8_投擲サイズ_最小比率_フル投擲'];
+  const t =
+    castDistanceRatio !== undefined
+      ? Math.max(0, Math.min(1, castDistanceRatio))
+      : 0;
+  const minRatio = baseMinRatio + (fullCastMinRatio - baseMinRatio) * t;
+  const maxRatio = 1.0;
+  const randomSize = maxSize * minRatio + Math.random() * maxSize * (maxRatio - minRatio);
   return Math.round(randomSize * 10) / 10; // 小数点第一位まで
 }
 
@@ -150,38 +172,31 @@ export function addFishToInventory(playerData: PlayerData, fish: FishConfig, siz
   const expGained = Math.max(1, Math.round(expGainedBase * expMul));
   const leveledUp = addExp(playerData, expGained);
   
-  // インベントリに追加
-  const existingItem = playerData.inventory.find(item => item.fishId === fish.id);
-  if (existingItem) {
-    existingItem.count++;
-    // サイズを配列に追加（ゴミの場合は追加しない）
-    if (fishSize !== undefined) {
-      existingItem.sizes.push(fishSize);
-    }
-  } else {
-    playerData.inventory.push({ 
-      fishId: fish.id, 
-      count: 1, 
-      sizes: fishSize !== undefined ? [fishSize] : [] 
-    });
-  }
+  // インベントリに追加（配列末尾＝最新。表示時は先頭が最新）
+  playerData.inventory.push({
+    fishId: fish.id,
+    ...(fishSize !== undefined ? { size: fishSize } : {}),
+  });
   
   // レベルアップしたかどうかと生成されたサイズを返す
   return { leveledUp, size: fishSize };
 }
 
-// インベントリから魚を削除（売却時など）
+// インベントリから魚を削除（売却時など。同種は入手が古い順に削除）
 export function removeFishFromInventory(playerData: PlayerData, fishId: string, count: number = 1): boolean {
-  const item = playerData.inventory.find(item => item.fishId === fishId);
-  if (!item || item.count < count) {
+  const owned = playerData.inventory.filter((e) => e.fishId === fishId).length;
+  if (owned < count) {
     return false;
   }
-  
-  // サイズ配列からも削除
-  item.sizes.splice(0, count);
-  item.count -= count;
-  if (item.count <= 0) {
-    playerData.inventory = playerData.inventory.filter(i => i.fishId !== fishId);
+
+  let removed = 0;
+  for (let i = 0; i < playerData.inventory.length && removed < count; ) {
+    if (playerData.inventory[i].fishId === fishId) {
+      playerData.inventory.splice(i, 1);
+      removed++;
+    } else {
+      i++;
+    }
   }
   return true;
 }
@@ -190,29 +205,34 @@ export function removeFishFromInventory(playerData: PlayerData, fishId: string, 
 export function sellFish(playerData: PlayerData, fishId: string, count: number = 1): number {
   const fish = getFishById(fishId);
   if (!fish) return 0;
+  const sizePriceBonusCoef = config.fighting['5-12f_サイズ売価ボーナス係数'];
   
-  const inventoryItem = playerData.inventory.find(item => item.fishId === fishId);
-  if (!inventoryItem) return 0;
-  
+  const owned = playerData.inventory.filter((e) => e.fishId === fishId).length;
+  if (owned < count) return 0;
+
   const isJunk = fishId.startsWith('junk_');
   let totalEarnings = 0;
   const skillSellMul = getSellPriceMultiplier(playerData);
-  
-  // 売却する個数分の価格を計算（各個体のサイズを考慮）
-  for (let i = 0; i < count && i < inventoryItem.count; i++) {
-    const size = inventoryItem.sizes[i];
-    let price = fish.price;
-    
-    // サイズによる価格ボーナスを計算（ゴミの場合は適用しない）
-    if (!isJunk && size !== undefined) {
-      const sizeRatio = size / fish.maxSize; // 0.5〜1.0
-      price = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5); // ボーナス係数0.5
+  let sold = 0;
+
+  for (let i = 0; i < playerData.inventory.length && sold < count; ) {
+    const entry = playerData.inventory[i];
+    if (entry.fishId !== fishId) {
+      i++;
+      continue;
     }
-    
+
+    let price = fish.price;
+    if (!isJunk && entry.size !== undefined) {
+      const sizeRatio = entry.size / fish.maxSize;
+      price = calculatePriceWithSizeBonus(fish.price, sizeRatio, sizePriceBonusCoef);
+    }
     totalEarnings += Math.round(price * skillSellMul);
+    playerData.inventory.splice(i, 1);
+    sold++;
   }
-  
-  if (removeFishFromInventory(playerData, fishId, count)) {
+
+  if (sold === count) {
     playerData.money += totalEarnings;
     // 累計獲得金額を更新
     playerData.totalMoneyEarned += totalEarnings;
@@ -225,26 +245,19 @@ export function sellFish(playerData: PlayerData, fishId: string, count: number =
 export function sellAllFish(playerData: PlayerData): number {
   let totalEarnings = 0;
   const skillSellMul = getSellPriceMultiplier(playerData);
+  const sizePriceBonusCoef = config.fighting['5-12f_サイズ売価ボーナス係数'];
   
-  for (const item of [...playerData.inventory]) {
-    const fish = getFishById(item.fishId);
+  for (const entry of playerData.inventory) {
+    const fish = getFishById(entry.fishId);
     if (!fish) continue;
-    
-    const isJunk = item.fishId.startsWith('junk_');
-    
-    // 各個体のサイズを考慮した価格を計算
-    for (let i = 0; i < item.count; i++) {
-      const size = item.sizes[i];
-      let price = fish.price;
-      
-      // サイズによる価格ボーナスを計算（ゴミの場合は適用しない）
-      if (!isJunk && size !== undefined) {
-        const sizeRatio = size / fish.maxSize; // 0.5〜1.0
-        price = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5); // ボーナス係数0.5
-      }
-      
-      totalEarnings += Math.round(price * skillSellMul);
+
+    const isJunk = entry.fishId.startsWith('junk_');
+    let price = fish.price;
+    if (!isJunk && entry.size !== undefined) {
+      const sizeRatio = entry.size / fish.maxSize;
+      price = calculatePriceWithSizeBonus(fish.price, sizeRatio, sizePriceBonusCoef);
     }
+    totalEarnings += Math.round(price * skillSellMul);
   }
   
   playerData.inventory = [];
@@ -258,32 +271,57 @@ export function sellAllFish(playerData: PlayerData): number {
 export function calculateInventoryValue(playerData: PlayerData): number {
   let total = 0;
   const skillSellMul = getSellPriceMultiplier(playerData);
-  for (const item of playerData.inventory) {
-    const fish = getFishById(item.fishId);
+  const sizePriceBonusCoef = config.fighting['5-12f_サイズ売価ボーナス係数'];
+  for (const entry of playerData.inventory) {
+    const fish = getFishById(entry.fishId);
     if (!fish) continue;
-    
-    const isJunk = item.fishId.startsWith('junk_');
-    
-    // 各個体のサイズを考慮した価格を計算
-    for (let i = 0; i < item.count; i++) {
-      const size = item.sizes[i];
-      let price = fish.price;
-      
-      // サイズによる価格ボーナスを計算（ゴミの場合は適用しない）
-      if (!isJunk && size !== undefined) {
-        const sizeRatio = size / fish.maxSize; // 0.5〜1.0
-        price = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5); // ボーナス係数0.5
-      }
-      
-      total += Math.round(price * skillSellMul);
+
+    const isJunk = entry.fishId.startsWith('junk_');
+    let price = fish.price;
+    if (!isJunk && entry.size !== undefined) {
+      const sizeRatio = entry.size / fish.maxSize;
+      price = calculatePriceWithSizeBonus(fish.price, sizeRatio, sizePriceBonusCoef);
     }
+    total += Math.round(price * skillSellMul);
   }
   return total;
 }
 
 // インベントリの合計アイテム数
 export function getInventoryCount(playerData: PlayerData): number {
-  return playerData.inventory.reduce((sum, item) => sum + item.count, 0);
+  return playerData.inventory.length;
+}
+
+/** UI表示用：入手が新しい順（左上が最新） */
+export function getInventoryDisplayOrder(playerData: PlayerData): InventoryEntry[] {
+  return [...playerData.inventory].reverse();
+}
+
+function normalizeInventoryFromSave(raw: unknown[]): InventoryEntry[] {
+  if (!raw.length) return [];
+
+  const first = raw[0] as Record<string, unknown>;
+  if (typeof first.count === 'number') {
+    const entries: InventoryEntry[] = [];
+    for (const item of raw as Array<{ fishId: string; count: number; sizes?: number[]; size?: number }>) {
+      const sizes =
+        item.sizes ??
+        (item.size !== undefined ? Array(item.count).fill(item.size) : []);
+      for (let j = 0; j < item.count; j++) {
+        const size = sizes[j];
+        entries.push({
+          fishId: item.fishId,
+          ...(size !== undefined ? { size } : {}),
+        });
+      }
+    }
+    return entries;
+  }
+
+  return (raw as InventoryEntry[]).map((e) => ({
+    fishId: e.fishId,
+    ...(e.size !== undefined ? { size: e.size } : {}),
+  }));
 }
 
 // 図鑑の登録率を計算
@@ -313,27 +351,7 @@ export function loadPlayerData(): PlayerData {
       // 既存データとの互換性を保つためにデフォルト値をマージ
       const initial = createInitialPlayerData();
       
-      // インベントリの互換性処理（size → sizes配列に変換）
-      const inventory = (parsed.inventory || []).map((item: any) => {
-        if (item.sizes) {
-          // 新しい形式（sizes配列）の場合はそのまま
-          return item;
-        } else if (item.size !== undefined) {
-          // 古い形式（size単体）の場合は配列に変換
-          // count分のサイズを同じ値で埋める（既存データの互換性）
-          return {
-            ...item,
-            sizes: Array(item.count).fill(item.size),
-            size: undefined, // 古いフィールドを削除
-          };
-        } else {
-          // サイズがない場合は空配列
-          return {
-            ...item,
-            sizes: [],
-          };
-        }
-      });
+      const inventory = normalizeInventoryFromSave(parsed.inventory || []);
       
       return {
         ...initial,
@@ -474,36 +492,7 @@ export function addExp(playerData: PlayerData, exp: number): boolean {
   return playerData.level > oldLevel;
 }
 
-// ============================================
-// レベルボーナス
-// ============================================
-
-// レベルに応じたバー判定範囲のボーナスを取得
-// レベル1: +0.00, レベル2: +0.01, レベル3: +0.02, ...
-export function getLevelBarRangeBonus(level: number): number {
-  if (level <= 1) return 0;
-  return (level - 1) * 0.01;
-}
-
-// レベルに応じたゲージ増加速度のボーナスを取得
-// レベル1: +0.000, レベル2: +0.005, レベル3: +0.010, ...
-export function getLevelGaugeSpeedBonus(level: number): number {
-  if (level <= 1) return 0;
-  return (level - 1) * 0.005;
-}
-
-// ファイト中プレイヤーバーの速度に毎フレーム掛ける減衰の強さ（1秒あたり、概ね0〜4.5）
-// レベルが高いほど慣性が抑えられ、止めたい位置で止まりやすい
-export function getLevelFightBarVelocityDragPerSecond(level: number): number {
-  if (level <= 1) return 0;
-  return Math.min(4.5, (level - 1) * 0.35);
-}
-
-// ステータス画面表示用（基準100、レベル1で100）
-export function getLevelFightControlDisplayIndex(level: number): number {
-  if (level <= 1) return 100;
-  return 100 + (level - 1) * 4;
-}
+// 戦闘能力はスキル解放と装備のみで強化（レベルアップでは能力値は上がらない。SP付与のみ）。
 
 // ============================================
 // 実績システム

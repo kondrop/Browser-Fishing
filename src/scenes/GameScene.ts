@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
-import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, rarityWeights, Habitat, Rarity } from '../data/fish';
+import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, rarityWeights, Habitat, Rarity, fishImageFileNames, getFishImagePath } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
-import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, getLevelBarRangeBonus, getLevelGaugeSpeedBonus, getLevelFightBarVelocityDragPerSecond, generateRandomSize, updateFishSizeRecord, calculatePriceWithSizeBonus, calculateCatchRateWithSize, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp } from '../data/inventory';
+import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, getInventoryDisplayOrder, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, generateRandomSize, getCastDistanceRatio, updateFishSizeRecord, calculatePriceWithSizeBonus, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp } from '../data/inventory';
 import {
   SKILL_TREE_IDS,
   SKILL_TREE_LABELS,
@@ -12,7 +12,6 @@ import {
   getSellPriceMultiplier,
   getSkillNodeDef,
   getSkillNodesForTree,
-  getSkillStatBonuses,
   hasSkillAbility,
   tryUnlockSkillNode,
   type SkillNodeId,
@@ -26,6 +25,14 @@ import {
 } from '../data/achievementConfig';
 import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, getRodById, getBaitById, getLureById } from '../data/shopConfig';
 import { characterConfigs, getCharacterById, getDefaultCharacterId } from '../data/characterConfig';
+import { calculateDisplayStatIndices, getEffectiveSkillStatBonuses } from '../debug/balanceDebug';
+import { createBalanceDebugPanel, type BalanceDebugPanelHandle } from '../debug/balanceDebugPanel';
+import { fishParamsFromConfig, getFightBarHeight, stepFightSimulation, type FightSimState } from '../fight/fightSimulation';
+import {
+  FishingGaugeOverlay,
+  FISHING_GAUGE_UI_SCALE,
+  phaserColorToCss,
+} from '../ui/fishingGaugeOverlay';
 
 const FishingState = {
   IDLE: 0,
@@ -85,24 +92,22 @@ export default class GameScene extends Phaser.Scene {
   // 投擲用
   private castPower: number = 0;
   private castDirection: number = 1;
-  private powerBarBg!: Phaser.GameObjects.Rectangle;
-  private powerBarFill!: Phaser.GameObjects.Rectangle;
+  private castMaxHoldRemainingSec = 0;
+  /** 直近キャストの投擲距離比率（0〜1）。サイズ抽選に使用 */
+  private lastCastDistanceRatio = 0;
+  private fishingGaugeOverlay!: FishingGaugeOverlay;
   private spaceKey!: Phaser.Input.Keyboard.Key;
 
   // ファイトミニゲーム用
-  private fightContainer!: Phaser.GameObjects.Container;
   private fishBarPosition: number = 0.5;
   private fishTargetPosition: number = 0.5;
   private fishMoveTimer: number = 0;
+  private fishDriftIntent: number = 0;
+  private fishDriftVelocity: number = 0;
   
   private playerBarPosition: number = 0.5;
   private playerBarVelocity: number = 0;
   private catchProgress: number = 0.3;
-
-  private uiFish!: Phaser.GameObjects.Rectangle;
-  private uiPlayerBar!: Phaser.GameObjects.Rectangle;
-  private uiProgressBar!: Phaser.GameObjects.Rectangle;
-  private uiCriticalZone!: Phaser.GameObjects.Rectangle;
 
   // 現在釣っている魚
   private currentFish: FishConfig | null = null;
@@ -115,16 +120,11 @@ export default class GameScene extends Phaser.Scene {
   private lockOnRemainingSec: number = 0;
   private smoothDragRemainingSec: number = 0;
   private speedComboMultiplier: number = 0;
-  private speedComboGrowPerSecond: number = 0.25;
   private skillSelectedNodeId: SkillNodeId | null = null;
   /** スキル解放確認モーダルで確定待ちのノード（null で未表示） */
   private skillUnlockConfirmPendingNodeId: SkillNodeId | null = null;
   /** 確認ダイアログのキーボード選択（左右・Enter と同期） */
   private skillUnlockConfirmFocus: 'cancel' | 'ok' = 'cancel';
-  private fightSkillHudLeft!: Phaser.GameObjects.Text;
-  private fightSkillHudUp!: Phaser.GameObjects.Text;
-  private fightSkillHudRight!: Phaser.GameObjects.Text;
-
   // プレイヤーデータ
   private playerData!: PlayerData;
 
@@ -278,10 +278,12 @@ export default class GameScene extends Phaser.Scene {
     SHOP: 'shop-modal',
     UNIFIED_BOOK: 'book-ui',
     CHARACTER: 'character-settings',
+    BALANCE_DEBUG: 'balance-debug-modal',
   } as const;
 
   // デバッグ用キャラクター設定UI
   private characterSettingsElement!: HTMLElement;
+  private balanceDebugPanel!: BalanceDebugPanelHandle;
   private characterPreviewIntervalId: number | null = null;
   private characterColorTemp: string = '#ffffff';
   private readonly CHARACTER_COLORS: { value: string; label?: string }[] = [
@@ -456,61 +458,7 @@ export default class GameScene extends Phaser.Scene {
     // プレイヤーの足元の影
     this.load.image('player-shadow', 'images/character/Shadow.png');
 
-    // 魚の画像を読み込み（IDと日本語ファイル名のマッピング）
-    const fishImages: { [id: string]: string } = {
-      // COMMON
-      'fish_goby': 'ハゼ',
-      'fish_crucian_carp': 'フナ',
-      'fish_carp': 'コイ',
-      'fish_sweetfish': 'アユ',
-      'fish_killifish': 'メダカ',
-      'fish_loach': 'ドジョウ',
-      'fish_bluegill': 'ブルーギル',
-      'fish_crucian_herabuna': 'ヘラブナ',
-      'fish_sea_bass': 'スズキ',
-      'fish_goldfish': 'キンギョ',
-      'fish_clownfish': 'クマノミ',
-      'fish_pufferfish': 'フグ',
-      'fish_tang': 'ナンヨウハギ',
-      // UNCOMMON
-      'fish_catfish': 'ナマズ',
-      'fish_black_bass': 'ブラックバス',
-      'fish_rainbow_trout': 'ニジマス',
-      'fish_eel': 'ウナギ',
-      'fish_char': 'イワナ',
-      'fish_yamame': 'ヤマメ',
-      'fish_snakehead': 'ライギョ',
-      'fish_rockfish': 'カサゴ',
-      'fish_flatfish': 'カレイ',
-      'fish_amago': 'アマゴ',
-      'fish_squid': 'イカ',
-      'fish_octopus': 'タコ',
-      'fish_jellyfish': 'クラゲ',
-      'fish_seahorse': 'タツノオトシゴ',
-      // RARE
-      'fish_salmon': 'サケ',
-      'fish_yellowtail': 'ブリ',
-      'fish_sea_bream': 'タイ',
-      'fish_koi': '錦鯉',
-      // EPIC
-      'fish_horse_mackerel': 'アジ',
-      'fish_tuna': 'マグロ',
-      'fish_sturgeon': 'チョウザメ',
-      'fish_swordfish': 'カジキ',
-      // LEGENDARY
-      'fish_golden_koi': '黄金の鯉',
-      'fish_arowana': 'アロワナ',
-      'fish_coelacanth': 'シーラカンス',
-      'fish_itou': 'イトウ',
-      // ゴミ
-      'junk_boot': '長靴',
-      'junk_can': '空き缶',
-      'junk_tire': 'タイヤ',
-    };
-    
-    // マッピングをクラスプロパティに保存
-    
-    for (const [fishId, fileName] of Object.entries(fishImages)) {
+    for (const [fishId, fileName] of Object.entries(fishImageFileNames)) {
       this.load.image(fishId, `/images/fish/${fileName}.png`);
     }
 
@@ -623,7 +571,6 @@ export default class GameScene extends Phaser.Scene {
     this.playerData = loadPlayerData();
 
     const mainCfg = config.main;
-    const fightCfg = config.fighting;
 
     // マップサイズ（キャンバスより大きい）
     const mapWidth = 1200;
@@ -828,62 +775,9 @@ export default class GameScene extends Phaser.Scene {
     this.catchResultElement = tempDivResult.firstElementChild as HTMLElement;
     document.body.appendChild(this.catchResultElement);
 
-    // パワーゲージ（25%大きく）
-    const castCfg = config.casting;
-    const gaugeWidth = Math.round(castCfg['2-1_ゲージ幅'] * 1.25);
-    const gaugeHeight = Math.round(castCfg['2-2_ゲージ高さ'] * 1.25);
-    this.powerBarBg = this.add.rectangle(0, 0, gaugeWidth, gaugeHeight, 0x333333)
-        .setStrokeStyle(3, 0xffffff)
-        .setDepth(100)
-        .setVisible(false);
-    
-    this.powerBarFill = this.add.rectangle(0, 0, 0, gaugeHeight - 4, 0x00ff00)
-        .setOrigin(0, 0.5)
-        .setDepth(101)
-        .setVisible(false);
-
-    // ファイトUIコンテナ（25%大きく）
-    this.fightContainer = this.add.container(0, 0).setVisible(false).setDepth(50).setScale(1.25);
-    
-    const bg = this.add.rectangle(0, 0, fightCfg['5-2_背景幅'], fightCfg['5-2_背景高さ'], 0x222222)
-        .setStrokeStyle(2, 0xffffff);
-    this.fightContainer.add(bg);
-    
-    // プレイヤーバーの高さを判定範囲に応じて設定
-    const barHeight = fightCfg['5-9_バー判定範囲'];
-    const bgHeight = fightCfg['5-2_背景高さ'];
-    const barDisplayHeight = barHeight * bgHeight;  // 判定範囲をピクセルに変換
-    this.uiPlayerBar = this.add.rectangle(0, 0, fightCfg['5-3_バー幅'], barDisplayHeight, 0x00ff00);
-    this.fightContainer.add(this.uiPlayerBar);
-    this.uiCriticalZone = this.add.rectangle(0, 0, fightCfg['5-3_バー幅'] + 8, bgHeight * 0.08, 0xffaa00, 0.35).setVisible(false);
-    this.fightContainer.add(this.uiCriticalZone);
-
-    const fishSize = fightCfg['5-4_魚サイズ'];
-    this.uiFish = this.add.rectangle(0, 0, fishSize, fishSize, 0xffaa00);
-    this.fightContainer.add(this.uiFish);
-
-    const progressBg = this.add.rectangle(25, 0, 10, fightCfg['5-2_背景高さ'], 0x000000).setStrokeStyle(1, 0xffffff);
-    this.fightContainer.add(progressBg);
-    // 進行ゲージ：上端基準で、Y位置を動的に変更して下から上に伸ばす
-    this.uiProgressBar = this.add.rectangle(25, 0, 10, 0, 0xffff00).setOrigin(0.5, 0);
-    this.fightContainer.add(this.uiProgressBar);
-
-    // ファイト説明テキスト
-    const fightHint = this.add.text(-60, -120, 'SPACEで上昇\n←ロックオン ↑スタッガー →ハイ', {
-        fontSize: '15px',  // 12 * 1.25
-        fontFamily: 'DotGothic16',
-        color: '#ffffff',
-        align: 'center'
-    }).setOrigin(0.5);
-    this.fightContainer.add(fightHint);
-
-    const hudStyle = { fontSize: '12px', fontFamily: 'DotGothic16', color: '#cccccc', align: 'center' as const };
-    this.fightSkillHudLeft = this.add.text(-72, 100, '', hudStyle).setOrigin(0.5);
-    this.fightSkillHudUp = this.add.text(0, 100, '', hudStyle).setOrigin(0.5);
-    this.fightSkillHudRight = this.add.text(72, 100, '', hudStyle).setOrigin(0.5);
-    this.fightContainer.add(this.fightSkillHudLeft);
-    this.fightContainer.add(this.fightSkillHudUp);
-    this.fightContainer.add(this.fightSkillHudRight);
+    // 投擲・ファイトゲージ（HTML オーバーレイ）
+    this.fishingGaugeOverlay = new FishingGaugeOverlay();
+    this.fishingGaugeOverlay.mountGame();
 
     // グローバルoverlayを作成（1枚だけ）
     this.createModalOverlay();
@@ -911,6 +805,7 @@ export default class GameScene extends Phaser.Scene {
 
     // デバッグ用キャラクター設定UI（起動時に一度生成）
     this.createCharacterSettingsUI();
+    this.createBalanceDebugUI();
 
     const markUiMenuMousePointer = (e?: PointerEvent) => {
       if (e && e.type === 'pointermove' && e.movementX === 0 && e.movementY === 0) return;
@@ -1048,6 +943,20 @@ export default class GameScene extends Phaser.Scene {
         this.input.keyboard.on('keydown-C', openCharacterSettingsPanel);
         this.input.keyboard.on('keydown-c', openCharacterSettingsPanel);
 
+        const toggleBalanceDebugPanel = () => {
+          if (this.modalStack.length > 0 && !this.modalStack.includes(this.MODAL_IDS.BALANCE_DEBUG)) return;
+          if (!this.balanceDebugPanel?.element) {
+            this.createBalanceDebugUI();
+          }
+          const isOpen = this.modalStack.includes(this.MODAL_IDS.BALANCE_DEBUG);
+          if (isOpen) {
+            this.closeBalanceDebug();
+          } else {
+            this.openBalanceDebug();
+          }
+        };
+        this.input.keyboard.on('keydown-BACK_QUOTE', toggleBalanceDebugPanel);
+
         // Bキーで図鑑表示（統合BookUI）
         this.input.keyboard.on('keydown-B', () => {
             if (this.unifiedBookOpen) {
@@ -1086,10 +995,12 @@ export default class GameScene extends Phaser.Scene {
             }
         });
 
+        this.input.keyboard.on('keydown', (event: KeyboardEvent) => {
+            if (event.code === 'Space') return;
+            this.dismissCatchResultPopupByUser();
+        });
+
         this.spaceKey.on('down', () => {
-            if (this.dismissCatchResultPopupByUser()) {
-                return;
-            }
             if (this.state === FishingState.IDLE) {
                 if (this.isNearWater()) {
                     this.startCasting();
@@ -1216,6 +1127,7 @@ export default class GameScene extends Phaser.Scene {
       { id: this.MODAL_IDS.SHOP, element: this.shopUIElement },
       { id: this.MODAL_IDS.UNIFIED_BOOK, element: this.unifiedBookUIElement },
       { id: this.MODAL_IDS.CHARACTER, element: this.characterSettingsElement },
+      { id: this.MODAL_IDS.BALANCE_DEBUG, element: this.balanceDebugPanel?.element },
     ];
 
     allModals.forEach(({ id, element }) => {
@@ -1407,9 +1319,10 @@ export default class GameScene extends Phaser.Scene {
           </div>
         </div>
         
-        <!-- 左下: キャラクター設定ボタン（デバッグ用） -->
-        <div id="character-settings-btn-wrap" style="position: absolute; bottom: 16px; left: 16px; pointer-events: auto;">
+        <!-- 左下: デバッグ用ボタン -->
+        <div id="debug-settings-btn-wrap" style="position: absolute; bottom: 16px; left: 16px; pointer-events: auto; display: flex; flex-direction: column; gap: 8px;">
           <button type="button" id="character-settings-btn" class="nes-btn is-small">キャラ設定</button>
+          <button type="button" id="balance-debug-btn" class="nes-btn is-small">バランス</button>
         </div>
       </div>
     `;
@@ -1420,7 +1333,7 @@ export default class GameScene extends Phaser.Scene {
     this.statusUIElement = tempDiv.firstElementChild as HTMLElement;
     document.body.appendChild(this.statusUIElement);
 
-    // キャラ設定ボタン: クリックでパネルを開く
+    // デバッグボタン
     const charBtn = document.getElementById('character-settings-btn');
     if (charBtn) {
       charBtn.addEventListener('click', () => {
@@ -1430,6 +1343,15 @@ export default class GameScene extends Phaser.Scene {
         if (this.characterSettingsElement) {
           this.openCharacterSettings();
         }
+      });
+    }
+    const balanceBtn = document.getElementById('balance-debug-btn');
+    if (balanceBtn) {
+      balanceBtn.addEventListener('click', () => {
+        if (!this.balanceDebugPanel?.element) {
+          this.createBalanceDebugUI();
+        }
+        this.openBalanceDebug();
       });
     }
 
@@ -1528,31 +1450,52 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  /** ワールド座標を canvas 上の viewport（fixed）座標に変換 */
+  private worldToViewport(worldX: number, worldY: number): { x: number; y: number } {
+    const cam = this.cameras.main;
+    const canvas = this.game.canvas;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width / cam.width;
+    const scaleY = rect.height / cam.height;
+    return {
+      x: rect.left + (worldX - cam.scrollX) * scaleX,
+      y: rect.top + (worldY - cam.scrollY) * scaleY,
+    };
+  }
+
+  /** 投擲ゲージをキャラの少し下（viewport 座標）に置く */
+  private getCastGaugeViewportCenter(): { x: number; y: number } {
+    const gap = config.casting['2-5_ゲージ_キャラ下余白'] * FISHING_GAUGE_UI_SCALE;
+    const worldY = this.player.y + this.player.displayHeight * 0.5 + gap;
+    return this.worldToViewport(this.player.x, worldY);
+  }
+
+  private layoutFishingGaugeOverlay(): void {
+    const canvas = this.game.canvas;
+    if (!canvas || !this.fishingGaugeOverlay) return;
+    const cast = this.getCastGaugeViewportCenter();
+    this.fishingGaugeOverlay.layoutGame({
+      canvasRect: canvas.getBoundingClientRect(),
+      castCenterX: cast.x,
+      castCenterY: cast.y,
+    });
+  }
+
   updateUIPositions() {
     const cam = this.cameras.main;
     const width = cam.width;
-    const height = cam.height;
     
     // カメラのスクロール位置（ワールド座標でのカメラ左上）
     const scrollX = cam.scrollX;
     const scrollY = cam.scrollY;
     
-    // 画面上の相対位置をワールド座標に変換
     const screenCenterX = scrollX + width / 2;
-    const screenCenterY = scrollY + height / 2;
     const screenTop = scrollY;
-    const screenRight = scrollX + width;
-    const screenBottom = scrollY + height;
 
     // ヒントテキスト（画面上部中央）
     this.hintText.setPosition(screenCenterX, screenTop + 100);
 
-    // パワーゲージ（画面下部中央）
-    this.powerBarBg.setPosition(screenCenterX, screenBottom - 50);
-    this.powerBarFill.setPosition(screenCenterX - 98, screenBottom - 50);
-
-    // ファイトUI（画面右側）
-    this.fightContainer.setPosition(screenRight - 80, screenCenterY);
+    this.layoutFishingGaugeOverlay();
 
     // モーダル位置の更新はリサイズ時のみ（カメラ位置変更時は不要）
     // モーダルは固定位置なので、カメラが動いても位置を更新する必要はない
@@ -1876,6 +1819,10 @@ export default class GameScene extends Phaser.Scene {
   private static readonly ROD_FLOAT_INERTIA_MAX_Y = -1.0;
   /** キャスティング：持ち手（anchor）中心の揺れ・最大角度（ラジアン） */
   private static readonly ROD_CAST_GRIP_SWAY_MAX = 0.14;
+  /** 上下待機：真上に対する「後ろ」成分（小さめ＝ちょい斜め） */
+  private static readonly ROD_VERTICAL_WAIT_BACK_X = 0.05;
+  /** 上下待機のしなり（角度は ROD_VERTICAL_WAIT_BACK_X、しなりだけ強め） */
+  private static readonly ROD_VERTICAL_WAIT_CURVE_MUL = -2.5;
 
   private getFishingRigScale(): number {
     return Math.abs(this.player.scaleX);
@@ -1979,8 +1926,23 @@ export default class GameScene extends Phaser.Scene {
     );
   }
 
-  /** 待機中：アイドル時の垂れ方向を反転（前＋上） */
+  /** 待機中に上下へキャストしたとき（左右パターンではなくやや後ろ上に構える） */
+  private isVerticalRodWaitingPose(): boolean {
+    return (
+      this.state === FishingState.WAITING &&
+      (this.playerFacing === 'up' || this.playerFacing === 'down')
+    );
+  }
+
+  /** 待機中：左右は前＋上へ反転、上下キャストはやや後ろ上 */
   private getRodWaitingDroopDirection(): { x: number; y: number } {
+    if (this.playerFacing === 'up' || this.playerFacing === 'down') {
+      const backSign = this.getBackSign();
+      const x = backSign * GameScene.ROD_VERTICAL_WAIT_BACK_X;
+      const y = -1;
+      const len = Math.hypot(x, y) || 1;
+      return { x: x / len, y: y / len };
+    }
     const faceSign = -this.getBackSign();
     const x = faceSign * 0.75;
     const y = -1;
@@ -2024,6 +1986,9 @@ export default class GameScene extends Phaser.Scene {
       return base + 1.5 + bend;
     }
     if (this.state === FishingState.WAITING) {
+      if (this.isVerticalRodWaitingPose()) {
+        return base * GameScene.ROD_VERTICAL_WAIT_CURVE_MUL;
+      }
       return base * 0.5;
     }
     if (this.state === FishingState.CASTING) {
@@ -2090,12 +2055,24 @@ export default class GameScene extends Phaser.Scene {
     let straightX: number;
     let straightY: number;
     if (this.state === FishingState.WAITING) {
-      straightX =
-        this.fishingRig.anchor.x +
-        Math.round(faceSign * GameScene.ROD_TIP_OFFSET_X * s);
-      straightY =
-        this.fishingRig.anchor.y -
-        Math.round(GameScene.ROD_TIP_OFFSET_Y * s);
+      if (this.isVerticalRodWaitingPose()) {
+        const rodLen = Math.hypot(
+          GameScene.ROD_TIP_OFFSET_X,
+          GameScene.ROD_TIP_OFFSET_Y,
+        );
+        const dir = this.getRodWaitingDroopDirection();
+        straightX =
+          this.fishingRig.anchor.x + Math.round(dir.x * rodLen * s);
+        straightY =
+          this.fishingRig.anchor.y + Math.round(dir.y * rodLen * s);
+      } else {
+        straightX =
+          this.fishingRig.anchor.x +
+          Math.round(faceSign * GameScene.ROD_TIP_OFFSET_X * s);
+        straightY =
+          this.fishingRig.anchor.y -
+          Math.round(GameScene.ROD_TIP_OFFSET_Y * s);
+      }
     } else {
       straightX =
         this.fishingRig.anchor.x +
@@ -2521,39 +2498,47 @@ export default class GameScene extends Phaser.Scene {
     this.state = FishingState.CASTING;
     this.castPower = 0;
     this.castDirection = 1;
+    this.castMaxHoldRemainingSec = 0;
     this.prepareCastingRig();
-    this.powerBarBg.setVisible(true);
-    this.powerBarFill.setVisible(true);
+    this.fishingGaugeOverlay.setCastVisible(true);
+    this.layoutFishingGaugeOverlay();
     this.hintText.setText('SPACE を離して投げる！').setVisible(true);
   }
 
   updateCasting(delta: number) {
-    const speed = config.casting['2-3_ゲージ速度'];
-    this.castPower += speed * delta * this.castDirection;
+    const deltaSec = delta / 1000;
 
-    if (this.castPower >= 1) {
-        this.castPower = 1;
+    if (this.castMaxHoldRemainingSec > 0) {
+      this.castMaxHoldRemainingSec = Math.max(0, this.castMaxHoldRemainingSec - deltaSec);
+      if (this.castMaxHoldRemainingSec <= 0) {
         this.castDirection = -1;
-    } else if (this.castPower <= 0) {
+      }
+      this.castPower = 1;
+    } else {
+      const speed = config.casting['2-3_ゲージ速度'];
+      this.castPower += speed * delta * this.castDirection;
+
+      if (this.castPower >= 1) {
+        this.castPower = 1;
+        const holdSec = config.casting['2-4_マックス待機時間'];
+        if (holdSec > 0) {
+          this.castMaxHoldRemainingSec = holdSec;
+        } else {
+          this.castDirection = -1;
+        }
+      } else if (this.castPower <= 0) {
         this.castPower = 0;
         this.castDirection = 1;
+      }
     }
 
-    // パワーバーの色と幅を更新
-    const maxWidth = config.casting['2-1_ゲージ幅'] - 4;
-    const width = maxWidth * this.castPower;
-    this.powerBarFill.width = width;
-    
-    // 色を緑→黄→赤に変化
-    const r = Math.floor(this.castPower * 255);
-    const g = Math.floor((1 - this.castPower * 0.5) * 255);
-    this.powerBarFill.setFillStyle(Phaser.Display.Color.GetColor(r, g, 0));
+    this.layoutFishingGaugeOverlay();
+    this.fishingGaugeOverlay.updateCast({ power: this.castPower });
   }
 
   finishCasting() {
     this.state = FishingState.WAITING;
-    this.powerBarBg.setVisible(false);
-    this.powerBarFill.setVisible(false);
+    this.fishingGaugeOverlay.setCastVisible(false);
     this.hintText.setVisible(false);
     if (this.resultTextElement) {
       this.resultTextElement.style.display = 'none';
@@ -2564,7 +2549,7 @@ export default class GameScene extends Phaser.Scene {
     
     // 装備中の釣り竿のボーナスを取得
     const equippedRod = getRodById(this.playerData.equippedRodId);
-    const skillBonuses = getSkillStatBonuses(this.playerData);
+    const skillBonuses = getEffectiveSkillStatBonuses(this.playerData);
     const powerStatus = 1.0 + (equippedRod?.powerStatAdd || 0) + skillBonuses.castDistSkillAdd;
     
     // パワーに応じた距離（釣り竿のボーナスを反映）
@@ -2577,6 +2562,8 @@ export default class GameScene extends Phaser.Scene {
     if (hasSkillAbility(this.playerData, 'abil_power_cast_finesse') && this.castPower >= 0.98) {
       distance *= 1.25;
     }
+
+    this.lastCastDistanceRatio = getCastDistanceRatio(distance);
     
     this.setupFishingRigAfterCast(distance);
 
@@ -2645,24 +2632,31 @@ export default class GameScene extends Phaser.Scene {
     if (this.currentFish) {
       const isJunk = this.currentFish.id.startsWith('junk_');
       if (!isJunk) {
-        this.currentFishSize = generateRandomSize(this.currentFish.maxSize);
+        this.currentFishSize = generateRandomSize(
+          this.currentFish.maxSize,
+          this.lastCastDistanceRatio,
+        );
       } else {
         this.currentFishSize = undefined;
       }
     }
     
     this.state = FishingState.FIGHTING;
-    this.fightContainer.setVisible(true);
+    this.fishingGaugeOverlay.setFightVisible(true);
 
     const fightCfg = config.fighting;
     this.fishBarPosition = 0.4;
     this.playerBarPosition = 0.3;
     this.playerBarVelocity = 0;
     this.catchProgress = fightCfg['5-12_初期ゲージ'];
-    // 初回の移動目標更新までの待ち（control_n06 シルクタッチで少し延長）
-    const fightStartMoveDelaySec = hasSkillAbility(this.playerData, 'abil_luck_junk_ward') ? 1.5 : 1.0;
+    // 初回の移動目標更新までの待ち（シルクタッチ所持時は別設定）
+    const fightStartMoveDelaySec = hasSkillAbility(this.playerData, 'abil_luck_junk_ward')
+      ? fightCfg['5-12b_開始時魚移動待機秒_シルクタッチ']
+      : fightCfg['5-12a_開始時魚移動待機秒'];
     this.fishMoveTimer = fightStartMoveDelaySec;
     this.fishTargetPosition = 0.4;
+    this.fishDriftIntent = 0;
+    this.fishDriftVelocity = 0;
     this.fightStaggerUsedThisFight = false;
     this.fightSmoothDragUsedThisFight = false;
     this.fightLockOnUsedThisFight = false;
@@ -2670,13 +2664,12 @@ export default class GameScene extends Phaser.Scene {
     this.lockOnRemainingSec = 0;
     this.smoothDragRemainingSec = 0;
     this.speedComboMultiplier = 0;
-    this.uiCriticalZone.setVisible(false);
-
-    // 魚の難易度に応じて色を変更
     if (this.currentFish) {
         const isRarityVisible = hasSkillAbility(this.playerData, 'abil_spec_pedia_bonus');
         const color = isRarityVisible ? rarityColors[this.currentFish.rarity] : 0x999999;
-        this.uiFish.setFillStyle(color);
+        this.fishingGaugeOverlay.setFishColor(phaserColorToCss(color));
+    } else {
+        this.fishingGaugeOverlay.setFishColor('#ffaa00');
     }
   }
 
@@ -2710,7 +2703,7 @@ export default class GameScene extends Phaser.Scene {
   updateFighting(_time: number, delta: number) {
     const dt = delta / 1000;
     const cfg = config.fighting;
-    const skillBonuses = getSkillStatBonuses(this.playerData);
+    const skillBonuses = getEffectiveSkillStatBonuses(this.playerData);
 
     if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) {
       this.tryUseFightLockOn();
@@ -2722,169 +2715,83 @@ export default class GameScene extends Phaser.Scene {
       this.tryUseFightSmoothDrag();
     }
 
-    // プレイヤーバーの操作
-    const gravity = cfg['5-7_重力'];
-    const lift = cfg['5-8_上昇力'];
+    const simState: FightSimState = {
+      fishBarPosition: this.fishBarPosition,
+      fishTargetPosition: this.fishTargetPosition,
+      fishMoveTimer: this.fishMoveTimer,
+      fishDriftIntent: this.fishDriftIntent,
+      fishDriftVelocity: this.fishDriftVelocity,
+      playerBarPosition: this.playerBarPosition,
+      playerBarVelocity: this.playerBarVelocity,
+      catchProgress: this.catchProgress,
+      fishFreezeRemainingSec: this.fishFreezeRemainingSec,
+      lockOnRemainingSec: this.lockOnRemainingSec,
+      smoothDragRemainingSec: this.smoothDragRemainingSec,
+      speedComboMultiplier: this.speedComboMultiplier,
+      fightStaggerUsed: this.fightStaggerUsedThisFight,
+      fightSmoothDragUsed: this.fightSmoothDragUsedThisFight,
+      fightLockOnUsed: this.fightLockOnUsedThisFight,
+      isCatching: false,
+    };
 
-    if (this.spaceKey.isDown) {
-        this.playerBarVelocity += lift * dt;
-    }
-    this.playerBarVelocity -= gravity * dt;
-
-    const equippedRod = getRodById(this.playerData.equippedRodId);
-    const barDrag = getLevelFightBarVelocityDragPerSecond(this.playerData.level)
-      + skillBonuses.fightBarDragSkillAdd
-      + (equippedRod?.controlStatAdd || 0);
-    if (barDrag > 0) {
-      this.playerBarVelocity *= Math.max(0, 1 - barDrag * dt);
-    }
-
-    this.playerBarPosition += this.playerBarVelocity * dt;
-
-    if (this.playerBarPosition < 0) {
-        this.playerBarPosition = 0;
-        this.playerBarVelocity = 0;
-    } else if (this.playerBarPosition > 0.8) {
-        this.playerBarPosition = 0.8;
-        this.playerBarVelocity = -this.playerBarVelocity * 0.3;
-    }
-
-    // 魚AI - 魚ごとのパラメータを使用
     const fish = this.currentFish;
-    const fishSpeed = fish?.fishSpeed ?? 0.3;
-    const fishErratic = fish?.fishErratic ?? 0.3;
-    const moveIntervalMin = fish?.moveInterval[0] ?? cfg['5-13_魚の移動間隔_最短'];
-    const moveIntervalMax = fish?.moveInterval[1] ?? cfg['5-14_魚の移動間隔_最長'];
-    const catchRate = fish?.catchRate ?? 1.0;      // 捕まえやすさ
-    const escapeRate = fish?.escapeRate ?? 1.0;    // 逃げやすさ
-    
-    this.fishMoveTimer -= dt;
-    this.fishFreezeRemainingSec = Math.max(0, this.fishFreezeRemainingSec - dt);
-    if (this.fishMoveTimer <= 0 && this.fishFreezeRemainingSec <= 0) {
-        // 魚ごとの移動間隔を使用
-        this.fishMoveTimer = Phaser.Math.FloatBetween(moveIntervalMin, moveIntervalMax);
-        
-        // 不規則な動きの場合、大きくジャンプすることがある
-        const minRange = cfg['5-16_魚の移動範囲_下'];
-        const maxRange = cfg['5-17_魚の移動範囲_上'];
-        
-        if (Math.random() < fishErratic) {
-            // 激しい動き：遠くへジャンプ
-            const currentPos = this.fishBarPosition;
-            const jumpDistance = 0.3 + fishErratic * 0.3;
-            if (Math.random() < 0.5) {
-                this.fishTargetPosition = Math.min(currentPos + jumpDistance, maxRange);
-            } else {
-                this.fishTargetPosition = Math.max(currentPos - jumpDistance, minRange);
-            }
-        } else {
-            // 通常の動き
-            this.fishTargetPosition = Phaser.Math.FloatBetween(minRange, maxRange);
-        }
-    }
-    
-    // 魚の速度でlerpスピードを調整
-    const baseLerpSpeed = cfg['5-15_魚のなめらかさ'];
-    const lerpSpeed = baseLerpSpeed * (1 + fishSpeed * 2);
-    if (this.fishFreezeRemainingSec <= 0) {
-      this.fishBarPosition = Phaser.Math.Linear(
-          this.fishBarPosition,
-          this.fishTargetPosition,
-          lerpSpeed
-      );
-    }
+    const fishParams = fish
+      ? fishParamsFromConfig(fish, this.currentFishSize)
+      : {
+          catchRate: 1.0,
+          escapeRate: 1.0,
+          fishSpeed: 0.3,
+          fishErratic: 0.3,
+          moveInterval: [cfg['5-13_魚の移動間隔_最短'], cfg['5-14_魚の移動間隔_最長']] as [number, number],
+          maxSize: 30,
+        };
 
-    this.lockOnRemainingSec = Math.max(0, this.lockOnRemainingSec - dt);
-    if (this.lockOnRemainingSec > 0) {
-      this.playerBarPosition = Phaser.Math.Linear(this.playerBarPosition, this.fishBarPosition - 0.05, 0.25);
-    }
+    stepFightSimulation(simState, {
+      dt,
+      spaceHeld: this.spaceKey.isDown,
+      playerData: this.playerData,
+      equippedRodId: this.playerData.equippedRodId,
+      fish: fishParams,
+      skillBonuses,
+      skipSkillTriggers: true,
+    });
 
-    // 判定（レベルボーナスを適用）
-    const baseBarHeight = cfg['5-9_バー判定範囲'];
-    const levelBarBonus = getLevelBarRangeBonus(this.playerData.level);
-    const elapsedFightSec = Math.max(0, (1 - this.catchProgress) * 8);
-    const nearmissBonus = hasSkillAbility(this.playerData, 'abil_control_nearmiss_save')
-      ? Math.min(0.08, elapsedFightSec * 0.01)
-      : 0;
-    this.smoothDragRemainingSec = Math.max(0, this.smoothDragRemainingSec - dt);
-    const smoothDragBonus = this.smoothDragRemainingSec > 0 ? 0.12 : 0;
-    const barHeight = Math.min(
-      1.0,
-      baseBarHeight
-      + levelBarBonus
-      + skillBonuses.barRangeSkillAdd
-      + (equippedRod?.techniqueStatAdd || 0)
-      + nearmissBonus
-      + smoothDragBonus
-    );  // 最大1.0まで
-    const isCatching = (this.fishBarPosition >= this.playerBarPosition && 
-                        this.fishBarPosition <= this.playerBarPosition + barHeight);
+    this.fishBarPosition = simState.fishBarPosition;
+    this.fishTargetPosition = simState.fishTargetPosition;
+    this.fishMoveTimer = simState.fishMoveTimer;
+    this.fishDriftIntent = simState.fishDriftIntent;
+    this.fishDriftVelocity = simState.fishDriftVelocity;
+    this.playerBarPosition = simState.playerBarPosition;
+    this.playerBarVelocity = simState.playerBarVelocity;
+    this.catchProgress = simState.catchProgress;
+    this.fishFreezeRemainingSec = simState.fishFreezeRemainingSec;
+    this.lockOnRemainingSec = simState.lockOnRemainingSec;
+    this.smoothDragRemainingSec = simState.smoothDragRemainingSec;
+    this.speedComboMultiplier = simState.speedComboMultiplier;
+
+    const barHeight = getFightBarHeight(simState, this.playerData, this.playerData.equippedRodId, skillBonuses);
+    const isCatching = simState.isCatching;
     const criticalZoneHeight = hasSkillAbility(this.playerData, 'abil_speed_opening_surge') ? 0.08 : 0;
     const playerHitBarCenter = this.playerBarPosition + barHeight / 2;
-    const criticalZoneTop = playerHitBarCenter + (criticalZoneHeight / 2);
-    const criticalZoneBottom = playerHitBarCenter - (criticalZoneHeight / 2);
-    const isInCriticalZone = criticalZoneHeight > 0
-      && this.fishBarPosition >= criticalZoneBottom
-      && this.fishBarPosition <= criticalZoneTop
-      && isCatching;
 
-    const rodSpeedStatAdd = equippedRod?.speedStatAdd || 0;
+    const fishColor =
+      this.currentFish && hasSkillAbility(this.playerData, 'abil_spec_pedia_bonus')
+        ? phaserColorToCss(rarityColors[this.currentFish.rarity])
+        : '#999999';
 
-    // サイズによるcatchRate調整（粘り強さ）
-    let adjustedCatchRate = catchRate;
-    if (this.currentFish && this.currentFishSize !== undefined) {
-      const sizeRatio = this.currentFishSize / this.currentFish.maxSize; // 0.5〜1.0
-      adjustedCatchRate = calculateCatchRateWithSize(catchRate, sizeRatio, 0.3); // 難易度係数0.3
-    }
-
-    if (isCatching) {
-        // レベル由来は倍率に巻き込まず、最後に加算して効かせる
-        const baseGaugeSpeed = cfg['5-10_ゲージ増加速度'];
-        const levelGaugeBonus = getLevelGaugeSpeedBonus(this.playerData.level);
-        const rodCatchAdd = baseGaugeSpeed * rodSpeedStatAdd;
-        if (hasSkillAbility(this.playerData, 'abil_speed_last_push')) {
-          this.speedComboMultiplier = Math.min(0.5, this.speedComboMultiplier + this.speedComboGrowPerSecond * dt);
-        }
-        const critAdd = isInCriticalZone ? 0.035 : 0;
-        const equipAndFishGain = (baseGaugeSpeed * adjustedCatchRate) + rodCatchAdd;
-        const comboAdd = baseGaugeSpeed * this.speedComboMultiplier;
-        this.catchProgress += (equipAndFishGain + levelGaugeBonus + skillBonuses.gaugeSpeedSkillAdd + critAdd + comboAdd) * dt;
-        this.uiPlayerBar.setFillStyle(0x00ff00);
-    } else {
-        // 全体設定 × 魚ごとの逃げやすさ
-        this.catchProgress -= cfg['5-11_ゲージ減少速度'] * escapeRate * dt;
-        this.speedComboMultiplier = 0;
-        this.uiPlayerBar.setFillStyle(0x888800);
-    }
-    
-    this.catchProgress = Phaser.Math.Clamp(this.catchProgress, 0, 1);
-
-    // UI更新
-    const bgHeight = cfg['5-2_背景高さ'];
-    const mapY = (pos: number) => (bgHeight / 2) - (pos * bgHeight);
-
-    this.uiFish.y = mapY(this.fishBarPosition);
-    
-    // プレイヤーバーの高さを判定範囲に応じて動的に変更
-    const barDisplayHeight = barHeight * bgHeight;  // 判定範囲をピクセルに変換
-    this.uiPlayerBar.setSize(cfg['5-3_バー幅'], barDisplayHeight);
-    this.uiPlayerBar.y = mapY(this.playerBarPosition + barHeight / 2);
-    if (criticalZoneHeight > 0) {
-      this.uiCriticalZone.setVisible(true);
-      this.uiCriticalZone.setSize(cfg['5-3_バー幅'] + 8, criticalZoneHeight * bgHeight);
-      this.uiCriticalZone.y = mapY(playerHitBarCenter);
-    } else {
-      this.uiCriticalZone.setVisible(false);
-    }
-    
-    // 進行ゲージ：下から上に伸びる
-    const progressHeight = this.catchProgress * bgHeight;
-    this.uiProgressBar.height = progressHeight;
-    this.uiProgressBar.y = (bgHeight / 2) - progressHeight;
+    this.fishingGaugeOverlay.updateFight({
+      fishBarPosition: this.fishBarPosition,
+      playerBarPosition: this.playerBarPosition,
+      barHeight,
+      catchProgress: this.catchProgress,
+      isCatching,
+      criticalZoneHeight,
+      playerHitBarCenter,
+      fishColor,
+    });
 
     this.updateFightSkillHud();
 
-    // 終了判定
     if (this.catchProgress >= 1) {
         this.successFishing();
     } else if (this.catchProgress <= 0) {
@@ -2902,17 +2809,16 @@ export default class GameScene extends Phaser.Scene {
     const lock = hasSkillAbility(this.playerData, 'abil_control_lock_on');
     const stag = hasSkillAbility(this.playerData, 'abil_power_fight_steady');
     const hi = hasSkillAbility(this.playerData, 'abil_control_smooth_drag');
-    this.fightSkillHudLeft.setText(fmt(lock, this.fightLockOnUsedThisFight, this.lockOnRemainingSec, '←'));
-    this.fightSkillHudUp.setText(fmt(stag, this.fightStaggerUsedThisFight, this.fishFreezeRemainingSec, '↑'));
-    this.fightSkillHudRight.setText(fmt(hi, this.fightSmoothDragUsedThisFight, this.smoothDragRemainingSec, '→'));
-    this.fightSkillHudLeft.setVisible(lock);
-    this.fightSkillHudUp.setVisible(stag);
-    this.fightSkillHudRight.setVisible(hi);
+    this.fishingGaugeOverlay.updateFightSkillHud(
+      { text: fmt(lock, this.fightLockOnUsedThisFight, this.lockOnRemainingSec, '←'), visible: lock },
+      { text: fmt(stag, this.fightStaggerUsedThisFight, this.fishFreezeRemainingSec, '↑'), visible: stag },
+      { text: fmt(hi, this.fightSmoothDragUsedThisFight, this.smoothDragRemainingSec, '→'), visible: hi },
+    );
   }
 
   successFishing() {
     this.state = FishingState.SUCCESS;
-    this.fightContainer.setVisible(false);
+    this.fishingGaugeOverlay.setFightVisible(false);
     this.cleanupFishingTools();
 
     if (this.currentFish) {
@@ -2932,7 +2838,11 @@ export default class GameScene extends Phaser.Scene {
             let earnings = this.currentFish.price;
             if (!isJunk && fishSize !== undefined) {
               const sizeRatio = fishSize / this.currentFish.maxSize; // 0.5〜1.0
-              earnings = calculatePriceWithSizeBonus(this.currentFish.price, sizeRatio, 0.5); // ボーナス係数0.5
+              earnings = calculatePriceWithSizeBonus(
+                this.currentFish.price,
+                sizeRatio,
+                config.fighting['5-12f_サイズ売価ボーナス係数'],
+              );
             }
             earnings = Math.round(earnings * getSellPriceMultiplier(this.playerData));
             
@@ -2989,7 +2899,11 @@ export default class GameScene extends Phaser.Scene {
         let actualPrice = this.currentFish.price;
         if (!isJunk && fishSize !== undefined) {
           const sizeRatio = fishSize / this.currentFish.maxSize; // 0.5〜1.0
-          actualPrice = calculatePriceWithSizeBonus(this.currentFish.price, sizeRatio, 0.5); // ボーナス係数0.5
+          actualPrice = calculatePriceWithSizeBonus(
+            this.currentFish.price,
+            sizeRatio,
+            config.fighting['5-12f_サイズ売価ボーナス係数'],
+          );
         }
         actualPrice = Math.round(actualPrice * getSellPriceMultiplier(this.playerData));
         
@@ -3040,7 +2954,7 @@ export default class GameScene extends Phaser.Scene {
 
   cancelFishing(reason: string) {
     this.state = FishingState.FAIL;
-    this.fightContainer.setVisible(false);
+    this.fishingGaugeOverlay.setFightVisible(false);
     this.cleanupFishingTools();
     this.currentFish = null;
     this.currentFishSize = undefined;
@@ -3057,8 +2971,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.biteTimeout) this.biteTimeout.remove();
     this.resetFishingLineState();
     this.exclamation.setVisible(false);
-    this.powerBarBg.setVisible(false);
-    this.powerBarFill.setVisible(false);
+    this.fishingGaugeOverlay.setCastVisible(false);
     this.hintText.setVisible(false);
   }
 
@@ -3164,18 +3077,23 @@ export default class GameScene extends Phaser.Scene {
       this.catchResultHideTimer = undefined;
     }
 
-    const fishImagePath = `/images/fish/${params.fish.name}.png`;
+    const fishImagePath = getFishImagePath(params.fish.id);
     fishEmoji.textContent = params.fish.emoji;
-    fishImage.style.display = 'block';
-    fishImage.src = fishImagePath;
-    fishImage.onerror = () => {
+    if (fishImagePath) {
+      fishImage.style.display = 'block';
+      fishImage.src = fishImagePath;
+      fishImage.onerror = () => {
+        fishImage.style.display = 'none';
+        fishEmoji.style.display = 'flex';
+      };
+      fishImage.onload = () => {
+        fishImage.style.display = 'block';
+        fishEmoji.style.display = 'none';
+      };
+    } else {
       fishImage.style.display = 'none';
       fishEmoji.style.display = 'flex';
-    };
-    fishImage.onload = () => {
-      fishImage.style.display = 'block';
-      fishEmoji.style.display = 'none';
-    };
+    }
 
     priceValue.textContent = params.price.toLocaleString();
     sizeValue.textContent = params.fishSize !== undefined ? params.fishSize.toFixed(1) : '--';
@@ -3277,7 +3195,7 @@ export default class GameScene extends Phaser.Scene {
       this.resultTextTimer = undefined;
     }
     this.hideCatchResultPopup();
-    this.fightContainer.setVisible(false);
+    this.fishingGaugeOverlay.setFightVisible(false);
     this.hintText.setVisible(false);
   }
 
@@ -3466,16 +3384,8 @@ export default class GameScene extends Phaser.Scene {
   updateInventorySlots() {
     if (!this.inventoryUIElement) return;
     
-    // インベントリをフラット化（スタックを展開して個別表示）
-    const flatInventory: Array<{ fishId: string; size?: number }> = [];
-    for (const item of this.playerData.inventory) {
-        for (let j = 0; j < item.count; j++) {
-            // 各個体のサイズを取得（配列にサイズがある場合）
-            const size = item.sizes[j];
-            flatInventory.push({ fishId: item.fishId, size });
-        }
-    }
-    
+    const flatInventory = getInventoryDisplayOrder(this.playerData);
+
     // maxInventorySlotsに基づいてスロットを更新
     for (let i = 0; i < this.playerData.maxInventorySlots; i++) {
         const slotData = this.inventorySlotElements[i];
@@ -3549,7 +3459,11 @@ export default class GameScene extends Phaser.Scene {
                 let displayPrice = fish.price;
                 if (!isJunk && size !== undefined) {
                   const sizeRatio = size / fish.maxSize;
-                  displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
+                  displayPrice = calculatePriceWithSizeBonus(
+                    fish.price,
+                    sizeRatio,
+                    config.fighting['5-12f_サイズ売価ボーナス係数'],
+                  );
                 }
                 displayPrice = Math.round(displayPrice * getSellPriceMultiplier(this.playerData));
                 slotPrice.textContent = sizeText ? `${sizeText} / ${displayPrice}G` : `${displayPrice}G`;
@@ -3605,16 +3519,8 @@ export default class GameScene extends Phaser.Scene {
   openDetailModal() {
     if (!this.detailModalElement) return;
     
-    // フラット化したインベントリから取得（サイズも含む）
-    const flatInventory: Array<{ fishId: string; size?: number }> = [];
-    for (const item of this.playerData.inventory) {
-        for (let j = 0; j < item.count; j++) {
-            // 各個体のサイズを取得（配列にサイズがある場合）
-            const size = item.sizes[j];
-            flatInventory.push({ fishId: item.fishId, size });
-        }
-    }
-    
+    const flatInventory = getInventoryDisplayOrder(this.playerData);
+
     if (this.selectedSlotIndex >= flatInventory.length) return;
 
     const { fishId, size } = flatInventory[this.selectedSlotIndex];
@@ -3691,7 +3597,11 @@ export default class GameScene extends Phaser.Scene {
     let displayPrice = fish.price;
     if (!isJunk && size !== undefined) {
       const sizeRatio = size / fish.maxSize;
-      displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
+      displayPrice = calculatePriceWithSizeBonus(
+        fish.price,
+        sizeRatio,
+        config.fighting['5-12f_サイズ売価ボーナス係数'],
+      );
     }
     displayPrice = Math.round(displayPrice * getSellPriceMultiplier(this.playerData));
     priceText.textContent = `${Math.floor(displayPrice)}G`;
@@ -3711,8 +3621,7 @@ export default class GameScene extends Phaser.Scene {
       habitatText.style.backgroundColor = habitatColorMap[fish.habitat] || '#327F75';
     
     // 捕獲数（インベントリ内のこの魚の数）
-    const inventoryItem = this.playerData.inventory.find(item => item.fishId === fish.id);
-    const catchCount = inventoryItem ? inventoryItem.count : 0;
+    const catchCount = this.playerData.inventory.filter((e) => e.fishId === fish.id).length;
     catchCountText.textContent = catchCount.toString();
 
     this.openModal(this.MODAL_IDS.DETAIL);
@@ -3946,7 +3855,7 @@ export default class GameScene extends Phaser.Scene {
                   </div>
                   <section class="book-status-section">
                     <h3 class="book-status-section-title">現在の能力値</h3>
-                    <p class="book-status-hint">いまの装備とレベルを反映した実戦性能を、基準100の整数で示しています（100が標準）。</p>
+                    <p class="book-status-hint">いまの装備とスキルを反映した実戦性能を、基準100の整数で示しています（100が標準）。</p>
                     <div class="book-status-two-col">
                       <ul class="book-status-stat-list">
                         <li class="ui-frame-box" data-stat-key="power" role="button" tabindex="0" aria-selected="true"><div class="book-stat-name"><span class="book-stat-name-label">パワー</span><span class="book-stat-name-delta-icon" aria-hidden="true"></span></div><span class="book-stat-val-wrap"><span class="book-status-stat-arrow-wrap"><span class="book-status-stat-delta" aria-live="polite"></span></span><span id="book-status-power" class="book-stat-val">0</span><span id="book-status-power-current" class="book-stat-val book-stat-val-current">0</span></span></li>
@@ -4541,37 +4450,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private calculateStatusIndexValues(rodId: string): Record<'power' | 'speed' | 'technique' | 'control', number> {
-    const pd = this.playerData;
-    const level = pd.level;
-    const rod = getRodById(rodId);
-    const skillBonuses = getSkillStatBonuses(pd);
-    const barBonus = getLevelBarRangeBonus(level);
-    const gaugeBonus = getLevelGaugeSpeedBonus(level);
-    const fightCfg = config.fighting;
-
-    // 表示専用: 内部の加算値・0〜1比率を「基準100」の整数に（例 1.25→125）
-    const fmtBookStatIndex = (v: number) => Math.round(Math.max(0, v) * 100);
-
-    const baseGaugeSpeed = fightCfg['5-10_ゲージ増加速度'];
-    const rodCatchAdd = baseGaugeSpeed * (rod?.speedStatAdd ?? 0);
-    const baseBarHeight = fightCfg['5-9_バー判定範囲'];
-    const effectiveBarHeight = Math.min(
-      1.0,
-      baseBarHeight + barBonus + skillBonuses.barRangeSkillAdd + (rod?.techniqueStatAdd ?? 0),
-    );
-    const effectiveControl = Math.max(
-      0,
-      getLevelFightBarVelocityDragPerSecond(level) + skillBonuses.fightBarDragSkillAdd + (rod?.controlStatAdd ?? 0),
-    );
-
-    return {
-      power: fmtBookStatIndex(1 + (rod?.powerStatAdd ?? 0) + skillBonuses.castDistSkillAdd),
-      speed: fmtBookStatIndex(
-        1 + (rodCatchAdd + gaugeBonus + skillBonuses.gaugeSpeedSkillAdd) / Math.max(0.0001, baseGaugeSpeed),
-      ),
-      technique: fmtBookStatIndex(effectiveBarHeight),
-      control: Math.round(100 + effectiveControl * 12),
-    };
+    return calculateDisplayStatIndices(this.playerData, rodId);
   }
 
   private setStatusPreviewEquipment(type: 'rod' | 'bait' | 'lure' | null, equipmentId: string | null, panel: HTMLElement) {
@@ -4752,7 +4631,7 @@ export default class GameScene extends Phaser.Scene {
 
     const statDetails: Record<'power' | 'speed' | 'technique' | 'control', { text: string }> = {
       'power': {
-        text: '遠くまで投げるための能力。陸地から遠いほど大きい魚が釣れる。',
+        text: '遠くまで投げる能力。投擲距離が長いほど、大きい個体が釣れやすくなる。',
       },
       'speed': {
         text: 'ヒット時にゲージを伸ばす速さ。高いほど捕獲を安定させやすい。',
@@ -5603,6 +5482,13 @@ export default class GameScene extends Phaser.Scene {
     if (r.ok) {
       savePlayerData(this.playerData);
       this.updateStatusUI();
+      this.renderSkillBookPanel();
+      if (this.unifiedBookOpen && this.unifiedBookTab === 'status' && this.unifiedBookUIElement) {
+        const statusPanel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
+        if (statusPanel && statusPanel.style.display !== 'none') {
+          this.fillBookStatusPanel(statusPanel);
+        }
+      }
       this.showResult('スキルを解放しました', 1200);
     } else if (r.reason) {
       this.showResult(r.reason, 1600);
@@ -5954,14 +5840,7 @@ export default class GameScene extends Phaser.Scene {
       // 左リストなし。詳細はステータスパネル側。
     } else if (this.unifiedBookTab === 'inventory') {
       // インベントリタブ
-      const flatInventory: Array<{ fishId: string; size?: number }> = [];
-      for (const item of this.playerData.inventory) {
-        for (let j = 0; j < item.count; j++) {
-          // 各個体のサイズを取得（配列にサイズがある場合）
-          const size = item.sizes[j];
-          flatInventory.push({ fishId: item.fishId, size });
-        }
-      }
+      const flatInventory = getInventoryDisplayOrder(this.playerData);
 
       let createdFishCount = 0;
       flatInventory.forEach(({ fishId, size }, index) => {
@@ -6283,7 +6162,11 @@ export default class GameScene extends Phaser.Scene {
         let displayPrice = fish.price;
         if (!isJunk && size !== undefined) {
           const sizeRatio = size / fish.maxSize;
-          displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
+          displayPrice = calculatePriceWithSizeBonus(
+            fish.price,
+            sizeRatio,
+            config.fighting['5-12f_サイズ売価ボーナス係数'],
+          );
         }
         displayPrice = Math.round(displayPrice * getSellPriceMultiplier(this.playerData));
         meta.textContent = `${sizeText}💰 ${displayPrice}G`;
@@ -6525,18 +6408,12 @@ export default class GameScene extends Phaser.Scene {
       let displaySizeValue: string;
       let displaySizeUnit: string;
       if (this.unifiedBookTab === 'inventory') {
-        // インベントリから選択されたアイテムのサイズを取得
-        const flatInventory: Array<{ fishId: string; size?: number }> = [];
-        for (const item of this.playerData.inventory) {
-          for (let j = 0; j < item.count; j++) {
-            const size = item.sizes[j];
-            flatInventory.push({ fishId: item.fishId, size });
-          }
-        }
-        const selectedIndex = this.unifiedBookListItems.findIndex(
-          (row) => row.getAttribute('data-fish-id') === fish.id && row.classList.contains('state-selected'),
-        );
-        const selectedItem = selectedIndex >= 0 ? flatInventory[selectedIndex] : null;
+        const flatInventory = getInventoryDisplayOrder(this.playerData);
+        const selectedIdx = this.unifiedBookSelectedIndex;
+        const selectedItem =
+          selectedIdx !== null && selectedIdx >= 0 && selectedIdx < flatInventory.length
+            ? flatInventory[selectedIdx]
+            : null;
         const itemSize = selectedItem?.size;
         if (itemSize !== undefined) {
           displaySizeValue = itemSize.toFixed(1);
@@ -6578,20 +6455,19 @@ export default class GameScene extends Phaser.Scene {
       // サイズを考慮した価格を計算（インベントリタブの場合のみ）
       let displayPrice = fish.price;
       if (this.unifiedBookTab === 'inventory' && displaySizeValue !== '-') {
-        const flatInventory: Array<{ fishId: string; size?: number }> = [];
-        for (const item of this.playerData.inventory) {
-          for (let j = 0; j < item.count; j++) {
-            const s = item.sizes[j];
-            flatInventory.push({ fishId: item.fishId, size: s });
-          }
-        }
-        const selectedIndex = this.unifiedBookListItems.findIndex(
-          (row) => row.getAttribute('data-fish-id') === fish.id && row.classList.contains('state-selected'),
-        );
-        const selectedItem = selectedIndex >= 0 ? flatInventory[selectedIndex] : null;
+        const flatInventory = getInventoryDisplayOrder(this.playerData);
+        const selectedIdx = this.unifiedBookSelectedIndex;
+        const selectedItem =
+          selectedIdx !== null && selectedIdx >= 0 && selectedIdx < flatInventory.length
+            ? flatInventory[selectedIdx]
+            : null;
         if (selectedItem?.size !== undefined && !isJunk) {
           const sizeRatio = selectedItem.size / fish.maxSize;
-          displayPrice = calculatePriceWithSizeBonus(fish.price, sizeRatio, 0.5);
+          displayPrice = calculatePriceWithSizeBonus(
+            fish.price,
+            sizeRatio,
+            config.fighting['5-12f_サイズ売価ボーナス係数'],
+          );
       displayPrice = Math.round(displayPrice * getSellPriceMultiplier(this.playerData));
         }
       }
@@ -8179,6 +8055,54 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // --- バランス調整UI（デバッグ用） ---
+
+  createBalanceDebugUI() {
+    if (this.balanceDebugPanel?.element) return;
+
+    this.balanceDebugPanel = createBalanceDebugPanel({
+      getPlayerData: () => this.playerData,
+      getEquippedRodId: () => this.playerData.equippedRodId,
+      onPlayerDataChanged: () => {
+        this.lastLevel = -1;
+        this.lastExpProgress = -1;
+        this.updateStatusUI();
+        if (this.skillUnlockConfirmPendingNodeId) {
+          this.closeSkillUnlockConfirm();
+        }
+        if (this.unifiedBookOpen && this.unifiedBookUIElement) {
+          if (this.unifiedBookTab === 'status') {
+            const sp = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
+            if (sp && sp.style.display !== 'none') {
+              this.fillBookStatusPanel(sp);
+            }
+          } else if (this.unifiedBookTab === 'skills') {
+            this.renderSkillBookPanel();
+          }
+        }
+      },
+      onRequestClose: () => this.closeBalanceDebug(),
+      savePlayerData: () => savePlayerData(this.playerData),
+    });
+  }
+
+  openBalanceDebug() {
+    if (!this.balanceDebugPanel?.element) {
+      this.createBalanceDebugUI();
+    }
+    this.balanceDebugPanel.refresh();
+    document.body.classList.add('balance-debug-open');
+    this.openModal(this.MODAL_IDS.BALANCE_DEBUG);
+    this.balanceDebugPanel.startFightPreview();
+  }
+
+  closeBalanceDebug() {
+    if (!this.balanceDebugPanel?.element) return;
+    this.balanceDebugPanel.stopFightPreview();
+    document.body.classList.remove('balance-debug-open');
+    this.closeModal(this.MODAL_IDS.BALANCE_DEBUG);
+  }
+
   // --- キャラクター設定UI（デバッグ用） ---
 
   createCharacterSettingsUI() {
@@ -8559,7 +8483,7 @@ export default class GameScene extends Phaser.Scene {
         name: rod.name,
         icon: rod.icon,
         price: rod.price,
-        info: `P:+${Math.round(rod.powerStatAdd * 100)} S:+${Math.round(rod.speedStatAdd * 100)} T:+${Math.round(rod.techniqueStatAdd * 100)} C:+${Math.round(rod.controlStatAdd * 12)} R/E/L:+${Math.round(rod.rarityHitRateAdd.rare * 100)}/+${Math.round(rod.rarityHitRateAdd.epic * 100)}/+${Math.round(rod.rarityHitRateAdd.legendary * 100)}`,
+        info: `P:+${Math.round(rod.powerStatAdd * 100)} S:+${Math.round(rod.speedStatAdd * 100)} T:+${Math.round(rod.techniqueStatAdd * 100)} C:+${Math.round(rod.controlStatAdd * 100)} R/E/L:+${Math.round(rod.rarityHitRateAdd.rare * 100)}/+${Math.round(rod.rarityHitRateAdd.epic * 100)}/+${Math.round(rod.rarityHitRateAdd.legendary * 100)}`,
         owned: this.hasRod(rod.id),
         equipped: this.playerData.equippedRodId === rod.id,
       }));
@@ -8618,7 +8542,7 @@ export default class GameScene extends Phaser.Scene {
           statChips.push(
             { label: 'POWER', value: `+${Math.round(rod.powerStatAdd * 100)}` },
             { label: 'SPEED', value: `+${Math.round(rod.speedStatAdd * 100)}` },
-            { label: 'CONTROL', value: `+${Math.round(rod.controlStatAdd * 12)}` },
+            { label: 'CONTROL', value: `+${Math.round(rod.controlStatAdd * 100)}` },
             { label: 'TECH', value: `+${Math.round(rod.techniqueStatAdd * 100)}` }
           );
           noteText = rod.description;

@@ -112,3 +112,60 @@ export function getFishById(id: string): FishConfig | undefined {
 export function getRealFishCount(): number {
   return fishDatabase.filter(f => !f.id.startsWith('junk')).length;
 }
+
+/** 魚ID → public/images/fish 内のファイル名（拡張子なし） */
+export const fishImageFileNames: Record<string, string> = {
+  // COMMON
+  fish_goby: 'ハゼ',
+  fish_crucian_carp: 'フナ',
+  fish_carp: 'コイ',
+  fish_sweetfish: 'アユ',
+  fish_killifish: 'メダカ',
+  fish_loach: 'ドジョウ',
+  fish_bluegill: 'ブルーギル',
+  fish_crucian_herabuna: 'ヘラブナ',
+  fish_sea_bass: 'スズキ',
+  fish_goldfish: 'キンギョ',
+  fish_clownfish: 'クマノミ',
+  fish_pufferfish: 'フグ',
+  fish_tang: 'ナンヨウハギ',
+  // UNCOMMON
+  fish_catfish: 'ナマズ',
+  fish_black_bass: 'ブラックバス',
+  fish_rainbow_trout: 'ニジマス',
+  fish_eel: 'ウナギ',
+  fish_char: 'イワナ',
+  fish_yamame: 'ヤマメ',
+  fish_snakehead: 'ライギョ',
+  fish_rockfish: 'カサゴ',
+  fish_flatfish: 'カレイ',
+  fish_amago: 'アマゴ',
+  fish_squid: 'イカ',
+  fish_octopus: 'タコ',
+  fish_jellyfish: 'クラゲ',
+  fish_seahorse: 'タツノオトシゴ',
+  // RARE
+  fish_salmon: 'サケ',
+  fish_yellowtail: 'ブリ',
+  fish_sea_bream: 'タイ',
+  fish_koi: '錦鯉',
+  // EPIC
+  fish_horse_mackerel: 'アジ',
+  fish_tuna: 'マグロ',
+  fish_sturgeon: 'チョウザメ',
+  fish_swordfish: 'カジキ',
+  // LEGENDARY
+  fish_golden_koi: '黄金の鯉',
+  fish_arowana: 'アロワナ',
+  fish_coelacanth: 'シーラカンス',
+  fish_itou: 'イトウ',
+  // ゴミ
+  junk_boot: '長靴',
+  junk_can: '空き缶',
+  junk_tire: 'タイヤ',
+};
+
+export function getFishImagePath(fishId: string): string | undefined {
+  const fileName = fishImageFileNames[fishId];
+  return fileName ? `/images/fish/${fileName}.png` : undefined;
+}

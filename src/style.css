@@ -5642,3 +5642,360 @@ body.ui-menu-input-keyboard #character-modal * {
   padding: 0;
   min-width: 0;
 }
+
+/* バランス調整パネル（デバッグ用） */
+.balance-debug-modal__content {
+  max-width: min(920px, calc(100vw - 24px));
+  width: min(920px, calc(100vw - 24px));
+}
+
+.balance-debug-modal__header {
+  width: 100%;
+}
+
+.balance-debug-modal__layout {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.balance-debug-modal__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.balance-fight-preview {
+  flex: 0 0 200px;
+  width: 200px;
+  padding: 12px;
+  box-sizing: border-box;
+  --frame-fill-color: rgba(255, 255, 255, 0.92);
+}
+
+.balance-fight-preview__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.balance-fight-preview__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.balance-fight-preview__badge {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-semantic-text-muted, #666);
+}
+
+.balance-fight-preview__hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-semantic-text-muted, #666);
+}
+
+/* ===== 投擲・ファイトゲージ（本番 HTML オーバーレイ / バランスプレビュー共通） ===== */
+.fishing-gauge-overlay--game {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 950;
+  overflow: visible;
+}
+
+.fishing-cast-gauge {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.fishing-cast-gauge__steps {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  box-sizing: border-box;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* 枠幅ぶん重ねて接続。2-10 で追加の間隔（負でさらに詰める） */
+.fishing-cast-gauge__step + .fishing-cast-gauge__step {
+  margin-left: calc(var(--fishing-cast-step-overlap, -2px) + var(--fishing-cast-step-gap, 0px));
+}
+
+/* 外枠＝濃いブラウン縁（段の高さ・幅に追従） */
+.fishing-cast-gauge__step {
+  width: var(--fishing-cast-step-width, 17px);
+  height: var(--step-height, 12px);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: var(--fishing-cast-step-border, 3px);
+  background: var(--fishing-cast-border-color, var(--color-semantic-border-book, #5e2e1c));
+  border-radius: 3px;
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+.fishing-cast-gauge__step-fill {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--step-color, #52c452) 28%, #1e1e1e);
+  transition: background-color 0.04s linear, filter 0.04s linear;
+  filter: brightness(0.58);
+  image-rendering: pixelated;
+}
+
+.fishing-cast-gauge__step-fill::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 42%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+}
+
+/* パワーが届いた段だけ点灯（updateCast が .is-lit を付与） */
+.fishing-cast-gauge__step.is-lit .fishing-cast-gauge__step-fill {
+  background: var(--step-color, #52c452);
+  filter: brightness(1);
+}
+
+.fishing-fight-gauge--game {
+  position: absolute;
+  transform: translate(0, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.fishing-fight-gauge--preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.fishing-fight-gauge__hint {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 1px 2px #000;
+}
+
+.fishing-fight-gauge__arena {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.fishing-fight-gauge--preview .fishing-fight-gauge__arena {
+  flex: 1;
+  min-height: 220px;
+  justify-content: center;
+}
+
+.fishing-fight-gauge__track {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--fishing-track-width, 38px);
+  height: var(--fishing-track-height, 250px);
+  background: #222;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.fishing-fight-gauge__critical {
+  position: absolute;
+  left: 50%;
+  width: calc(var(--fishing-bar-width, 28px) + 10px);
+  transform: translateX(-50%);
+  background: rgba(255, 170, 0, 0.35);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.fishing-fight-gauge__player-bar {
+  position: absolute;
+  left: 50%;
+  width: var(--fishing-bar-width, 28px);
+  transform: translateX(-50%);
+  background: #888800;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.fishing-fight-gauge__player-bar.is-catching {
+  background: #00ff00;
+}
+
+.fishing-fight-gauge__fish {
+  position: absolute;
+  left: 50%;
+  width: var(--fishing-fish-size, 20px);
+  height: var(--fishing-fish-size, 20px);
+  transform: translateX(-50%);
+  background: #ffaa00;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.fishing-fight-gauge__progress {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--fishing-progress-width, 13px);
+  height: var(--fishing-track-height, 250px);
+  background: #000;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.fishing-fight-gauge__progress-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 20%;
+  background: #ffff00;
+}
+
+.fishing-fight-gauge__skills {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 24px;
+  min-height: 1.2em;
+}
+
+.fishing-fight-gauge__skill {
+  font-size: 12px;
+  color: #ccc;
+  text-align: center;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .balance-debug-modal__layout {
+    flex-direction: column;
+  }
+
+  .balance-fight-preview {
+    flex: none;
+    width: 100%;
+  }
+
+  .fishing-fight-gauge--preview .fishing-fight-gauge__arena {
+    min-height: 180px;
+  }
+}
+
+.balance-debug-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.balance-debug-modal__note {
+  font-size: 12px;
+  color: var(--text-muted, #666);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.balance-debug-modal__grid {
+  display: grid;
+  gap: 10px;
+}
+
+.balance-debug-modal__field span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.balance-debug-modal__field-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.balance-debug-modal__field-row .nes-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.balance-debug-modal__fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.balance-debug-modal__fieldset legend {
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.balance-debug-modal__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.balance-debug-modal__stat-row {
+  display: grid;
+  grid-template-columns: 5.5em 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.balance-debug-modal__stat-label {
+  font-size: 13px;
+}
+
+.balance-debug-modal__stat-live {
+  font-size: 11px;
+  color: var(--text-muted, #666);
+  white-space: nowrap;
+}
+
+.balance-debug-modal__skill-summary {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted, #666);
+}
+
+.balance-debug-modal__actions-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.balance-debug-modal__actions-inline--skills {
+  margin-top: -4px;
+}
+
+.balance-debug-modal__footer {
+  gap: 8px;
+}
