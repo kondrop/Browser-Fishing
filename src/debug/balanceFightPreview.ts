@@ -19,7 +19,7 @@ export class BalanceFightPreview {
 
   private rafId: number | null = null;
   private lastTs = 0;
-  private keys = { space: false, left: false, up: false, right: false };
+  private keys = { left: false, right: false, up: false, down: false };
   private sim!: FightSimState;
   private skillTriggers = { lockOn: false, stagger: false, smoothDrag: false };
 
@@ -73,32 +73,41 @@ export class BalanceFightPreview {
 
   private readonly onKeyDown = (e: KeyboardEvent) => {
     if (this.shouldIgnoreKeyTarget(e.target)) return;
-    if (e.code === 'Space') {
-      e.preventDefault();
-      this.keys.space = true;
-    }
-    if (e.code === 'ArrowLeft' && !e.repeat) {
+    if (e.code === 'ArrowLeft') {
       e.preventDefault();
       this.keys.left = true;
-      this.skillTriggers.lockOn = true;
     }
-    if (e.code === 'ArrowUp' && !e.repeat) {
-      e.preventDefault();
-      this.keys.up = true;
-      this.skillTriggers.stagger = true;
-    }
-    if (e.code === 'ArrowRight' && !e.repeat) {
+    if (e.code === 'ArrowRight') {
       e.preventDefault();
       this.keys.right = true;
+    }
+    if (e.code === 'ArrowUp') {
+      e.preventDefault();
+      this.keys.up = true;
+    }
+    if (e.code === 'ArrowDown') {
+      e.preventDefault();
+      this.keys.down = true;
+    }
+    if (e.code === 'KeyZ' && !e.repeat) {
+      e.preventDefault();
+      this.skillTriggers.lockOn = true;
+    }
+    if (e.code === 'KeyX' && !e.repeat) {
+      e.preventDefault();
+      this.skillTriggers.stagger = true;
+    }
+    if (e.code === 'KeyC' && !e.repeat) {
+      e.preventDefault();
       this.skillTriggers.smoothDrag = true;
     }
   };
 
   private readonly onKeyUp = (e: KeyboardEvent) => {
-    if (e.code === 'Space') this.keys.space = false;
     if (e.code === 'ArrowLeft') this.keys.left = false;
-    if (e.code === 'ArrowUp') this.keys.up = false;
     if (e.code === 'ArrowRight') this.keys.right = false;
+    if (e.code === 'ArrowUp') this.keys.up = false;
+    if (e.code === 'ArrowDown') this.keys.down = false;
   };
 
   private shouldIgnoreKeyTarget(target: EventTarget | null): boolean {
@@ -117,7 +126,10 @@ export class BalanceFightPreview {
     const pd = this.getHost().getPlayerData();
     stepFightSimulation(this.sim, {
       dt,
-      spaceHeld: this.keys.space,
+      leftHeld: this.keys.left,
+      rightHeld: this.keys.right,
+      tensionUpHeld: this.keys.up,
+      tensionDownHeld: this.keys.down,
       playerData: pd,
       equippedRodId: pd.equippedRodId,
       fish: balanceReferenceFishParams(),
@@ -144,6 +156,8 @@ export class BalanceFightPreview {
       criticalZoneHeight: 0,
       playerHitBarCenter,
       fishColor: '#ffaa00',
+      tension: this.sim.tension,
+      fishState: this.sim.fishState,
     });
   }
 }

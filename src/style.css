@@ -5775,11 +5775,13 @@ body.ui-menu-input-keyboard #character-modal * {
 
 .fishing-fight-gauge--game {
   position: absolute;
-  transform: translate(0, -50%);
+  transform: translate(-50%, 0);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  width: max-content;
+  max-width: calc(100vw - 24px);
 }
 
 .fishing-fight-gauge--preview {
@@ -5813,22 +5815,93 @@ body.ui-menu-input-keyboard #character-modal * {
   justify-content: center;
 }
 
+.fishing-fight-gauge__status {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.fishing-fight-gauge__status--preview {
+  margin-bottom: 4px;
+}
+
+.fishing-fight-gauge__fish-state {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #8ec8ff;
+  min-width: 3.2em;
+  text-align: center;
+}
+
+.fishing-fight-gauge__fish-state.is-tired {
+  color: #ffb347;
+  animation: fishing-fight-tired-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes fishing-fight-tired-pulse {
+  from { opacity: 0.75; }
+  to { opacity: 1; }
+}
+
+.fishing-fight-gauge__tension {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  max-width: 180px;
+}
+
+.fishing-fight-gauge__tension-label {
+  font-size: 10px;
+  color: #ccc;
+  letter-spacing: 0.04em;
+}
+
+.fishing-fight-gauge__tension-track {
+  flex: 1;
+  height: 8px;
+  background: #111;
+  border: 1px solid #666;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.fishing-fight-gauge__tension-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4488cc, #ff6644);
+  transition: width 0.05s linear;
+}
+
+.fishing-fight-gauge__tension-value {
+  font-size: 10px;
+  color: #ddd;
+  min-width: 2.4em;
+  text-align: right;
+}
+
 .fishing-fight-gauge__track {
   position: relative;
   flex: 0 0 auto;
-  width: var(--fishing-track-width, 38px);
-  height: var(--fishing-track-height, 250px);
+  width: var(--fishing-track-width, 250px);
+  height: var(--fishing-track-height, 38px);
   background: #222;
   border: 2px solid #fff;
   border-radius: 4px;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .fishing-fight-gauge__critical {
   position: absolute;
-  left: 50%;
-  width: calc(var(--fishing-bar-width, 28px) + 10px);
-  transform: translateX(-50%);
+  top: 50%;
+  height: calc(var(--fishing-bar-width, 28px) + 10px);
+  transform: translateY(-50%);
   background: rgba(255, 170, 0, 0.35);
   border-radius: 2px;
   pointer-events: none;
@@ -5836,27 +5909,42 @@ body.ui-menu-input-keyboard #character-modal * {
 
 .fishing-fight-gauge__player-bar {
   position: absolute;
-  left: 50%;
-  width: var(--fishing-bar-width, 28px);
-  transform: translateX(-50%);
+  height: var(--fishing-bar-width, 28px);
   background: #888800;
   border-radius: 2px;
   pointer-events: none;
+  transition: width 0.08s ease-out, left 0.08s ease-out;
+}
+
+.fishing-fight-gauge[hidden] .fishing-fight-gauge__player-bar,
+.fishing-fight-gauge[hidden] .fishing-fight-gauge__tension-fill,
+.fishing-fight-gauge.is-fight-instant .fishing-fight-gauge__player-bar,
+.fishing-fight-gauge.is-fight-instant .fishing-fight-gauge__tension-fill {
+  transition: none !important;
 }
 
 .fishing-fight-gauge__player-bar.is-catching {
   background: #00ff00;
 }
 
+.fishing-fight-gauge__player-bar.is-high-tension {
+  box-shadow: 0 0 6px rgba(255, 100, 60, 0.55);
+}
+
 .fishing-fight-gauge__fish {
   position: absolute;
-  left: 50%;
+  top: 50%;
   width: var(--fishing-fish-size, 20px);
   height: var(--fishing-fish-size, 20px);
-  transform: translateX(-50%);
   background: #ffaa00;
   border-radius: 2px;
   pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.fishing-fight-gauge__fish.is-tired {
+  opacity: 0.72;
+  filter: saturate(0.65);
 }
 
 .fishing-fight-gauge__progress {

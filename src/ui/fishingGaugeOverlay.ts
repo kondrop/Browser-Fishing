@@ -1,4 +1,5 @@
 import { config } from '../config';
+import type { FishFightState } from '../fight/fightSimulation';
 
 /** 本番ファイトUIと同じスケール */
 export const FISHING_GAUGE_UI_SCALE = 1.25;
@@ -61,7 +62,7 @@ export function getFishingGaugeDimensions(): FishingGaugeDimensions {
     castStepBorderColor: cast['2-12_ゲージ段枠色'],
     trackWidth: Math.round(fight['5-2_背景幅'] * s),
     trackHeight: Math.round(fight['5-2_背景高さ'] * s),
-    barWidth: Math.round(fight['5-3_バー幅'] * s),
+    barWidth: Math.round(fight['5-3_バー高さ'] * s),
     fishSize: Math.round(fight['5-4_魚サイズ'] * s),
     progressWidth: Math.round(10 * s),
   };
@@ -80,6 +81,8 @@ export interface FightGaugeRenderInput {
   criticalZoneHeight: number;
   playerHitBarCenter: number;
   fishColor: string;
+  tension: number;
+  fishState: FishFightState;
 }
 
 export interface FightSkillHudSlot {
@@ -89,17 +92,28 @@ export interface FightSkillHudSlot {
 
 /** 本番 HUD のキャンバス上レイアウト */
 export interface FishingGaugeGameLayout {
-  canvasRect: DOMRect;
   /** 投擲ゲージ中心（viewport 座標） */
   castCenterX: number;
   castCenterY: number;
+  /** ファイトUI上端中央（viewport 座標・プレイヤー直下） */
+  fightAnchorX: number;
+  fightAnchorY: number;
 }
 
 const FIGHT_HINT_GAME =
-  'SPACEで上昇<br>←ロックオン ↑スタッガー →ハイ';
+  '←→でバー移動 ↑↓でテンション<br>Zロックオン Xスタッガー Cハイ';
 
-function mapTrackY(pos: number, trackHeight: number): number {
-  return (1 - pos) * trackHeight;
+/** トラック枠線（style.css の border と一致） */
+export const FIGHT_TRACK_BORDER_PX = 2;
+
+function mapTrackX(pos: number, trackWidth: number, borderPx = FIGHT_TRACK_BORDER_PX): number {
+  const contentWidth = Math.max(0, trackWidth - borderPx * 2);
+  return borderPx + pos * contentWidth;
+}
+
+function barRangeToPx(barRange: number, trackWidth: number, borderPx = FIGHT_TRACK_BORDER_PX): number {
+  const contentWidth = Math.max(0, trackWidth - borderPx * 2);
+  return Math.max(8, barRange * contentWidth);
 }
 
 export function phaserColorToCss(color: number): string {
@@ -126,9 +140,12 @@ export class FishingGaugeOverlay {
   private playerBarEl: HTMLElement | null = null;
   private fishEl: HTMLElement | null = null;
   private progressFillEl: HTMLElement | null = null;
-  private skillLeftEl: HTMLElement | null = null;
-  private skillUpEl: HTMLElement | null = null;
-  private skillRightEl: HTMLElement | null = null;
+  private tensionFillEl: HTMLElement | null = null;
+  private tensionValueEl: HTMLElement | null = null;
+  private fishStateEl: HTMLElement | null = null;
+  private skillZEl: HTMLElement | null = null;
+  private skillXEl: HTMLElement | null = null;
+  private skillCEl: HTMLElement | null = null;
 
   /** 本番: body 直下に固定配置 */
   mountGame(): HTMLElement {
@@ -154,7 +171,7 @@ export class FishingGaugeOverlay {
         <p class="balance-fight-preview__title">テストファイト</p>
         <p class="balance-fight-preview__badge">本番同一ロジック・勝敗なし</p>
         ${this.buildFightBlockHtml('preview')}
-        <p class="balance-fight-preview__hint">SPACEで上昇<br>← ↑ → スキル（本番同様1回）</p>
+        <p class="balance-fight-preview__hint">←→バー ↑↓テンション<br>Z X C スキル（本番同様1回）</p>
       </div>
     `;
     this.previewHost = container;
@@ -181,22 +198,24 @@ export class FishingGaugeOverlay {
     this.playerBarEl = null;
     this.fishEl = null;
     this.progressFillEl = null;
-    this.skillLeftEl = null;
-    this.skillUpEl = null;
-    this.skillRightEl = null;
+    this.tensionFillEl = null;
+    this.tensionValueEl = null;
+    this.fishStateEl = null;
+    this.skillZEl = null;
+    this.skillXEl = null;
+    this.skillCEl = null;
   }
 
   layoutGame(layout: FishingGaugeGameLayout): void {
     if (!this.castEl || !this.fightEl || this.mode !== 'game') return;
 
-    const { canvasRect, castCenterX, castCenterY } = layout;
+    const { castCenterX, castCenterY, fightAnchorX, fightAnchorY } = layout;
     this.castEl.style.left = `${castCenterX}px`;
     this.castEl.style.top = `${castCenterY}px`;
 
-    const fightCenterY = canvasRect.top + canvasRect.height / 2;
-    const fightRight = canvasRect.right - 80;
-    this.fightEl.style.left = `${fightRight}px`;
-    this.fightEl.style.top = `${fightCenterY}px`;
+    this.fightEl.style.left = `${fightAnchorX}px`;
+    this.fightEl.style.top = `${fightAnchorY}px`;
+    this.fightEl.style.right = 'auto';
   }
 
   setCastVisible(visible: boolean): void {
@@ -222,7 +241,19 @@ export class FishingGaugeOverlay {
   }
 
   setFightVisible(visible: boolean): void {
-    if (this.fightEl) this.fightEl.hidden = !visible;
+    if (!this.fightEl) return;
+    if (visible) {
+      this.fightEl.classList.add('is-fight-instant');
+      this.fightEl.hidden = false;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          this.fightEl?.classList.remove('is-fight-instant');
+        });
+      });
+      return;
+    }
+    this.fightEl.classList.add('is-fight-instant');
+    this.fightEl.hidden = true;
   }
 
   setFishColor(color: string): void {
@@ -232,28 +263,34 @@ export class FishingGaugeOverlay {
   updateFight(input: FightGaugeRenderInput): void {
     if (!this.trackEl || !this.playerBarEl || !this.fishEl || !this.progressFillEl) return;
 
+    const trackW = this.dims.trackWidth;
     const trackH = this.dims.trackHeight;
-    const mapY = (pos: number) => mapTrackY(pos, trackH);
+    const mapX = (pos: number) => mapTrackX(pos, trackW);
 
-    const playerCenter = input.playerBarPosition + input.barHeight / 2;
-    const barPx = Math.max(8, input.barHeight * trackH);
-    this.playerBarEl.style.width = `${this.dims.barWidth}px`;
-    this.playerBarEl.style.height = `${barPx}px`;
-    this.playerBarEl.style.top = `${mapY(playerCenter) - barPx / 2}px`;
+    const barPx = barRangeToPx(input.barHeight, trackW);
+    const barThickness = this.dims.barWidth;
+    this.playerBarEl.style.left = `${mapX(input.playerHitBarCenter)}px`;
+    this.playerBarEl.style.width = `${barPx}px`;
+    this.playerBarEl.style.height = `${barThickness}px`;
+    this.playerBarEl.style.top = `${trackH / 2}px`;
+    this.playerBarEl.style.transform = 'translate(-50%, -50%)';
     this.playerBarEl.classList.toggle('is-catching', input.isCatching);
+    this.playerBarEl.classList.toggle('is-high-tension', input.tension >= 0.55);
 
     const fishPx = this.dims.fishSize;
     this.fishEl.style.width = `${fishPx}px`;
     this.fishEl.style.height = `${fishPx}px`;
-    this.fishEl.style.top = `${mapY(input.fishBarPosition) - fishPx / 2}px`;
+    this.fishEl.style.left = `${mapX(input.fishBarPosition) - fishPx / 2}px`;
+    this.fishEl.style.top = `${(trackH - fishPx) / 2}px`;
     this.fishEl.style.backgroundColor = input.fishColor;
+    this.fishEl.classList.toggle('is-tired', input.fishState === 'tired');
 
     if (this.criticalEl) {
       if (input.criticalZoneHeight > 0) {
-        const critPx = input.criticalZoneHeight * trackH;
+        const critPx = barRangeToPx(input.criticalZoneHeight, trackW);
         this.criticalEl.hidden = false;
-        this.criticalEl.style.height = `${critPx}px`;
-        this.criticalEl.style.top = `${mapY(input.playerHitBarCenter) - critPx / 2}px`;
+        this.criticalEl.style.width = `${critPx}px`;
+        this.criticalEl.style.left = `${mapX(input.playerHitBarCenter) - critPx / 2}px`;
       } else {
         this.criticalEl.hidden = true;
       }
@@ -261,20 +298,32 @@ export class FishingGaugeOverlay {
 
     const progressPct = Math.max(0, Math.min(100, input.catchProgress * 100));
     this.progressFillEl.style.height = `${progressPct}%`;
+
+    if (this.tensionFillEl) {
+      const tensionPct = Math.max(0, Math.min(100, input.tension * 100));
+      this.tensionFillEl.style.width = `${tensionPct}%`;
+    }
+    if (this.tensionValueEl) {
+      this.tensionValueEl.textContent = `${Math.round(input.tension * 100)}%`;
+    }
+    if (this.fishStateEl) {
+      this.fishStateEl.textContent = input.fishState === 'tired' ? 'TIRED' : 'RUN';
+      this.fishStateEl.classList.toggle('is-tired', input.fishState === 'tired');
+    }
   }
 
-  updateFightSkillHud(left: FightSkillHudSlot, up: FightSkillHudSlot, right: FightSkillHudSlot): void {
-    if (this.skillLeftEl) {
-      this.skillLeftEl.textContent = left.text;
-      this.skillLeftEl.hidden = !left.visible;
+  updateFightSkillHud(z: FightSkillHudSlot, x: FightSkillHudSlot, c: FightSkillHudSlot): void {
+    if (this.skillZEl) {
+      this.skillZEl.textContent = z.text;
+      this.skillZEl.hidden = !z.visible;
     }
-    if (this.skillUpEl) {
-      this.skillUpEl.textContent = up.text;
-      this.skillUpEl.hidden = !up.visible;
+    if (this.skillXEl) {
+      this.skillXEl.textContent = x.text;
+      this.skillXEl.hidden = !x.visible;
     }
-    if (this.skillRightEl) {
-      this.skillRightEl.textContent = right.text;
-      this.skillRightEl.hidden = !right.visible;
+    if (this.skillCEl) {
+      this.skillCEl.textContent = c.text;
+      this.skillCEl.hidden = !c.visible;
     }
   }
 
@@ -316,15 +365,40 @@ export class FishingGaugeOverlay {
       variant === 'game'
         ? `
         <div class="fishing-fight-gauge__skills" aria-hidden="true">
-          <span class="fishing-fight-gauge__skill" data-skill="left"></span>
-          <span class="fishing-fight-gauge__skill" data-skill="up"></span>
-          <span class="fishing-fight-gauge__skill" data-skill="right"></span>
+          <span class="fishing-fight-gauge__skill" data-skill="z"></span>
+          <span class="fishing-fight-gauge__skill" data-skill="x"></span>
+          <span class="fishing-fight-gauge__skill" data-skill="c"></span>
         </div>`
         : '';
+    const statusHud =
+      variant === 'game'
+        ? `
+        <div class="fishing-fight-gauge__status" aria-hidden="true">
+          <span class="fishing-fight-gauge__fish-state" data-fish-state>RUN</span>
+          <div class="fishing-fight-gauge__tension" aria-label="テンション">
+            <span class="fishing-fight-gauge__tension-label">TEN</span>
+            <div class="fishing-fight-gauge__tension-track">
+              <div class="fishing-fight-gauge__tension-fill"></div>
+            </div>
+            <span class="fishing-fight-gauge__tension-value">0%</span>
+          </div>
+        </div>`
+        : `
+        <div class="fishing-fight-gauge__status fishing-fight-gauge__status--preview" aria-hidden="true">
+          <span class="fishing-fight-gauge__fish-state" data-fish-state>RUN</span>
+          <div class="fishing-fight-gauge__tension" aria-label="テンション">
+            <span class="fishing-fight-gauge__tension-label">TEN</span>
+            <div class="fishing-fight-gauge__tension-track">
+              <div class="fishing-fight-gauge__tension-fill"></div>
+            </div>
+            <span class="fishing-fight-gauge__tension-value">0%</span>
+          </div>
+        </div>`;
     const hidden = variant === 'game';
     return `
       <div class="fishing-fight-gauge fishing-fight-gauge--${variant}"${hidden ? ' hidden' : ''}>
         ${hint}
+        ${statusHud}
         <div class="fishing-fight-gauge__arena">
           <div class="fishing-fight-gauge__track" aria-hidden="true">
             <div class="fishing-fight-gauge__critical" hidden></div>
@@ -357,9 +431,12 @@ export class FishingGaugeOverlay {
     this.playerBarEl = scope.querySelector('.fishing-fight-gauge__player-bar');
     this.fishEl = scope.querySelector('.fishing-fight-gauge__fish');
     this.progressFillEl = scope.querySelector('.fishing-fight-gauge__progress-fill');
-    this.skillLeftEl = scope.querySelector('[data-skill="left"]');
-    this.skillUpEl = scope.querySelector('[data-skill="up"]');
-    this.skillRightEl = scope.querySelector('[data-skill="right"]');
+    this.tensionFillEl = scope.querySelector('.fishing-fight-gauge__tension-fill');
+    this.tensionValueEl = scope.querySelector('.fishing-fight-gauge__tension-value');
+    this.fishStateEl = scope.querySelector('[data-fish-state]');
+    this.skillZEl = scope.querySelector('[data-skill="z"]');
+    this.skillXEl = scope.querySelector('[data-skill="x"]');
+    this.skillCEl = scope.querySelector('[data-skill="c"]');
   }
 
   private applyDimensionVars(): void {

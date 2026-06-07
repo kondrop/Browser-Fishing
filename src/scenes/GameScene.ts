@@ -27,7 +27,14 @@ import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, getRodBy
 import { characterConfigs, getCharacterById, getDefaultCharacterId } from '../data/characterConfig';
 import { calculateDisplayStatIndices, getEffectiveSkillStatBonuses } from '../debug/balanceDebug';
 import { createBalanceDebugPanel, type BalanceDebugPanelHandle } from '../debug/balanceDebugPanel';
-import { fishParamsFromConfig, getFightBarHeight, stepFightSimulation, type FightSimState } from '../fight/fightSimulation';
+import {
+  FIGHT_TRACK_CENTER,
+  fishParamsFromConfig,
+  getFightBarHeight,
+  resolveFightStartBarLayout,
+  stepFightSimulation,
+  type FightSimState,
+} from '../fight/fightSimulation';
 import {
   FishingGaugeOverlay,
   FISHING_GAUGE_UI_SCALE,
@@ -107,12 +114,20 @@ export default class GameScene extends Phaser.Scene {
   
   private playerBarPosition: number = 0.5;
   private playerBarVelocity: number = 0;
+  private playerBarPrevRange: number = config.fighting['5-9_バー判定範囲'];
   private catchProgress: number = 0.3;
+  private fightTension: number = 0;
+  private fightTensionVelocity: number = 0;
+  private fishFatigue: number = 0;
+  private fishFightState: 'running' | 'tired' = 'running';
+  private fightSkillZKey!: Phaser.Input.Keyboard.Key;
+  private fightSkillXKey!: Phaser.Input.Keyboard.Key;
+  private fightSkillCKey!: Phaser.Input.Keyboard.Key;
 
   // 現在釣っている魚
   private currentFish: FishConfig | null = null;
   private currentFishSize: number | undefined = undefined; // 現在釣っている魚のサイズ（ファイト開始時に生成）
-  /** ファイト中アクティブ（方向キー割当）— スキルごとに1回まで */
+  /** ファイト中アクティブ（Z/X/C 割当）— スキルごとに1回まで */
   private fightStaggerUsedThisFight: boolean = false;
   private fightSmoothDragUsedThisFight: boolean = false;
   private fightLockOnUsedThisFight: boolean = false;
@@ -827,6 +842,9 @@ export default class GameScene extends Phaser.Scene {
     if (this.input.keyboard) {
         this.cursors = this.input.keyboard.createCursorKeys();
         this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+        this.fightSkillZKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+        this.fightSkillXKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+        this.fightSkillCKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
         
         // Eキーで全て売却
         this.input.keyboard.on('keydown-E', () => {
@@ -1470,14 +1488,23 @@ export default class GameScene extends Phaser.Scene {
     return this.worldToViewport(this.player.x, worldY);
   }
 
+  /** ファイトUI上端中央をキャラの下（viewport 座標）に置く */
+  private getFightGaugeViewportAnchor(): { x: number; y: number } {
+    const gap = config.fighting['5-1b_ファイトUI_キャラ下余白'] * FISHING_GAUGE_UI_SCALE;
+    const worldY = this.player.y + this.player.displayHeight * 0.5 + gap;
+    return this.worldToViewport(this.player.x, worldY);
+  }
+
   private layoutFishingGaugeOverlay(): void {
     const canvas = this.game.canvas;
     if (!canvas || !this.fishingGaugeOverlay) return;
     const cast = this.getCastGaugeViewportCenter();
+    const fight = this.getFightGaugeViewportAnchor();
     this.fishingGaugeOverlay.layoutGame({
-      canvasRect: canvas.getBoundingClientRect(),
       castCenterX: cast.x,
       castCenterY: cast.y,
+      fightAnchorX: fight.x,
+      fightAnchorY: fight.y,
     });
   }
 
@@ -2297,11 +2324,11 @@ export default class GameScene extends Phaser.Scene {
       wobbleY = Math.cos(this.fishingRig.phase * 28) * 6;
       this.fishingRig.rodBend = Phaser.Math.Linear(this.fishingRig.rodBend, 3, 0.25);
     } else if (this.state === FishingState.FIGHTING) {
-      const tension = 1 - this.catchProgress;
+      const fightStrain = 1 - this.catchProgress;
       const fishPull = (this.fishBarPosition - 0.5) * 6;
-      wobbleX = Math.sin(this.fishingRig.phase * 12) * (2 + tension * 4);
-      wobbleY = Math.cos(this.fishingRig.phase * 10) * (2 + tension * 3) + fishPull;
-      this.fishingRig.rodBend = Phaser.Math.Linear(this.fishingRig.rodBend, 2 + tension * 4, 0.08);
+      wobbleX = Math.sin(this.fishingRig.phase * 12) * (2 + fightStrain * 4) + fishPull;
+      wobbleY = Math.cos(this.fishingRig.phase * 10) * (2 + fightStrain * 3);
+      this.fishingRig.rodBend = Phaser.Math.Linear(this.fishingRig.rodBend, 2 + fightStrain * 4, 0.08);
     } else {
       this.fishingRig.rodBend = Phaser.Math.Linear(this.fishingRig.rodBend, 0, 0.15);
     }
@@ -2617,6 +2644,106 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // --- ファイト処理 ---
+  private resetFightState(): void {
+    const fightCfg = config.fighting;
+    const skillBonuses = getEffectiveSkillStatBonuses(this.playerData);
+    const startLayout = resolveFightStartBarLayout(
+      this.playerData,
+      this.playerData.equippedRodId,
+      skillBonuses,
+    );
+    this.fishBarPosition = FIGHT_TRACK_CENTER;
+    this.playerBarPosition = startLayout.playerBarPosition;
+    this.playerBarVelocity = 0;
+    this.playerBarPrevRange = startLayout.prevBarRange;
+    this.catchProgress = fightCfg['5-12_初期ゲージ'];
+    const fightStartMoveDelaySec = hasSkillAbility(this.playerData, 'abil_luck_junk_ward')
+      ? fightCfg['5-12b_開始時魚移動待機秒_シルクタッチ']
+      : fightCfg['5-12a_開始時魚移動待機秒'];
+    this.fishMoveTimer = fightStartMoveDelaySec;
+    this.fishTargetPosition = FIGHT_TRACK_CENTER;
+    this.fishDriftIntent = 0;
+    this.fishDriftVelocity = 0;
+    this.fightTension = 0;
+    this.fightTensionVelocity = 0;
+    this.fishFatigue = 0;
+    this.fishFightState = 'running';
+    this.fightStaggerUsedThisFight = false;
+    this.fightSmoothDragUsedThisFight = false;
+    this.fightLockOnUsedThisFight = false;
+    this.fishFreezeRemainingSec = 0;
+    this.lockOnRemainingSec = 0;
+    this.smoothDragRemainingSec = 0;
+    this.speedComboMultiplier = 0;
+  }
+
+  private buildFightSimSnapshot(): FightSimState {
+    return {
+      fishBarPosition: this.fishBarPosition,
+      fishTargetPosition: this.fishTargetPosition,
+      fishMoveTimer: this.fishMoveTimer,
+      fishDriftIntent: this.fishDriftIntent,
+      fishDriftVelocity: this.fishDriftVelocity,
+      playerBarPosition: this.playerBarPosition,
+      playerBarVelocity: this.playerBarVelocity,
+      prevBarRange: this.playerBarPrevRange,
+      catchProgress: this.catchProgress,
+      tension: this.fightTension,
+      tensionVelocity: this.fightTensionVelocity,
+      fishFatigue: this.fishFatigue,
+      fishState: this.fishFightState,
+      fishFreezeRemainingSec: this.fishFreezeRemainingSec,
+      lockOnRemainingSec: this.lockOnRemainingSec,
+      smoothDragRemainingSec: this.smoothDragRemainingSec,
+      speedComboMultiplier: this.speedComboMultiplier,
+      fightStaggerUsed: this.fightStaggerUsedThisFight,
+      fightSmoothDragUsed: this.fightSmoothDragUsedThisFight,
+      fightLockOnUsed: this.fightLockOnUsedThisFight,
+      isCatching: false,
+    };
+  }
+
+  /** 非表示中も DOM を現在のファイト状態へ同期（開始時チラつき防止） */
+  private renderFightOverlay(): void {
+    const skillBonuses = getEffectiveSkillStatBonuses(this.playerData);
+    const simSnapshot = this.buildFightSimSnapshot();
+    const barHeight = getFightBarHeight(
+      simSnapshot,
+      this.playerData,
+      this.playerData.equippedRodId,
+      skillBonuses,
+    );
+    const isCatching =
+      this.fishBarPosition >= this.playerBarPosition &&
+      this.fishBarPosition <= this.playerBarPosition + barHeight;
+    const criticalZoneHeight = hasSkillAbility(this.playerData, 'abil_speed_opening_surge') ? 0.08 : 0;
+    const playerHitBarCenter = this.playerBarPosition + barHeight / 2;
+    const fishColor =
+      this.currentFish && hasSkillAbility(this.playerData, 'abil_spec_pedia_bonus')
+        ? phaserColorToCss(rarityColors[this.currentFish.rarity])
+        : '#999999';
+
+    this.fishingGaugeOverlay.updateFight({
+      fishBarPosition: this.fishBarPosition,
+      playerBarPosition: this.playerBarPosition,
+      barHeight,
+      catchProgress: this.catchProgress,
+      isCatching,
+      criticalZoneHeight,
+      playerHitBarCenter,
+      fishColor,
+      tension: this.fightTension,
+      fishState: this.fishFightState,
+    });
+    this.updateFightSkillHud();
+  }
+
+  private hideAndResetFightOverlay(): void {
+    this.fishingGaugeOverlay.setFightVisible(false);
+    this.resetFightState();
+    this.renderFightOverlay();
+  }
+
   startFighting() {
     if (this.biteTimeout) this.biteTimeout.remove();
     this.exclamation.setVisible(false);
@@ -2640,40 +2767,21 @@ export default class GameScene extends Phaser.Scene {
         this.currentFishSize = undefined;
       }
     }
-    
+
+    this.resetFightState();
+    if (this.currentFish) {
+      const isRarityVisible = hasSkillAbility(this.playerData, 'abil_spec_pedia_bonus');
+      const color = isRarityVisible ? rarityColors[this.currentFish.rarity] : 0x999999;
+      this.fishingGaugeOverlay.setFishColor(phaserColorToCss(color));
+    } else {
+      this.fishingGaugeOverlay.setFishColor('#ffaa00');
+    }
+    this.renderFightOverlay();
     this.state = FishingState.FIGHTING;
     this.fishingGaugeOverlay.setFightVisible(true);
-
-    const fightCfg = config.fighting;
-    this.fishBarPosition = 0.4;
-    this.playerBarPosition = 0.3;
-    this.playerBarVelocity = 0;
-    this.catchProgress = fightCfg['5-12_初期ゲージ'];
-    // 初回の移動目標更新までの待ち（シルクタッチ所持時は別設定）
-    const fightStartMoveDelaySec = hasSkillAbility(this.playerData, 'abil_luck_junk_ward')
-      ? fightCfg['5-12b_開始時魚移動待機秒_シルクタッチ']
-      : fightCfg['5-12a_開始時魚移動待機秒'];
-    this.fishMoveTimer = fightStartMoveDelaySec;
-    this.fishTargetPosition = 0.4;
-    this.fishDriftIntent = 0;
-    this.fishDriftVelocity = 0;
-    this.fightStaggerUsedThisFight = false;
-    this.fightSmoothDragUsedThisFight = false;
-    this.fightLockOnUsedThisFight = false;
-    this.fishFreezeRemainingSec = 0;
-    this.lockOnRemainingSec = 0;
-    this.smoothDragRemainingSec = 0;
-    this.speedComboMultiplier = 0;
-    if (this.currentFish) {
-        const isRarityVisible = hasSkillAbility(this.playerData, 'abil_spec_pedia_bonus');
-        const color = isRarityVisible ? rarityColors[this.currentFish.rarity] : 0x999999;
-        this.fishingGaugeOverlay.setFishColor(phaserColorToCss(color));
-    } else {
-        this.fishingGaugeOverlay.setFishColor('#ffaa00');
-    }
   }
 
-  /** ← : ロックオン（control_n03） */
+  /** Z : ロックオン（control_n03） */
   private tryUseFightLockOn() {
     if (this.fightLockOnUsedThisFight) return;
     if (!hasSkillAbility(this.playerData, 'abil_control_lock_on')) return;
@@ -2682,7 +2790,7 @@ export default class GameScene extends Phaser.Scene {
     this.showResult('スキル発動: ロックオン', 800, { resetFishingStateOnEnd: false });
   }
 
-  /** ↑ : スタッガー（power_n06） */
+  /** X : スタッガー（power_n06） */
   private tryUseFightStagger() {
     if (this.fightStaggerUsedThisFight) return;
     if (!hasSkillAbility(this.playerData, 'abil_power_fight_steady')) return;
@@ -2691,7 +2799,7 @@ export default class GameScene extends Phaser.Scene {
     this.showResult('スキル発動: スタッガー', 800, { resetFishingStateOnEnd: false });
   }
 
-  /** → : フィッシャーズハイ（technique_n03） */
+  /** C : フィッシャーズハイ（technique_n03） */
   private tryUseFightSmoothDrag() {
     if (this.fightSmoothDragUsedThisFight) return;
     if (!hasSkillAbility(this.playerData, 'abil_control_smooth_drag')) return;
@@ -2705,13 +2813,13 @@ export default class GameScene extends Phaser.Scene {
     const cfg = config.fighting;
     const skillBonuses = getEffectiveSkillStatBonuses(this.playerData);
 
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) {
+    if (Phaser.Input.Keyboard.JustDown(this.fightSkillZKey)) {
       this.tryUseFightLockOn();
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
+    if (Phaser.Input.Keyboard.JustDown(this.fightSkillXKey)) {
       this.tryUseFightStagger();
     }
-    if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) {
+    if (Phaser.Input.Keyboard.JustDown(this.fightSkillCKey)) {
       this.tryUseFightSmoothDrag();
     }
 
@@ -2723,7 +2831,12 @@ export default class GameScene extends Phaser.Scene {
       fishDriftVelocity: this.fishDriftVelocity,
       playerBarPosition: this.playerBarPosition,
       playerBarVelocity: this.playerBarVelocity,
+      prevBarRange: this.playerBarPrevRange,
       catchProgress: this.catchProgress,
+      tension: this.fightTension,
+      tensionVelocity: this.fightTensionVelocity,
+      fishFatigue: this.fishFatigue,
+      fishState: this.fishFightState,
       fishFreezeRemainingSec: this.fishFreezeRemainingSec,
       lockOnRemainingSec: this.lockOnRemainingSec,
       smoothDragRemainingSec: this.smoothDragRemainingSec,
@@ -2748,7 +2861,10 @@ export default class GameScene extends Phaser.Scene {
 
     stepFightSimulation(simState, {
       dt,
-      spaceHeld: this.spaceKey.isDown,
+      leftHeld: this.cursors.left.isDown,
+      rightHeld: this.cursors.right.isDown,
+      tensionUpHeld: this.cursors.up.isDown,
+      tensionDownHeld: this.cursors.down.isDown,
       playerData: this.playerData,
       equippedRodId: this.playerData.equippedRodId,
       fish: fishParams,
@@ -2763,34 +2879,18 @@ export default class GameScene extends Phaser.Scene {
     this.fishDriftVelocity = simState.fishDriftVelocity;
     this.playerBarPosition = simState.playerBarPosition;
     this.playerBarVelocity = simState.playerBarVelocity;
+    this.playerBarPrevRange = simState.prevBarRange;
     this.catchProgress = simState.catchProgress;
+    this.fightTension = simState.tension;
+    this.fightTensionVelocity = simState.tensionVelocity;
+    this.fishFatigue = simState.fishFatigue;
+    this.fishFightState = simState.fishState;
     this.fishFreezeRemainingSec = simState.fishFreezeRemainingSec;
     this.lockOnRemainingSec = simState.lockOnRemainingSec;
     this.smoothDragRemainingSec = simState.smoothDragRemainingSec;
     this.speedComboMultiplier = simState.speedComboMultiplier;
 
-    const barHeight = getFightBarHeight(simState, this.playerData, this.playerData.equippedRodId, skillBonuses);
-    const isCatching = simState.isCatching;
-    const criticalZoneHeight = hasSkillAbility(this.playerData, 'abil_speed_opening_surge') ? 0.08 : 0;
-    const playerHitBarCenter = this.playerBarPosition + barHeight / 2;
-
-    const fishColor =
-      this.currentFish && hasSkillAbility(this.playerData, 'abil_spec_pedia_bonus')
-        ? phaserColorToCss(rarityColors[this.currentFish.rarity])
-        : '#999999';
-
-    this.fishingGaugeOverlay.updateFight({
-      fishBarPosition: this.fishBarPosition,
-      playerBarPosition: this.playerBarPosition,
-      barHeight,
-      catchProgress: this.catchProgress,
-      isCatching,
-      criticalZoneHeight,
-      playerHitBarCenter,
-      fishColor,
-    });
-
-    this.updateFightSkillHud();
+    this.renderFightOverlay();
 
     if (this.catchProgress >= 1) {
         this.successFishing();
@@ -2810,15 +2910,15 @@ export default class GameScene extends Phaser.Scene {
     const stag = hasSkillAbility(this.playerData, 'abil_power_fight_steady');
     const hi = hasSkillAbility(this.playerData, 'abil_control_smooth_drag');
     this.fishingGaugeOverlay.updateFightSkillHud(
-      { text: fmt(lock, this.fightLockOnUsedThisFight, this.lockOnRemainingSec, '←'), visible: lock },
-      { text: fmt(stag, this.fightStaggerUsedThisFight, this.fishFreezeRemainingSec, '↑'), visible: stag },
-      { text: fmt(hi, this.fightSmoothDragUsedThisFight, this.smoothDragRemainingSec, '→'), visible: hi },
+      { text: fmt(lock, this.fightLockOnUsedThisFight, this.lockOnRemainingSec, 'Z'), visible: lock },
+      { text: fmt(stag, this.fightStaggerUsedThisFight, this.fishFreezeRemainingSec, 'X'), visible: stag },
+      { text: fmt(hi, this.fightSmoothDragUsedThisFight, this.smoothDragRemainingSec, 'C'), visible: hi },
     );
   }
 
   successFishing() {
     this.state = FishingState.SUCCESS;
-    this.fishingGaugeOverlay.setFightVisible(false);
+    this.hideAndResetFightOverlay();
     this.cleanupFishingTools();
 
     if (this.currentFish) {
@@ -2954,7 +3054,7 @@ export default class GameScene extends Phaser.Scene {
 
   cancelFishing(reason: string) {
     this.state = FishingState.FAIL;
-    this.fishingGaugeOverlay.setFightVisible(false);
+    this.hideAndResetFightOverlay();
     this.cleanupFishingTools();
     this.currentFish = null;
     this.currentFishSize = undefined;
@@ -3195,7 +3295,7 @@ export default class GameScene extends Phaser.Scene {
       this.resultTextTimer = undefined;
     }
     this.hideCatchResultPopup();
-    this.fishingGaugeOverlay.setFightVisible(false);
+    this.hideAndResetFightOverlay();
     this.hintText.setVisible(false);
   }
 

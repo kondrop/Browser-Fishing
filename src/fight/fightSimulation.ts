@@ -4,7 +4,7 @@ import type { PlayerData } from '../data/inventory';
 import { calculateCatchRateWithSize } from '../data/inventory';
 import { getRodById } from '../data/shopConfig';
 import { getSkillStatBonuses, hasSkillAbility, type SkillStatBonuses } from '../data/skills';
-import { stepFightBarVelocity, sumControlBonus } from './fightControl';
+import { stepFightBarVelocity, stepTension, sumControlBonus } from './fightControl';
 
 /** バランスプレビュー用の参照魚（本番の「標準的な魚」に近い値。config.fighting から読む） */
 export function getBalanceReferenceFishParams(): Pick<
@@ -21,6 +21,8 @@ export function getBalanceReferenceFishParams(): Pick<
     maxSize: cfg['5-26_参照魚_maxSize'],
   };
 }
+
+export type FishFightState = 'running' | 'tired';
 
 export interface FightSimFishParams {
   catchRate: number;
@@ -41,7 +43,13 @@ export interface FightSimState {
   fishDriftVelocity: number;
   playerBarPosition: number;
   playerBarVelocity: number;
+  /** 直前フレームのバー判定幅（テンション等で幅が変わるとき中心を維持する） */
+  prevBarRange: number;
   catchProgress: number;
+  tension: number;
+  tensionVelocity: number;
+  fishFatigue: number;
+  fishState: FishFightState;
   fishFreezeRemainingSec: number;
   lockOnRemainingSec: number;
   smoothDragRemainingSec: number;
@@ -54,7 +62,10 @@ export interface FightSimState {
 
 export interface FightSimStepInput {
   dt: number;
-  spaceHeld: boolean;
+  leftHeld: boolean;
+  rightHeld: boolean;
+  tensionUpHeld: boolean;
+  tensionDownHeld: boolean;
   playerData: PlayerData;
   equippedRodId: string;
   fish: FightSimFishParams;
@@ -71,21 +82,78 @@ export interface FightSimStepInput {
 }
 
 const SPEED_COMBO_GROW_PER_SECOND = 0.25;
+/** ファイトトラック上の中央位置（魚・プレイヤーバー初期位置の基準） */
+export const FIGHT_TRACK_CENTER = 0.5;
+
+/** プレイヤーバー左端の最大値（右端がトラック 1.0 を超えないようにする） */
+export function getMaxPlayerBarPosition(barRange: number): number {
+  return Math.max(0, 1 - barRange);
+}
+
+function createFightBarLayoutSeedState(initialGauge?: number): FightSimState {
+  const fightCfg = config.fighting;
+  return {
+    fishBarPosition: FIGHT_TRACK_CENTER,
+    fishTargetPosition: FIGHT_TRACK_CENTER,
+    fishMoveTimer: 0,
+    fishDriftIntent: 0,
+    fishDriftVelocity: 0,
+    playerBarPosition: 0,
+    playerBarVelocity: 0,
+    prevBarRange: fightCfg['5-9_バー判定範囲'],
+    catchProgress: initialGauge ?? fightCfg['5-12_初期ゲージ'],
+    tension: 0,
+    tensionVelocity: 0,
+    fishFatigue: 0,
+    fishState: 'running',
+    fishFreezeRemainingSec: 0,
+    lockOnRemainingSec: 0,
+    smoothDragRemainingSec: 0,
+    speedComboMultiplier: 0,
+    fightStaggerUsed: false,
+    fightSmoothDragUsed: false,
+    fightLockOnUsed: false,
+    isCatching: false,
+  };
+}
+
+/** 装備・スキル込みのバー幅と、トラック中央に揃えた左端位置 */
+export function resolveFightStartBarLayout(
+  playerData: PlayerData,
+  equippedRodId: string,
+  skillBonuses?: SkillStatBonuses,
+  playerBarCenter: number = FIGHT_TRACK_CENTER,
+): { playerBarPosition: number; prevBarRange: number } {
+  const seed = createFightBarLayoutSeedState();
+  const prevBarRange = getFightBarHeight(seed, playerData, equippedRodId, skillBonuses);
+  const playerBarPosition = clamp(
+    playerBarCenter - prevBarRange / 2,
+    0,
+    getMaxPlayerBarPosition(prevBarRange),
+  );
+  return { playerBarPosition, prevBarRange };
+}
 
 export function createFightSimState(playerData: PlayerData, initialGauge?: number): FightSimState {
   const fightCfg = config.fighting;
   const fightStartMoveDelaySec = hasSkillAbility(playerData, 'abil_luck_junk_ward')
     ? fightCfg['5-12b_開始時魚移動待機秒_シルクタッチ']
     : fightCfg['5-12a_開始時魚移動待機秒'];
+  const startLayout = resolveFightStartBarLayout(playerData, playerData.equippedRodId);
   return {
-    fishBarPosition: 0.4,
-    fishTargetPosition: 0.4,
+    fishBarPosition: FIGHT_TRACK_CENTER,
+    fishTargetPosition: FIGHT_TRACK_CENTER,
     fishMoveTimer: fightStartMoveDelaySec,
     fishDriftIntent: 0,
     fishDriftVelocity: 0,
-    playerBarPosition: 0.3,
+    playerBarPosition: startLayout.playerBarPosition,
     playerBarVelocity: 0,
+    prevBarRange: startLayout.prevBarRange,
     catchProgress: initialGauge ?? fightCfg['5-12_初期ゲージ'],
+    tension: 0,
+    tensionVelocity: 0,
+    fishFatigue: 0,
+    fishState: 'running',
     fishFreezeRemainingSec: 0,
     lockOnRemainingSec: 0,
     smoothDragRemainingSec: 0,
@@ -129,9 +197,72 @@ function tryTriggerSkills(state: FightSimState, playerData: PlayerData, input: F
   }
 }
 
+function stepFishFatigue(state: FightSimState, isCatching: boolean, dt: number): void {
+  const cfg = config.fighting;
+  if (isCatching) {
+    state.fishFatigue += cfg['5-56_疲れ値_増加速度'] * dt;
+  }
+  state.fishFatigue = Math.max(0, state.fishFatigue - cfg['5-57_疲れ値_自然減少速度'] * dt);
+
+  if (state.fishState === 'running' && state.fishFatigue >= cfg['5-58_疲れ値_tired閾値']) {
+    state.fishState = 'tired';
+  } else if (state.fishState === 'tired' && state.fishFatigue <= cfg['5-59_疲れ値_running復帰閾値']) {
+    state.fishState = 'running';
+  }
+}
+
+function computeBaseBarRange(
+  state: FightSimState,
+  playerData: PlayerData,
+  equippedRodId: string,
+  skillBonuses: SkillStatBonuses,
+): number {
+  const cfg = config.fighting;
+  const equippedRod = getRodById(equippedRodId);
+  const elapsedFightSec = Math.max(0, (1 - state.catchProgress) * 8);
+  const nearmissBonus = hasSkillAbility(playerData, 'abil_control_nearmiss_save')
+    ? Math.min(0.08, elapsedFightSec * 0.01)
+    : 0;
+  const smoothDragBonus = state.smoothDragRemainingSec > 0 ? 0.12 : 0;
+  return Math.min(
+    1.0,
+    cfg['5-9_バー判定範囲'] +
+      skillBonuses.barRangeSkillAdd +
+      (equippedRod?.techniqueStatAdd || 0) +
+      nearmissBonus +
+      smoothDragBonus,
+  );
+}
+
+/** バー幅が変わったとき、中心位置を維持するよう左端を補正する */
+function keepPlayerBarCenterWhenRangeChanges(state: FightSimState, nextBarRange: number): void {
+  if (state.prevBarRange === nextBarRange) return;
+  const center = state.playerBarPosition + state.prevBarRange / 2;
+  state.playerBarPosition = clamp(
+    center - nextBarRange / 2,
+    0,
+    getMaxPlayerBarPosition(nextBarRange),
+  );
+  state.prevBarRange = nextBarRange;
+}
+
+/** テンションによるバー範囲縮小を適用した当たり判定幅 */
+export function getFightBarHeight(
+  state: FightSimState,
+  playerData: PlayerData,
+  equippedRodId: string,
+  skillBonuses?: SkillStatBonuses,
+): number {
+  const cfg = config.fighting;
+  const bonuses = resolveSkillBonuses(playerData, skillBonuses);
+  const baseRange = computeBaseBarRange(state, playerData, equippedRodId, bonuses);
+  const tensionShrink = state.tension * cfg['5-53_テンションによるバー縮小幅'];
+  return Math.max(0.05, baseRange * (1 - tensionShrink));
+}
+
 /** 本番ファイトと同一ロジックで1フレーム進める */
 export function stepFightSimulation(state: FightSimState, input: FightSimStepInput): void {
-  const { dt, spaceHeld, playerData, equippedRodId, fish } = input;
+  const { dt, leftHeld, rightHeld, tensionUpHeld, tensionDownHeld, playerData, equippedRodId, fish } = input;
   const cfg = config.fighting;
   const skillBonuses = resolveSkillBonuses(playerData, input.skillBonuses);
   const equippedRod = getRodById(equippedRodId);
@@ -142,16 +273,24 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
     skillBonuses.fightBarDragSkillAdd,
     equippedRod?.controlStatAdd ?? 0,
   );
-  state.playerBarVelocity = stepFightBarVelocity(state.playerBarVelocity, spaceHeld, controlBonus, dt);
+  state.playerBarVelocity = stepFightBarVelocity(
+    state.playerBarVelocity,
+    leftHeld,
+    rightHeld,
+    controlBonus,
+    dt,
+  );
   state.playerBarPosition += state.playerBarVelocity * dt;
 
-  if (state.playerBarPosition < 0) {
-    state.playerBarPosition = 0;
-    state.playerBarVelocity = 0;
-  } else if (state.playerBarPosition > 0.8) {
-    state.playerBarPosition = 0.8;
-    state.playerBarVelocity = -state.playerBarVelocity * 0.3;
-  }
+  const tensionStep = stepTension(
+    state.tension,
+    state.tensionVelocity,
+    tensionUpHeld,
+    tensionDownHeld,
+    dt,
+  );
+  state.tension = tensionStep.tension;
+  state.tensionVelocity = tensionStep.tensionVelocity;
 
   const moveIntervalMin = fish.moveInterval[0] ?? cfg['5-13_魚の移動間隔_最短'];
   const moveIntervalMax = fish.moveInterval[1] ?? cfg['5-14_魚の移動間隔_最長'];
@@ -163,58 +302,45 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
   state.fishMoveTimer -= dt;
   state.fishFreezeRemainingSec = Math.max(0, state.fishFreezeRemainingSec - dt);
 
-  // 一定間隔で「進みたい方向」を更新し、位置は毎フレーム連続的にドリフトさせる
+  const tiredSpeedMul = state.fishState === 'tired' ? cfg['5-60_tired時速度倍率'] : 1.0;
+
   if (state.fishMoveTimer <= 0 && state.fishFreezeRemainingSec <= 0) {
-    // 意図更新の間隔スケール。小さいほど頻繁に進行方向が変わる
     const intervalScale = clamp(
       cfg['5-30_方向更新間隔スケール_基準'] + fish.fishSpeed * cfg['5-31_方向更新間隔スケール_魚速度寄与'],
       cfg['5-32_方向更新間隔スケール_下限'],
       cfg['5-33_方向更新間隔スケール_上限'],
     );
-    // 次回更新までの最短秒数（下限を設けて過剰なガチャつきを防ぐ）
     const nextIntervalMin = Math.max(cfg['5-34_方向更新最短秒_下限'], moveIntervalMin * intervalScale);
-    // 次回更新までの最長秒数（Minとの差を確保してランダム幅を維持）
     const nextIntervalMax = Math.max(
       nextIntervalMin + cfg['5-35_方向更新最長秒_最小差分'],
       moveIntervalMax * intervalScale,
     );
-    // 「次に向きたい方向」を更新するまでの待ち時間
     state.fishMoveTimer = floatBetween(nextIntervalMin, nextIntervalMax);
 
-    // 新しい方向意図の候補（-1:下方向 / 1:上方向）
     const randomIntent = floatBetween(-1, 1);
-    // 方向意図の混ぜ率。上げると意図変化が強くなり動きが読みにくくなる
     const intentBlend = clamp(
       cfg['5-36_方向意図ブレンド_基準'] + fish.fishErratic * cfg['5-37_方向意図ブレンド_魚暴れ寄与'],
       cfg['5-38_方向意図ブレンド_下限'],
       cfg['5-39_方向意図ブレンド_上限'],
     );
-    // 現在意図と新規意図を補間して、急激な方向反転を避ける
     state.fishDriftIntent = linear(state.fishDriftIntent, randomIntent, intentBlend);
   }
 
   if (state.fishFreezeRemainingSec <= 0) {
-    // 連続移動のまま難易度を上げるため、ドリフト速度と追従性を強化
-    // ベース巡航速度。全魚共通で効く値（上げると全体難易度が上がる）
     const maxDriftSpeed =
-      rangeWidth * (cfg['5-40_ドリフト速度_基準'] + fish.fishSpeed * cfg['5-41_ドリフト速度_魚速度寄与']);
-    // 目標速度への追従性。上げると方向転換がキビキビし、揺れが細かくなる
+      rangeWidth *
+      (cfg['5-40_ドリフト速度_基準'] + fish.fishSpeed * cfg['5-41_ドリフト速度_魚速度寄与']) *
+      tiredSpeedMul;
     const driftResponse =
       cfg['5-42_速度追従性_基準'] + fish.fishErratic * cfg['5-43_速度追従性_魚暴れ寄与'];
-    // その瞬間に向かいたい速度（意図方向 × 速度上限）
     const driftTargetVelocity = state.fishDriftIntent * maxDriftSpeed;
-    // フレーム時間考慮の補間係数（0〜1）。大きいほど追従が速い
     const driftVelT = Math.min(1, driftResponse * dt);
-    // 実速度を目標速度へ滑らかに寄せる（無段階の動きの中核）
     state.fishDriftVelocity = linear(state.fishDriftVelocity, driftTargetVelocity, driftVelT);
 
-    // 中央への復元力。上げると中央寄りになり、下げると端側まで泳ぎやすい
     const centerPull =
       (center - state.fishTargetPosition) *
       (cfg['5-44_中央復元力_基準'] + fish.fishErratic * cfg['5-45_中央復元力_魚暴れ寄与']);
-    // ドリフト速度と復元力を合成してターゲット位置を更新
     state.fishTargetPosition += (state.fishDriftVelocity + centerPull) * dt;
-    // UIレンジ外に出ないようにクランプ
     state.fishTargetPosition = clamp(state.fishTargetPosition, minRange, maxRange);
   }
 
@@ -227,29 +353,30 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
   }
 
   state.lockOnRemainingSec = Math.max(0, state.lockOnRemainingSec - dt);
+  const barHeightForLockOn = getFightBarHeight(state, playerData, equippedRodId, skillBonuses);
   if (state.lockOnRemainingSec > 0) {
-    state.playerBarPosition = linear(state.playerBarPosition, state.fishBarPosition - 0.05, 0.25);
+    const currentCenter = state.playerBarPosition + barHeightForLockOn / 2;
+    const newCenter = linear(currentCenter, state.fishBarPosition, 0.25);
+    state.playerBarPosition = newCenter - barHeightForLockOn / 2;
   }
 
-  const baseBarHeight = cfg['5-9_バー判定範囲'];
-  const elapsedFightSec = Math.max(0, (1 - state.catchProgress) * 8);
-  const nearmissBonus = hasSkillAbility(playerData, 'abil_control_nearmiss_save')
-    ? Math.min(0.08, elapsedFightSec * 0.01)
-    : 0;
-  state.smoothDragRemainingSec = Math.max(0, state.smoothDragRemainingSec - dt);
-  const smoothDragBonus = state.smoothDragRemainingSec > 0 ? 0.12 : 0;
-  const barHeight = Math.min(
-    1.0,
-    baseBarHeight +
-      skillBonuses.barRangeSkillAdd +
-      (equippedRod?.techniqueStatAdd || 0) +
-      nearmissBonus +
-      smoothDragBonus,
-  );
+  const barHeight = getFightBarHeight(state, playerData, equippedRodId, skillBonuses);
+  keepPlayerBarCenterWhenRangeChanges(state, barHeight);
+
+  const maxPlayerBarPosition = getMaxPlayerBarPosition(barHeight);
+  if (state.playerBarPosition < 0) {
+    state.playerBarPosition = 0;
+    state.playerBarVelocity = 0;
+  } else if (state.playerBarPosition > maxPlayerBarPosition) {
+    state.playerBarPosition = maxPlayerBarPosition;
+    state.playerBarVelocity = -state.playerBarVelocity * 0.3;
+  }
 
   state.isCatching =
     state.fishBarPosition >= state.playerBarPosition &&
     state.fishBarPosition <= state.playerBarPosition + barHeight;
+
+  stepFishFatigue(state, state.isCatching, dt);
 
   const criticalZoneHeight = hasSkillAbility(playerData, 'abil_speed_opening_surge') ? 0.08 : 0;
   const playerHitBarCenter = state.playerBarPosition + barHeight / 2;
@@ -260,6 +387,9 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
     state.fishBarPosition >= criticalZoneBottom &&
     state.fishBarPosition <= criticalZoneTop &&
     state.isCatching;
+
+  const tensionGainMul = 1 + state.tension * cfg['5-54_テンションによるゲージ増加倍率'];
+  const tensionDecayMul = 1 + state.tension * cfg['5-55_テンションによるゲージ減少倍率'];
 
   const rodSpeedStatAdd = equippedRod?.speedStatAdd || 0;
   let adjustedCatchRate = fish.catchRate;
@@ -285,7 +415,8 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
     const skillGaugeAdd = baseGaugeSpeed * skillBonuses.gaugeSpeedSkillAdd;
     const equipAndFishGain = baseGaugeSpeed * adjustedCatchRate + rodCatchAdd;
     const comboAdd = baseGaugeSpeed * state.speedComboMultiplier;
-    state.catchProgress += (equipAndFishGain + skillGaugeAdd + critAdd + comboAdd) * dt;
+    state.catchProgress +=
+      (equipAndFishGain + skillGaugeAdd + critAdd + comboAdd) * tensionGainMul * dt;
   } else {
     const controlForDecayT = clamp(
       controlBonus / Math.max(0.01, cfg['5-12d_減少倍率補正が最大になるコントロール値']),
@@ -297,7 +428,12 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
       1,
       controlForDecayT,
     );
-    state.catchProgress -= cfg['5-11_ゲージ減少速度'] * fish.escapeRate * lowControlDecayMultiplier * dt;
+    state.catchProgress -=
+      cfg['5-11_ゲージ減少速度'] *
+      fish.escapeRate *
+      lowControlDecayMultiplier *
+      tensionDecayMul *
+      dt;
     state.speedComboMultiplier = 0;
   }
 
@@ -308,30 +444,6 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
   } else {
     state.catchProgress = Math.max(0, Math.min(1, state.catchProgress));
   }
-}
-
-export function getFightBarHeight(
-  state: FightSimState,
-  playerData: PlayerData,
-  equippedRodId: string,
-  skillBonuses?: SkillStatBonuses,
-): number {
-  const cfg = config.fighting;
-  const bonuses = resolveSkillBonuses(playerData, skillBonuses);
-  const equippedRod = getRodById(equippedRodId);
-  const elapsedFightSec = Math.max(0, (1 - state.catchProgress) * 8);
-  const nearmissBonus = hasSkillAbility(playerData, 'abil_control_nearmiss_save')
-    ? Math.min(0.08, elapsedFightSec * 0.01)
-    : 0;
-  const smoothDragBonus = state.smoothDragRemainingSec > 0 ? 0.12 : 0;
-  return Math.min(
-    1.0,
-    cfg['5-9_バー判定範囲'] +
-      bonuses.barRangeSkillAdd +
-      (equippedRod?.techniqueStatAdd || 0) +
-      nearmissBonus +
-      smoothDragBonus,
-  );
 }
 
 export function fishParamsFromConfig(fish: FishConfig, sizeCm?: number): FightSimFishParams {
