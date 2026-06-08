@@ -5775,16 +5775,19 @@ body.ui-menu-input-keyboard #character-modal * {
 
 .fishing-fight-gauge--game {
   position: absolute;
-  transform: translate(-50%, 0);
+  transform: translate(-50%, -100%) scale(var(--fishing-ui-scale, 0.75));
+  transform-origin: center bottom;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   width: max-content;
-  max-width: calc(100vw - 24px);
+  max-width: calc((100vw - 24px) / var(--fishing-ui-scale, 0.5));
 }
 
 .fishing-fight-gauge--preview {
+  transform: scale(var(--fishing-ui-scale, 0.5));
+  transform-origin: center center;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -5805,14 +5808,44 @@ body.ui-menu-input-keyboard #character-modal * {
 .fishing-fight-gauge__arena {
   display: flex;
   flex-direction: row;
-  align-items: stretch;
-  gap: 10px;
+  align-items: center;
+  justify-content: center;
 }
 
 .fishing-fight-gauge--preview .fishing-fight-gauge__arena {
   flex: 1;
-  min-height: 220px;
+  min-height: 120px;
   justify-content: center;
+}
+
+/* Figma fight bar（z: fish → bg → player/critical → grid → progress） */
+.fishing-fight-gauge__fight-bar {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--fishing-bar-width, 586px);
+  height: var(--fishing-bar-height, 95px);
+  overflow: hidden;
+}
+
+.fishing-fight-gauge__fight-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.fishing-fight-gauge__fight-grid {
+  position: absolute;
+  left: calc((var(--fishing-bar-width, 586px) - var(--fishing-grid-width, 574px)) / 2);
+  top: 0;
+  width: var(--fishing-grid-width, 574px);
+  height: var(--fishing-bar-height, 95px);
+  object-fit: fill;
+  pointer-events: none;
+  z-index: 4;
 }
 
 .fishing-fight-gauge__status {
@@ -5885,87 +5918,103 @@ body.ui-menu-input-keyboard #character-modal * {
   text-align: right;
 }
 
-.fishing-fight-gauge__track {
-  position: relative;
-  flex: 0 0 auto;
-  width: var(--fishing-track-width, 250px);
-  height: var(--fishing-track-height, 38px);
-  background: #222;
-  border: 2px solid #fff;
-  border-radius: 4px;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
 .fishing-fight-gauge__critical {
   position: absolute;
-  top: 50%;
-  height: calc(var(--fishing-bar-width, 28px) + 10px);
-  transform: translateY(-50%);
   background: rgba(255, 170, 0, 0.35);
   border-radius: 2px;
   pointer-events: none;
+  z-index: 3;
 }
 
 .fishing-fight-gauge__player-bar {
   position: absolute;
-  height: var(--fishing-bar-width, 28px);
-  background: #888800;
+  background: #7cb86c;
+  border: 1.5px solid rgba(250, 221, 180, 0.5);
   border-radius: 2px;
+  box-sizing: border-box;
   pointer-events: none;
-  transition: width 0.08s ease-out, left 0.08s ease-out;
+  z-index: 3;
+  transition:
+    width 0.08s ease-out,
+    left 0.08s ease-out,
+    background-color 0.08s linear,
+    box-shadow 0.08s linear,
+    border-color 0.08s linear;
 }
 
 .fishing-fight-gauge[hidden] .fishing-fight-gauge__player-bar,
 .fishing-fight-gauge[hidden] .fishing-fight-gauge__tension-fill,
+.fishing-fight-gauge[hidden] .fishing-fight-gauge__progress-fill,
+.fishing-fight-gauge[hidden] .fishing-fight-gauge__fish,
 .fishing-fight-gauge.is-fight-instant .fishing-fight-gauge__player-bar,
-.fishing-fight-gauge.is-fight-instant .fishing-fight-gauge__tension-fill {
+.fishing-fight-gauge.is-fight-instant .fishing-fight-gauge__tension-fill,
+.fishing-fight-gauge.is-fight-instant .fishing-fight-gauge__progress-fill,
+.fishing-fight-gauge.is-fight-instant .fishing-fight-gauge__fish {
   transition: none !important;
-}
-
-.fishing-fight-gauge__player-bar.is-catching {
-  background: #00ff00;
-}
-
-.fishing-fight-gauge__player-bar.is-high-tension {
-  box-shadow: 0 0 6px rgba(255, 100, 60, 0.55);
 }
 
 .fishing-fight-gauge__fish {
   position: absolute;
-  top: 50%;
-  width: var(--fishing-fish-size, 20px);
-  height: var(--fishing-fish-size, 20px);
-  background: #ffaa00;
-  border-radius: 2px;
+  width: var(--fishing-fish-width, 58px);
+  height: var(--fishing-fish-height, 34px);
+  object-fit: contain;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  z-index: 5;
+  transform: scaleX(1);
+  transform-origin: center center;
+  transition: opacity 0.15s ease, left 0.08s ease-out, transform 0.12s ease-out;
 }
 
-.fishing-fight-gauge__fish.is-tired {
-  opacity: 0.72;
-  filter: saturate(0.65);
+.fishing-fight-gauge__fish.is-facing-left {
+  transform: scaleX(-1);
+}
+
+@keyframes fishing-fish-catch-shake {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  25% {
+    translate: -1.5px 0.8px;
+  }
+
+  50% {
+    translate: 1.5px -0.8px;
+  }
+
+  75% {
+    translate: -1px -0.5px;
+  }
+}
+
+.fishing-fight-gauge__fish.is-catching {
+  animation: fishing-fish-catch-shake 0.1s ease-in-out infinite;
 }
 
 .fishing-fight-gauge__progress {
-  position: relative;
-  flex: 0 0 auto;
-  width: var(--fishing-progress-width, 13px);
-  height: var(--fishing-track-height, 250px);
-  background: #000;
-  border: 1px solid #fff;
-  border-radius: 4px;
-  overflow: hidden;
+  position: absolute;
+  left: var(--fishing-content-left, 19px);
+  top: var(--fishing-progress-top, 9px);
+  width: var(--fishing-content-width, 549px);
+  height: var(--fishing-progress-height, 13px);
+  background: #74593d;
+  border: var(--fishing-progress-border, 2px) solid #522e17;
+  border-radius: 25px;
   box-sizing: border-box;
+  overflow: hidden;
+  z-index: 6;
+  pointer-events: none;
 }
 
 .fishing-fight-gauge__progress-fill {
   position: absolute;
-  bottom: 0;
   left: 0;
-  width: 100%;
-  height: 20%;
-  background: #ffff00;
+  top: 0;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #5a9e4a 0%, #7cb86c 45%, #9ed88d 100%);
+  transition: width 0.05s linear;
 }
 
 .fishing-fight-gauge__skills {
@@ -5994,7 +6043,7 @@ body.ui-menu-input-keyboard #character-modal * {
   }
 
   .fishing-fight-gauge--preview .fishing-fight-gauge__arena {
-    min-height: 180px;
+    min-height: 110px;
   }
 }
 

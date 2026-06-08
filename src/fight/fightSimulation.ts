@@ -364,12 +364,13 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
   keepPlayerBarCenterWhenRangeChanges(state, barHeight);
 
   const maxPlayerBarPosition = getMaxPlayerBarPosition(barHeight);
+  const wallBounceRestitution = 0.3;
   if (state.playerBarPosition < 0) {
     state.playerBarPosition = 0;
-    state.playerBarVelocity = 0;
+    state.playerBarVelocity = -state.playerBarVelocity * wallBounceRestitution;
   } else if (state.playerBarPosition > maxPlayerBarPosition) {
     state.playerBarPosition = maxPlayerBarPosition;
-    state.playerBarVelocity = -state.playerBarVelocity * 0.3;
+    state.playerBarVelocity = -state.playerBarVelocity * wallBounceRestitution;
   }
 
   state.isCatching =

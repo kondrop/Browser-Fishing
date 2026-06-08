@@ -155,7 +155,7 @@ export class BalanceFightPreview {
       isCatching: this.sim.isCatching,
       criticalZoneHeight: 0,
       playerHitBarCenter,
-      fishColor: '#ffaa00',
+      fishDriftVelocity: this.sim.fishDriftVelocity,
       tension: this.sim.tension,
       fishState: this.sim.fishState,
     });

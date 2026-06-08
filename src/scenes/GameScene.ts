@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
-import { getRandomFish, rarityStars, rarityColors, getRealFishCount, getFishById, fishDatabase, rarityStarCount, rarityWeights, Habitat, Rarity, fishImageFileNames, getFishImagePath } from '../data/fish';
+import { getRandomFish, rarityStars, getRealFishCount, getFishById, fishDatabase, rarityStarCount, rarityWeights, Habitat, Rarity, fishImageFileNames, getFishImagePath } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
 import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, getInventoryDisplayOrder, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, generateRandomSize, getCastDistanceRatio, updateFishSizeRecord, calculatePriceWithSizeBonus, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp } from '../data/inventory';
 import {
@@ -38,7 +38,6 @@ import {
 import {
   FishingGaugeOverlay,
   FISHING_GAUGE_UI_SCALE,
-  phaserColorToCss,
 } from '../ui/fishingGaugeOverlay';
 
 const FishingState = {
@@ -267,6 +266,13 @@ export default class GameScene extends Phaser.Scene {
   private debugFpsElement!: HTMLElement;
 
   // パフォーマンス最適化用
+  private static readonly CAMERA_TRANSITION_MS = 450;
+  private static readonly CAMERA_FOLLOW_LERP = 0.1;
+  private cameraFocusTarget: 'player' | 'float' = 'player';
+  private cameraTransitionProgress = 1;
+  private cameraTransitionFrom = { scrollX: 0, scrollY: 0 };
+  /** キャスト着水位置（ウキの揺れに追従しない固定センター） */
+  private fixedFloatCenter: { x: number; y: number } | null = null;
   private lastCameraX: number = 0;
   private lastCameraY: number = 0;
   private lastCameraWidth: number = 0;
@@ -942,25 +948,6 @@ export default class GameScene extends Phaser.Scene {
             }
         });
 
-        // Cキーでキャラクター設定（デバッグ用）※大文字・小文字どちらでも反応
-        const openCharacterSettingsPanel = () => {
-            if (this.modalStack.length > 0) return;
-
-            if (!this.characterSettingsElement) {
-                this.createCharacterSettingsUI();
-            }
-            if (!this.characterSettingsElement) return;
-
-            const isActive = this.characterSettingsElement.classList.contains('is-active');
-            if (isActive) {
-                this.closeCharacterSettings();
-            } else {
-                this.openCharacterSettings();
-            }
-        };
-        this.input.keyboard.on('keydown-C', openCharacterSettingsPanel);
-        this.input.keyboard.on('keydown-c', openCharacterSettingsPanel);
-
         const toggleBalanceDebugPanel = () => {
           if (this.modalStack.length > 0 && !this.modalStack.includes(this.MODAL_IDS.BALANCE_DEBUG)) return;
           if (!this.balanceDebugPanel?.element) {
@@ -1013,17 +1000,17 @@ export default class GameScene extends Phaser.Scene {
             }
         });
 
-        this.input.keyboard.on('keydown', (event: KeyboardEvent) => {
-            if (event.code === 'Space') return;
-            this.dismissCatchResultPopupByUser();
-        });
-
         this.spaceKey.on('down', () => {
+            if (this.dismissCatchResultPopupByUser()) {
+                return;
+            }
             if (this.state === FishingState.IDLE) {
-                if (this.isNearWater()) {
-                    this.startCasting();
-                } else {
+                if (!this.isNearWater()) {
                     this.showResult("水辺に近づいてください", 1500);
+                } else if (!this.canCastTowardWater()) {
+                    this.showResult("水の方を向いてください", 1500);
+                } else {
+                    this.startCasting();
                 }
             } else if (this.state === FishingState.BITE) {
                 this.startFighting();
@@ -1036,18 +1023,15 @@ export default class GameScene extends Phaser.Scene {
             }
         });
 
-        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            if (pointer.button !== 0) return;
-            this.dismissCatchResultPopupByUser();
-        });
-
     }
 
-    // カメラ設定（プレイヤーを常に画面中央に配置）
-    // カメラ境界を設定しないことで、マップサイズに関係なくプレイヤーが中央に
-    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
-    // デッドゾーンを0にして常に中央追従
-    this.cameras.main.setDeadzone(0, 0);
+    // カメラ設定（プレイヤーを画面中央に配置。追従は updateCameraFollow で補間）
+    const cam = this.cameras.main;
+    cam.stopFollow();
+    cam.scrollX = this.player.x - cam.width / 2;
+    cam.scrollY = this.player.y - cam.height / 2;
+    this.cameraFocusTarget = 'player';
+    this.cameraTransitionProgress = 1;
     
     // HTML/CSSで操作説明を作成
     const controlsHTML = `
@@ -1468,6 +1452,72 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  private getCameraScrollForWorldCenter(worldX: number, worldY: number): { scrollX: number; scrollY: number } {
+    const cam = this.cameras.main;
+    return {
+      scrollX: worldX - cam.width / 2,
+      scrollY: worldY - cam.height / 2,
+    };
+  }
+
+  private easeOutCubic(t: number): number {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  private beginCameraTransition(target: 'player' | 'float'): void {
+    if (this.cameraFocusTarget === target) return;
+    const cam = this.cameras.main;
+    this.cameraTransitionFrom = { scrollX: cam.scrollX, scrollY: cam.scrollY };
+    this.cameraFocusTarget = target;
+    this.cameraTransitionProgress = 0;
+    cam.stopFollow();
+  }
+
+  private followCameraToPlayer(): void {
+    this.fixedFloatCenter = null;
+    this.beginCameraTransition('player');
+  }
+
+  private followCameraToFloat(): void {
+    this.beginCameraTransition('float');
+  }
+
+  private getCameraWorldTarget(): { x: number; y: number } {
+    if (this.cameraFocusTarget === 'float' && this.fixedFloatCenter) {
+      return this.fixedFloatCenter;
+    }
+    if (this.cameraFocusTarget === 'float') {
+      return { x: this.fishingRig.float.x, y: this.fishingRig.float.y };
+    }
+    return { x: this.player.x, y: this.player.y };
+  }
+
+  private updateCameraFollow(delta: number): void {
+    const cam = this.cameras.main;
+    const worldTarget = this.getCameraWorldTarget();
+    const targetScroll = this.getCameraScrollForWorldCenter(worldTarget.x, worldTarget.y);
+
+    if (this.cameraTransitionProgress < 1) {
+      this.cameraTransitionProgress = Math.min(
+        1,
+        this.cameraTransitionProgress + delta / GameScene.CAMERA_TRANSITION_MS,
+      );
+      const eased = this.easeOutCubic(this.cameraTransitionProgress);
+      cam.scrollX = Phaser.Math.Linear(this.cameraTransitionFrom.scrollX, targetScroll.scrollX, eased);
+      cam.scrollY = Phaser.Math.Linear(this.cameraTransitionFrom.scrollY, targetScroll.scrollY, eased);
+      return;
+    }
+
+    if (this.cameraFocusTarget === 'float' && this.fixedFloatCenter) {
+      cam.scrollX = targetScroll.scrollX;
+      cam.scrollY = targetScroll.scrollY;
+      return;
+    }
+
+    cam.scrollX = Phaser.Math.Linear(cam.scrollX, targetScroll.scrollX, GameScene.CAMERA_FOLLOW_LERP);
+    cam.scrollY = Phaser.Math.Linear(cam.scrollY, targetScroll.scrollY, GameScene.CAMERA_FOLLOW_LERP);
+  }
+
   /** ワールド座標を canvas 上の viewport（fixed）座標に変換 */
   private worldToViewport(worldX: number, worldY: number): { x: number; y: number } {
     const cam = this.cameras.main;
@@ -1488,11 +1538,19 @@ export default class GameScene extends Phaser.Scene {
     return this.worldToViewport(this.player.x, worldY);
   }
 
-  /** ファイトUI上端中央をキャラの下（viewport 座標）に置く */
+  /** 浮きスプライト上端のワールドY（中心Yから算出） */
+  private getFloatTopWorldYFromCenter(centerY: number): number {
+    const s = Math.max(1, Math.round(this.getFishingRigScale()));
+    const redH = 2 + Math.floor(s * 0.5);
+    return centerY - redH;
+  }
+
+  /** ファイトUI下端中央を浮き着水位置の上（viewport 座標）に置く */
   private getFightGaugeViewportAnchor(): { x: number; y: number } {
-    const gap = config.fighting['5-1b_ファイトUI_キャラ下余白'] * FISHING_GAUGE_UI_SCALE;
-    const worldY = this.player.y + this.player.displayHeight * 0.5 + gap;
-    return this.worldToViewport(this.player.x, worldY);
+    const center = this.fixedFloatCenter ?? { x: this.fishingRig.float.x, y: this.fishingRig.float.y };
+    const gap = config.fighting['5-1b_ファイトUI_浮き上余白'] * FISHING_GAUGE_UI_SCALE;
+    const worldY = this.getFloatTopWorldYFromCenter(center.y) - gap;
+    return this.worldToViewport(center.x, worldY);
   }
 
   private layoutFishingGaugeOverlay(): void {
@@ -1658,7 +1716,11 @@ export default class GameScene extends Phaser.Scene {
     if (this.state === FishingState.IDLE) {
         this.handleMovement();
     } else {
-        (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0);
+        const body = this.player.body as Phaser.Physics.Arcade.Body;
+        body.setVelocity(0);
+        if (this.player.anims.currentAnim?.key === 'player-walk') {
+          this.player.anims.play('player-idle', true);
+        }
     }
 
     if (this.state === FishingState.CASTING) {
@@ -1675,6 +1737,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.updateFishingRig(time, delta);
+    this.updateCameraFollow(delta);
     this.drawFishingRig();
 
     this.refreshKbSelectionPointer();
@@ -1756,25 +1819,61 @@ export default class GameScene extends Phaser.Scene {
     return false;
   }
 
-  isInsideWater(): boolean {
-    const px = this.player.x;
-    const py = this.player.y;
-    
+  isPointInWater(x: number, y: number): boolean {
     for (const area of this.waterAreas) {
         if (area.type === 'ellipse') {
-            const dx = (px - area.x) / (area.width / 2);
-            const dy = (py - area.y) / (area.height / 2);
+            const dx = (x - area.x) / (area.width / 2);
+            const dy = (y - area.y) / (area.height / 2);
             if (dx * dx + dy * dy <= 1) {
                 return true;
             }
         } else if (area.type === 'rect') {
-            if (px >= area.x && px <= area.x + area.width &&
-                py >= area.y && py <= area.y + area.height) {
+            if (x >= area.x && x <= area.x + area.width &&
+                y >= area.y && y <= area.y + area.height) {
                 return true;
             }
         }
     }
     return false;
+  }
+
+  isInsideWater(): boolean {
+    return this.isPointInWater(this.player.x, this.player.y);
+  }
+
+  /** 指定方向に水源があるか（複数距離をサンプルして狭い川も拾う） */
+  private hasWaterInDirection(facing: 'up' | 'down' | 'left' | 'right'): boolean {
+    const px = this.player.x;
+    const py = this.player.y;
+    const maxDist = config.waiting['3-4_最大投擲距離'];
+    const sampleDistances = [40, 80, maxDist];
+    for (const dist of sampleDistances) {
+      let x = px;
+      let y = py;
+      switch (facing) {
+        case 'up':
+          y -= dist;
+          break;
+        case 'down':
+          y += dist;
+          break;
+        case 'left':
+          x -= dist;
+          break;
+        case 'right':
+          x += dist;
+          break;
+      }
+      if (this.isPointInWater(x, y)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 現在の向きで水源へキャストできるか */
+  canCastTowardWater(): boolean {
+    return this.hasWaterInDirection(this.playerFacing);
   }
 
   restrictWaterEntry() {
@@ -2522,6 +2621,7 @@ export default class GameScene extends Phaser.Scene {
   // --- 投擲処理 ---
   startCasting() {
     this.player.setFlipX(this.lastHorizontalFacing === 'left');
+    this.player.anims.play('player-idle', true);
     this.state = FishingState.CASTING;
     this.castPower = 0;
     this.castDirection = 1;
@@ -2564,21 +2664,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   finishCasting() {
-    this.state = FishingState.WAITING;
-    this.fishingGaugeOverlay.setCastVisible(false);
-    this.hintText.setVisible(false);
-    if (this.resultTextElement) {
-      this.resultTextElement.style.display = 'none';
-    }
-    this.hideCatchResultPopup();
-
     const waitCfg = config.waiting;
-    
+
     // 装備中の釣り竿のボーナスを取得
     const equippedRod = getRodById(this.playerData.equippedRodId);
     const skillBonuses = getEffectiveSkillStatBonuses(this.playerData);
     const powerStatus = 1.0 + (equippedRod?.powerStatAdd || 0) + skillBonuses.castDistSkillAdd;
-    
+
     // パワーに応じた距離（釣り竿のボーナスを反映）
     const minDist = waitCfg['3-3_最小投擲距離'];
     const maxDist = waitCfg['3-4_最大投擲距離'];
@@ -2590,9 +2682,31 @@ export default class GameScene extends Phaser.Scene {
       distance *= 1.25;
     }
 
+    const castTarget = this.computeFloatTarget(distance);
+    if (!this.isPointInWater(castTarget.x, castTarget.y)) {
+      this.fishingGaugeOverlay.setCastVisible(false);
+      this.hintText.setVisible(false);
+      this.state = FishingState.IDLE;
+      this.showResult("水の方を向いてください", 1500);
+      return;
+    }
+
+    this.state = FishingState.WAITING;
+    this.fishingGaugeOverlay.setCastVisible(false);
+    this.hintText.setVisible(false);
+    if (this.resultTextElement) {
+      this.resultTextElement.style.display = 'none';
+    }
+    this.hideCatchResultPopup();
+
     this.lastCastDistanceRatio = getCastDistanceRatio(distance);
-    
+
     this.setupFishingRigAfterCast(distance);
+    this.fixedFloatCenter = {
+      x: this.fishingRig.targetFloat.x,
+      y: this.fishingRig.targetFloat.y,
+    };
+    this.followCameraToFloat();
 
     // エサとルアーのボーナスを計算（消費はファイト開始時）
     const bait = this.playerData.equippedBaitId ? getBaitById(this.playerData.equippedBaitId) : null;
@@ -2718,11 +2832,6 @@ export default class GameScene extends Phaser.Scene {
       this.fishBarPosition <= this.playerBarPosition + barHeight;
     const criticalZoneHeight = hasSkillAbility(this.playerData, 'abil_speed_opening_surge') ? 0.08 : 0;
     const playerHitBarCenter = this.playerBarPosition + barHeight / 2;
-    const fishColor =
-      this.currentFish && hasSkillAbility(this.playerData, 'abil_spec_pedia_bonus')
-        ? phaserColorToCss(rarityColors[this.currentFish.rarity])
-        : '#999999';
-
     this.fishingGaugeOverlay.updateFight({
       fishBarPosition: this.fishBarPosition,
       playerBarPosition: this.playerBarPosition,
@@ -2731,7 +2840,7 @@ export default class GameScene extends Phaser.Scene {
       isCatching,
       criticalZoneHeight,
       playerHitBarCenter,
-      fishColor,
+      fishDriftVelocity: this.fishDriftVelocity,
       tension: this.fightTension,
       fishState: this.fishFightState,
     });
@@ -2769,15 +2878,9 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.resetFightState();
-    if (this.currentFish) {
-      const isRarityVisible = hasSkillAbility(this.playerData, 'abil_spec_pedia_bonus');
-      const color = isRarityVisible ? rarityColors[this.currentFish.rarity] : 0x999999;
-      this.fishingGaugeOverlay.setFishColor(phaserColorToCss(color));
-    } else {
-      this.fishingGaugeOverlay.setFishColor('#ffaa00');
-    }
     this.renderFightOverlay();
     this.state = FishingState.FIGHTING;
+    this.layoutFishingGaugeOverlay();
     this.fishingGaugeOverlay.setFightVisible(true);
   }
 
@@ -2918,6 +3021,7 @@ export default class GameScene extends Phaser.Scene {
 
   successFishing() {
     this.state = FishingState.SUCCESS;
+    this.followCameraToPlayer();
     this.hideAndResetFightOverlay();
     this.cleanupFishingTools();
 
@@ -3054,6 +3158,7 @@ export default class GameScene extends Phaser.Scene {
 
   cancelFishing(reason: string) {
     this.state = FishingState.FAIL;
+    this.followCameraToPlayer();
     this.hideAndResetFightOverlay();
     this.cleanupFishingTools();
     this.currentFish = null;
@@ -3286,6 +3391,7 @@ export default class GameScene extends Phaser.Scene {
 
   resetState() {
     this.state = FishingState.IDLE;
+    this.followCameraToPlayer();
     this.cleanupFishingTools();
     if (this.resultTextElement) {
       this.resultTextElement.style.display = 'none';
