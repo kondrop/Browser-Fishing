@@ -23,6 +23,24 @@ import {
   getAchievementsByCategory,
   type AchievementConfig,
 } from '../data/achievementConfig';
+import {
+  MAX_ACTIVE_QUESTS,
+  type QuestConfig,
+} from '../data/questConfig';
+import {
+  acceptQuest,
+  getActiveQuests,
+  getAvailableQuests,
+  getCompletedQuests,
+  getQuestProgressDisplay,
+  getQuestProgressRatio,
+  onQuestConsecutiveSuccess,
+  onQuestFishCaught,
+  onQuestFishSold,
+  onQuestLevelUp,
+  resolveQuest,
+  type QuestCatchContext,
+} from '../data/quests';
 import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, getRodById, getBaitById, getLureById } from '../data/shopConfig';
 import { characterConfigs, getCharacterById, getDefaultCharacterId } from '../data/characterConfig';
 import { calculateDisplayStatIndices, getEffectiveSkillStatBonuses } from '../debug/balanceDebug';
@@ -117,6 +135,8 @@ export default class GameScene extends Phaser.Scene {
   private catchProgress: number = 0.3;
   private fightTension: number = 0;
   private fightTensionVelocity: number = 0;
+  private fightElapsedSec: number = 0;
+  private fightPeakTension: number = 0;
   private fishFatigue: number = 0;
   private fishFightState: 'running' | 'tired' = 'running';
   private fightSkillZKey!: Phaser.Input.Keyboard.Key;
@@ -185,12 +205,13 @@ export default class GameScene extends Phaser.Scene {
   // 統合BookUI（2ペイン）
   private unifiedBookUIElement!: HTMLElement;
   private unifiedBookOpen: boolean = false;
-  private unifiedBookTab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'status' = 'inventory';
-  private readonly unifiedBookTabOrder: Array<'inventory' | 'status' | 'skills' | 'achievement' | 'pedia'> = [
+  private unifiedBookTab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'quest' | 'status' = 'inventory';
+  private readonly unifiedBookTabOrder: Array<'inventory' | 'status' | 'skills' | 'achievement' | 'quest' | 'pedia'> = [
     'inventory',
     'status',
     'skills',
     'achievement',
+    'quest',
     'pedia',
   ];
   private unifiedBookSelectedId: string | null = null;
@@ -226,6 +247,26 @@ export default class GameScene extends Phaser.Scene {
   /** 実績タブ: 左＝カテゴリ一覧 / 右＝実績詳細リスト */
   private achievementNavArea: 'left' | 'right' = 'left';
   private achievementDetailSelectedIndex: number = 0;
+  private questBoardOpen: boolean = false;
+  private questBoardUIElement!: HTMLElement;
+  private questBoardSelectedIndex: number = 0;
+  private readonly questBoardGridCols = 3;
+  private questBoardDocumentKeyHandler = (e: KeyboardEvent) => {
+    if (!this.questBoardOpen) return;
+    const dirMap: Record<string, 'up' | 'down' | 'left' | 'right'> = {
+      ArrowUp: 'up',
+      ArrowDown: 'down',
+      ArrowLeft: 'left',
+      ArrowRight: 'right',
+    };
+    const dir = dirMap[e.key];
+    if (!dir) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.noteUiMenuKeyboardNavigation();
+    this.moveQuestBoardSelection(dir);
+  };
+  private readonly bulletinBoardZone = { x: 750, y: 480, width: 70, height: 60 };
   /** キー選択行の右下に表示する指し示しアイコン（body 直下・fixed） */
   private kbSelectionPointerEl: HTMLDivElement | null = null;
   /** メニュー操作の直近入力（キー時のみ実カーソルを隠す） */
@@ -298,6 +339,7 @@ export default class GameScene extends Phaser.Scene {
     BOOK_DETAIL: 'book-detail-modal',
     SHOP: 'shop-modal',
     UNIFIED_BOOK: 'book-ui',
+    QUEST_BOARD: 'quest-board-modal',
     CHARACTER: 'character-settings',
     BALANCE_DEBUG: 'balance-debug-modal',
   } as const;
@@ -677,6 +719,20 @@ export default class GameScene extends Phaser.Scene {
         this.add.circle(x, y, 4, color);
     }
 
+    // === 掲示板（クエスト受注） ===
+    const bb = this.bulletinBoardZone;
+    this.add.rectangle(bb.x, bb.y + 8, 12, 50, 0x8b5a2b).setOrigin(0.5).setDepth(5);
+    this.add.rectangle(bb.x, bb.y - 18, 72, 52, 0xc9a66b).setOrigin(0.5).setDepth(5);
+    this.add.rectangle(bb.x - 14, bb.y - 22, 18, 14, 0xfff8e7).setOrigin(0.5).setDepth(6);
+    this.add.rectangle(bb.x + 10, bb.y - 14, 16, 12, 0xfff8e7).setOrigin(0.5).setDepth(6);
+    this.add.rectangle(bb.x + 2, bb.y - 6, 20, 14, 0xfff8e7).setOrigin(0.5).setDepth(6);
+    this.add.text(bb.x, bb.y - 42, '📋 掲示板', {
+      fontSize: '14px',
+      color: '#ffffff',
+      backgroundColor: '#00000088',
+      padding: { x: 6, y: 2 },
+    }).setOrigin(0.5).setDepth(7);
+
     // ============================================
     // プレイヤー
     // ============================================
@@ -820,6 +876,7 @@ export default class GameScene extends Phaser.Scene {
 
     // ショップUI
     this.createShopUI();
+    this.createQuestBoardUI();
 
     // 実績UI
     this.createAchievementUI();
@@ -916,6 +973,8 @@ export default class GameScene extends Phaser.Scene {
                 this.closeBook();
             } else if (topModalId === this.MODAL_IDS.SHOP) {
                 this.closeShop();
+            } else if (topModalId === this.MODAL_IDS.QUEST_BOARD) {
+                this.closeQuestBoard();
             }
         });
 
@@ -945,6 +1004,23 @@ export default class GameScene extends Phaser.Scene {
                 } else {
                     this.purchaseOrEquipItem();
                 }
+            } else if (this.questBoardOpen) {
+                this.acceptSelectedQuestFromBoard();
+            } else if (this.state === FishingState.IDLE && this.isNearBulletinBoard()) {
+                this.openQuestBoard();
+            }
+        });
+
+        // Fキーで掲示板
+        this.input.keyboard.on('keydown-F', () => {
+            if (this.state !== FishingState.IDLE) return;
+            if (this.unifiedBookOpen) return;
+            if (this.questBoardOpen) {
+                this.closeQuestBoard();
+                return;
+            }
+            if (this.isNearBulletinBoard()) {
+                this.openQuestBoard();
             }
         });
 
@@ -1128,6 +1204,7 @@ export default class GameScene extends Phaser.Scene {
       { id: this.MODAL_IDS.BOOK_DETAIL, element: this.bookDetailElement },
       { id: this.MODAL_IDS.SHOP, element: this.shopUIElement },
       { id: this.MODAL_IDS.UNIFIED_BOOK, element: this.unifiedBookUIElement },
+      { id: this.MODAL_IDS.QUEST_BOARD, element: this.questBoardUIElement },
       { id: this.MODAL_IDS.CHARACTER, element: this.characterSettingsElement },
       { id: this.MODAL_IDS.BALANCE_DEBUG, element: this.balanceDebugPanel?.element },
     ];
@@ -1629,6 +1706,13 @@ export default class GameScene extends Phaser.Scene {
     }
     
     const earnings = sellAllFish(this.playerData);
+
+    const completedQuests = onQuestFishSold(this.playerData, count, earnings);
+    completedQuests.forEach((quest) => this.showQuestNotification(quest));
+    if (completedQuests.length > 0 && this.unifiedBookOpen && this.unifiedBookTab === 'quest') {
+      this.updateUnifiedBookList();
+      this.updateUnifiedBookDetail();
+    }
     
     // 実績チェック（経済系）
     const unlockedAchievements = checkAchievements(this.playerData, ['money']);
@@ -1691,6 +1775,11 @@ export default class GameScene extends Phaser.Scene {
         return;
       }
 
+      if (topModalId === this.MODAL_IDS.QUEST_BOARD) {
+        this.refreshKbSelectionPointer();
+        return;
+      }
+
       // その他のモーダル（詳細モーダルなど）が最上位の場合は何もしない
       // ただし、ネットワーク処理などは継続（将来のマルチ対応）
       this.refreshKbSelectionPointer();
@@ -1715,6 +1804,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.state === FishingState.IDLE) {
         this.handleMovement();
+        this.updateIdleWorldHints();
     } else {
         const body = this.player.body as Phaser.Physics.Arcade.Body;
         body.setVelocity(0);
@@ -2780,6 +2870,8 @@ export default class GameScene extends Phaser.Scene {
     this.fishDriftVelocity = 0;
     this.fightTension = 0;
     this.fightTensionVelocity = 0;
+    this.fightElapsedSec = 0;
+    this.fightPeakTension = 0;
     this.fishFatigue = 0;
     this.fishFightState = 'running';
     this.fightStaggerUsedThisFight = false;
@@ -2913,6 +3005,7 @@ export default class GameScene extends Phaser.Scene {
 
   updateFighting(_time: number, delta: number) {
     const dt = delta / 1000;
+    this.fightElapsedSec += dt;
     const cfg = config.fighting;
     const skillBonuses = getEffectiveSkillStatBonuses(this.playerData);
 
@@ -2986,6 +3079,7 @@ export default class GameScene extends Phaser.Scene {
     this.catchProgress = simState.catchProgress;
     this.fightTension = simState.tension;
     this.fightTensionVelocity = simState.tensionVelocity;
+    this.fightPeakTension = Math.max(this.fightPeakTension, simState.tension);
     this.fishFatigue = simState.fishFatigue;
     this.fishFightState = simState.fishState;
     this.fishFreezeRemainingSec = simState.fishFreezeRemainingSec;
@@ -3017,6 +3111,17 @@ export default class GameScene extends Phaser.Scene {
       { text: fmt(stag, this.fightStaggerUsedThisFight, this.fishFreezeRemainingSec, 'X'), visible: stag },
       { text: fmt(hi, this.fightSmoothDragUsedThisFight, this.smoothDragRemainingSec, 'C'), visible: hi },
     );
+  }
+
+  private buildQuestCatchContext(fishSize?: number): QuestCatchContext {
+    return {
+      fishSize,
+      tensionAtCatch: this.fightPeakTension,
+      fightDurationSec: this.fightElapsedSec,
+      equippedRodId: this.playerData.equippedRodId,
+      equippedBaitId: this.playerData.equippedBaitId,
+      equippedLureId: this.playerData.equippedLureId,
+    };
   }
 
   successFishing() {
@@ -3069,6 +3174,13 @@ export default class GameScene extends Phaser.Scene {
               this.updateUnifiedBookList();
             }
 
+            const catchCtx = this.buildQuestCatchContext(fishSize);
+            const completedCatchQuests = onQuestFishCaught(this.playerData, this.currentFish, catchCtx);
+            const completedStreakQuests = onQuestConsecutiveSuccess(this.playerData);
+            [...completedCatchQuests, ...completedStreakQuests].forEach((quest) => {
+              this.showQuestNotification(quest);
+            });
+
             const stars = rarityStars[this.currentFish.rarity];
             const duration = config.result['6-2_成功表示時間'] * 1000;
             const sizeRatio = fishSize !== undefined ? fishSize / this.currentFish.maxSize : undefined;
@@ -3097,6 +3209,20 @@ export default class GameScene extends Phaser.Scene {
         
         // 連続成功を更新
         incrementConsecutiveSuccess(this.playerData);
+
+        const catchCtx = this.buildQuestCatchContext(fishSize);
+        const completedCatchQuests = onQuestFishCaught(this.playerData, this.currentFish, catchCtx);
+        const completedStreakQuests = onQuestConsecutiveSuccess(this.playerData);
+        const allCompletedQuests = [...completedCatchQuests, ...completedStreakQuests];
+        allCompletedQuests.forEach((quest) => {
+          this.showQuestNotification(quest);
+        });
+        if (allCompletedQuests.length > 0 && this.unifiedBookOpen && this.unifiedBookTab === 'quest') {
+          this.updateUnifiedBookList();
+          this.updateUnifiedBookDetail();
+        } else if (this.unifiedBookOpen && this.unifiedBookTab === 'quest') {
+          this.updateUnifiedBookDetail();
+        }
         
         // サイズによる価格ボーナスを計算
         const isJunk = this.currentFish.id.startsWith('junk_');
@@ -3128,6 +3254,8 @@ export default class GameScene extends Phaser.Scene {
           levelAchievements.forEach(achievement => {
             this.showAchievementNotification(achievement);
           });
+          const completedLevelQuests = onQuestLevelUp(this.playerData);
+          completedLevelQuests.forEach((quest) => this.showQuestNotification(quest));
         }
         
         savePlayerData(this.playerData);
@@ -3993,6 +4121,12 @@ export default class GameScene extends Phaser.Scene {
                 <span class="book-tab-label">実績</span>
               </span>
             </button>
+            <button class="book-tab-button ui-frame-box" data-tab="quest" aria-label="クエスト">
+              <span class="book-tab-button-inner">
+                <span class="book-tab-icon book-tab-icon--emoji" aria-hidden="true">📋</span>
+                <span class="book-tab-label">クエスト</span>
+              </span>
+            </button>
             <button class="book-tab-button ui-frame-box" data-tab="pedia" aria-label="図鑑">
               <span class="book-tab-button-inner">
                 <img class="book-tab-icon" src="/images/ui/icon/icon_encyclopedia.png" alt="" aria-hidden="true" />
@@ -4235,6 +4369,7 @@ export default class GameScene extends Phaser.Scene {
           | 'pedia'
           | 'skills'
           | 'achievement'
+          | 'quest'
           | 'status';
         this.switchUnifiedBookTab(tab);
       });
@@ -4340,7 +4475,7 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookUIElement.addEventListener('pointerenter', () => {
       if (!this.unifiedBookOpen) return;
       const t = this.unifiedBookTab;
-      if (t !== 'skills' && t !== 'achievement' && t !== 'pedia') return;
+      if (t !== 'skills' && t !== 'achievement' && t !== 'quest' && t !== 'pedia') return;
       if (this.unifiedBookMainTabsNavActive) return;
       if (this.uiMenuNavInputChannel === 'mouse') return;
       this.uiMenuNavInputChannel = 'mouse';
@@ -4354,7 +4489,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   switchUnifiedBookTab(
-    tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'status',
+    tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'quest' | 'status',
     opts?: { keepMainTabNav?: boolean },
   ) {
     const prevTab = this.unifiedBookTab;
@@ -4362,8 +4497,8 @@ export default class GameScene extends Phaser.Scene {
       this.exitUnifiedBookMainTabsNav();
     }
 
-    // 実績タブから他のタブに切り替える場合は、詳細エリアを元の構造に復元
-    if (this.unifiedBookTab === 'achievement' && tab !== 'achievement') {
+    // 実績・クエストタブから他のタブに切り替える場合は、詳細エリアを元の構造に復元
+    if ((this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'quest') && tab !== 'achievement' && tab !== 'quest') {
       this.restoreBookDetailStructure();
     }
 
@@ -4399,11 +4534,12 @@ export default class GameScene extends Phaser.Scene {
 
     // 左ペイン（リスト）ヘッダーを更新
     const header = this.unifiedBookUIElement.querySelector('#book-list-header') as HTMLElement;
-    const menuHeadingByTab: Record<'inventory' | 'pedia' | 'skills' | 'achievement' | 'status', string> = {
+    const menuHeadingByTab: Record<'inventory' | 'pedia' | 'skills' | 'achievement' | 'quest' | 'status', string> = {
       inventory: 'Bag',
       pedia: 'Pedia',
       skills: 'Skills',
       achievement: 'Achievements',
+      quest: 'Quests',
       status: 'Status',
     };
     if (header) {
@@ -4413,6 +4549,8 @@ export default class GameScene extends Phaser.Scene {
 
     if (tab === 'achievement') {
       this.unifiedBookUIElement.setAttribute('data-tab', 'achievement');
+    } else if (tab === 'quest') {
+      this.unifiedBookUIElement.setAttribute('data-tab', 'quest');
     } else if (tab === 'status') {
       this.unifiedBookUIElement.setAttribute('data-tab', 'status');
     } else if (tab === 'skills') {
@@ -4507,7 +4645,7 @@ export default class GameScene extends Phaser.Scene {
       unlockBtn?.classList.remove('is-nav-selected');
     }
 
-    if (this.unifiedBookTab === 'achievement') {
+    if (this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'quest') {
       this.achievementNavArea = 'left';
       this.unifiedBookDetailElement
         ?.querySelectorAll('.achievement-detail-item--kb-selected')
@@ -4552,6 +4690,12 @@ export default class GameScene extends Phaser.Scene {
     if (this.unifiedBookTab === 'achievement') {
       const firstCategory = this.unifiedBookListItems[0]?.getAttribute('data-category');
       if (firstCategory) this.selectAchievementCategory(firstCategory, 0);
+      return;
+    }
+
+    if (this.unifiedBookTab === 'quest') {
+      const firstCategory = this.unifiedBookListItems[0]?.getAttribute('data-category');
+      if (firstCategory) this.selectQuestLogCategory(firstCategory, 0);
       return;
     }
 
@@ -5277,8 +5421,7 @@ export default class GameScene extends Phaser.Scene {
     const shouldHighlightStat =
       !this.unifiedBookMainTabsNavActive &&
       this.statusNavArea === 'stats' &&
-      !this.statusEquipmentSelectorType &&
-      this.uiMenuNavInputChannel === 'keyboard';
+      !this.statusEquipmentSelectorType;
     items.forEach((item) => {
       const isSelected = shouldHighlightStat && item.dataset.statKey === this.selectedStatusStatKey;
       item.classList.toggle('is-selected', isSelected);
@@ -6029,8 +6172,8 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookListScrollElement.innerHTML = '';
     this.unifiedBookListItems = [];
 
-    // 実績タブ以外の場合は、実績タブ用のインラインをリセット
-    if (this.unifiedBookTab !== 'achievement') {
+    // 実績・クエストタブ以外の場合は、リスト用のインラインをリセット
+    if (this.unifiedBookTab !== 'achievement' && this.unifiedBookTab !== 'quest') {
       this.unifiedBookListScrollElement.classList.remove('achievement-list-container');
       this.unifiedBookListScrollElement.style.display = '';
       this.unifiedBookListScrollElement.style.flexDirection = '';
@@ -6142,6 +6285,17 @@ export default class GameScene extends Phaser.Scene {
         this.unifiedBookListScrollElement.appendChild(categoryItem);
         this.unifiedBookListItems.push(categoryItem);
       });
+    } else if (this.unifiedBookTab === 'quest') {
+      const questLogCategories = ['active', 'completed'] as const;
+      questLogCategories.forEach((category, index) => {
+        const count =
+          category === 'active'
+            ? getActiveQuests(this.playerData).length
+            : getCompletedQuests(this.playerData).length;
+        const categoryItem = this.createQuestLogCategoryItem(category, count, index);
+        this.unifiedBookListScrollElement.appendChild(categoryItem);
+        this.unifiedBookListItems.push(categoryItem);
+      });
     } else {
       // バッグ・図鑑タブの場合は通常のリスト表示
       this.unifiedBookListScrollElement.classList.remove('achievement-list-container');
@@ -6161,6 +6315,9 @@ export default class GameScene extends Phaser.Scene {
       if (this.unifiedBookTab === 'achievement') {
         const firstCategory = this.unifiedBookListItems[0]?.getAttribute('data-category');
         if (firstCategory) this.selectAchievementCategory(firstCategory, 0);
+      } else if (this.unifiedBookTab === 'quest') {
+        const firstCategory = this.unifiedBookListItems[0]?.getAttribute('data-category');
+        if (firstCategory) this.selectQuestLogCategory(firstCategory, 0);
       } else if (this.unifiedBookTab === 'skills') {
         this.selectSkillTree(SKILL_TREE_IDS[0], 0);
       } else if (this.unifiedBookTab !== 'status') {
@@ -6419,11 +6576,18 @@ export default class GameScene extends Phaser.Scene {
   }
 
   selectUnifiedBookItem(fishId: string, index: number, opts?: { pediaNavKeepSortArea?: boolean }) {
-    // 実績タブの場合は別処理
+    // 実績・クエストタブの場合は別処理
     if (this.unifiedBookTab === 'achievement') {
       const category = this.unifiedBookListItems[index]?.getAttribute('data-category');
       if (category) {
         this.selectAchievementCategory(category, index);
+      }
+      return;
+    }
+    if (this.unifiedBookTab === 'quest') {
+      const category = this.unifiedBookListItems[index]?.getAttribute('data-category');
+      if (category) {
+        this.selectQuestLogCategory(category, index);
       }
       return;
     }
@@ -6484,8 +6648,8 @@ export default class GameScene extends Phaser.Scene {
 
     if (statusPanel) statusPanel.style.display = 'none';
 
-    // 実績タブ以外の場合は、詳細エリアの構造が正しいことを確認（最初に実行）
-    if (this.unifiedBookTab !== 'achievement') {
+    // 実績・クエストタブ以外の場合は、詳細エリアの構造が正しいことを確認（最初に実行）
+    if (this.unifiedBookTab !== 'achievement' && this.unifiedBookTab !== 'quest') {
       this.restoreBookDetailStructure();
     }
 
@@ -6503,9 +6667,13 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
-    // 実績タブの場合は別処理
+    // 実績・クエストタブの場合は別処理
     if (this.unifiedBookTab === 'achievement') {
       this.updateAchievementDetail(this.unifiedBookSelectedId);
+      return;
+    }
+    if (this.unifiedBookTab === 'quest') {
+      this.updateQuestLogDetail(this.unifiedBookSelectedId);
       return;
     }
 
@@ -6758,10 +6926,11 @@ export default class GameScene extends Phaser.Scene {
     
     // 実績タブの詳細表示（achievement-detail-list）が存在する場合は、元の構造に復元
     const achievementDetailList = this.unifiedBookDetailElement.querySelector('.achievement-detail-list');
+    const questLogEmpty = this.unifiedBookDetailElement.querySelector('.quest-log-empty');
     const existingHeader = this.unifiedBookDetailElement.querySelector('.book-detail-header-new');
     
-    // 実績タブの詳細表示が存在するか、元の構造が失われている場合は復元
-    if (achievementDetailList || !existingHeader) {
+    // 実績・クエストタブの詳細表示が存在するか、元の構造が失われている場合は復元
+    if (achievementDetailList || questLogEmpty || !existingHeader) {
       // 初期HTML（createUnifiedBookUI）と完全に同一の構造・クラスに復元し、
       // バッグ・図鑑タブ間の切り替え時も詳細欄のスタイルが変わらないようにする（BUG-UI-001 同種対策）
       this.unifiedBookDetailElement.innerHTML = `
@@ -7072,10 +7241,484 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  openUnifiedBook(tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'status' = 'inventory') {
+  // ============================================
+  // クエストログ（Book UI）
+  // ============================================
+
+  createQuestLogCategoryItem(category: string, count: number, index: number): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'achievement-category-item book-ui-node ui-frame-box';
+    item.setAttribute('data-category', category);
+    item.setAttribute('data-index', index.toString());
+
+    const categoryData: Record<string, { name: string }> = {
+      active: { name: '受注中' },
+      completed: { name: '完了' },
+    };
+    const data = categoryData[category] || { name: category };
+
+    const segments: string[] = [];
+    const segCount = category === 'active' ? MAX_ACTIVE_QUESTS : Math.max(count, 1);
+    for (let i = 0; i < segCount; i++) {
+      const on = category === 'active' ? i < count : i < count;
+      segments.push(
+        `<span class="achievement-category-seg ${on ? 'achievement-category-seg--on' : 'achievement-category-seg--off'}" aria-hidden="true"></span>`
+      );
+    }
+
+    const countLabel =
+      category === 'active' ? `${count}/${MAX_ACTIVE_QUESTS} 受注中` : `${count} 完了`;
+
+    item.innerHTML = `
+      <div class="achievement-category-item__head">
+        <span class="achievement-category-item__name">${data.name}</span>
+        <span class="achievement-category-item__count">${countLabel}</span>
+      </div>
+      <div class="achievement-category-item__segments" role="img" aria-label="${data.name} ${countLabel}">
+        ${segments.join('')}
+      </div>
+    `;
+
+    item.addEventListener('click', () => {
+      this.selectQuestLogCategory(category, index);
+    });
+
+    return item;
+  }
+
+  selectQuestLogCategory(category: string, index: number) {
+    this.unifiedBookSelectedId = category;
+    this.unifiedBookSelectedIndex = index;
+    this.achievementDetailSelectedIndex = 0;
+
+    this.unifiedBookListItems.forEach((item, i) => {
+      if (i === index) {
+        item.classList.add('is-selected');
+        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        item.classList.remove('is-selected');
+      }
+    });
+
+    this.updateUnifiedBookDetail();
+  }
+
+  private buildQuestCardHTML(quest: QuestConfig, isCompleted: boolean): string {
+    const progress = getQuestProgressRatio(this.playerData, quest);
+    const progressPercent = Math.round(progress * 100);
+    const prog = getQuestProgressDisplay(this.playerData, quest);
+    const dispCur = isCompleted ? prog.target : prog.current;
+    const dispTgt = prog.target;
+    const unitPart = prog.unit ? ` ${prog.unit}` : '';
+    const progressLabel = `${dispCur} / ${dispTgt}${unitPart}`;
+    const reward = quest.reward;
+    const rewardBlock = reward
+      ? `
+      <div class="achievement-detail-reward">
+        <div class="achievement-detail-reward__panel">
+          <div class="achievement-detail-reward__label">
+            <img src="/images/ui/Book%20UI/reward-label.svg" alt="報酬" class="achievement-detail-reward__label-image" width="48" height="14" decoding="async" />
+          </div>
+          <div class="achievement-detail-reward__values">
+            ${reward.money ? `<span class="achievement-detail-reward__line">💰${reward.money}G</span>` : ''}
+            ${reward.exp ? `<span class="achievement-detail-reward__line">⭐${reward.exp}EXP</span>` : ''}
+          </div>
+        </div>
+      </div>`
+      : '';
+    const rowClass = isCompleted ? ' achievement-detail-item__row--cleared' : '';
+    const stamp = isCompleted
+      ? `
+      <div class="achievement-detail-stamp" aria-hidden="true">
+        <img class="achievement-detail-stamp__img" src="/images/ui/Book%20UI/clear.png" alt="" width="203" height="94" decoding="async" />
+      </div>`
+      : '';
+    const fillW = isCompleted ? 100 : progressPercent;
+    const pctLabel = isCompleted ? 100 : progressPercent;
+    return `
+      <div class="achievement-detail-item__inner">
+        <div class="achievement-detail-item__row${rowClass}">
+          <div class="achievement-detail-item__body">
+            <div class="achievement-detail-item__top">
+              <div class="achievement-detail-item__textcol">
+                <div class="achievement-detail-item__title">${quest.emoji} ${quest.name}</div>
+                <p class="achievement-detail-item__desc">${quest.description}</p>
+              </div>
+              ${rewardBlock}
+            </div>
+            <div class="achievement-detail-item__progress">
+              <div class="achievement-detail-item__track">
+                <div class="achievement-detail-item__fill" style="width: ${fillW}%;"></div>
+              </div>
+              <div class="achievement-detail-item__meta">
+                <span>${progressLabel}</span>
+                <span>${pctLabel}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        ${stamp}
+      </div>`;
+  }
+
+  updateQuestLogDetail(category: string) {
+    if (!this.unifiedBookDetailElement || !this.unifiedBookDetailPlaceholderElement) return;
+
+    this.unifiedBookDetailPlaceholderElement.style.display = 'none';
+    this.unifiedBookDetailElement.classList.add('active');
+
+    const quests =
+      category === 'active'
+        ? getActiveQuests(this.playerData)
+        : getCompletedQuests(this.playerData);
+
+    if (quests.length === 0) {
+      const emptyMessage =
+        category === 'active'
+          ? '受注中のクエストはありません。掲示板でクエストを受けてみましょう。'
+          : '完了したクエストはまだありません。';
+      this.unifiedBookDetailElement.innerHTML = `
+        <div class="quest-log-empty ui-frame-box">${emptyMessage}</div>
+      `;
+      this.achievementNavArea = 'left';
+      return;
+    }
+
+    this.unifiedBookDetailElement.innerHTML = `
+      <div class="achievement-detail-list">
+        ${quests
+          .map((quest) => {
+            const isCompleted = category === 'completed';
+            return `
+            <div class="achievement-detail-item ui-frame-box ${isCompleted ? 'unlocked' : 'locked'}">
+              ${this.buildQuestCardHTML(quest, isCompleted)}
+            </div>`;
+          })
+          .join('')}
+      </div>
+    `;
+
+    const n = quests.length;
+    if (n === 0) {
+      this.achievementNavArea = 'left';
+      return;
+    }
+    if (this.achievementNavArea === 'right') {
+      this.achievementDetailSelectedIndex = Math.min(
+        Math.max(0, this.achievementDetailSelectedIndex),
+        n - 1,
+      );
+      requestAnimationFrame(() => {
+        this.syncAchievementDetailKeyboardSelection();
+        const list = this.unifiedBookDetailElement?.querySelectorAll(
+          '.achievement-detail-list .achievement-detail-item',
+        );
+        list?.[this.achievementDetailSelectedIndex]?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      });
+    }
+  }
+
+  showQuestNotification(quest: QuestConfig) {
+    const notification = this.achievementNotificationElement;
+    const nameEl = notification.querySelector('#achievement-notification-name') as HTMLElement;
+    const descEl = notification.querySelector('#achievement-notification-desc') as HTMLElement;
+    const rewardEl = notification.querySelector('#achievement-notification-reward') as HTMLElement;
+
+    const title = notification.querySelector('div');
+    if (title) title.textContent = '📋 クエスト達成！';
+    if (nameEl) nameEl.textContent = `${quest.emoji} ${quest.name}`;
+    if (descEl) descEl.textContent = quest.description;
+
+    if (quest.reward) {
+      const rewards: string[] = [];
+      if (quest.reward.money) rewards.push(`💰 ${quest.reward.money}G`);
+      if (quest.reward.exp) rewards.push(`⭐ ${quest.reward.exp}EXP`);
+      if (rewardEl) rewardEl.textContent = rewards.length > 0 ? `報酬: ${rewards.join(' ')}` : '';
+    } else if (rewardEl) {
+      rewardEl.textContent = '';
+    }
+
+    notification.style.display = 'block';
+    setTimeout(() => {
+      notification.style.display = 'none';
+      const titleReset = notification.querySelector('div');
+      if (titleReset) titleReset.textContent = '🏆 実績解除！';
+    }, 3000);
+  }
+
+  // ============================================
+  // 掲示板（クエスト受注）
+  // ============================================
+
+  isNearBulletinBoard(): boolean {
+    const px = this.player.x;
+    const py = this.player.y;
+    const margin = 55;
+    const zone = this.bulletinBoardZone;
+    return (
+      px >= zone.x - zone.width / 2 - margin &&
+      px <= zone.x + zone.width / 2 + margin &&
+      py >= zone.y - zone.height / 2 - margin &&
+      py <= zone.y + zone.height / 2 + margin
+    );
+  }
+
+  private updateIdleWorldHints() {
+    if (this.modalStack.length > 0 || this.unifiedBookOpen) {
+      return;
+    }
+    if (this.isNearBulletinBoard()) {
+      this.hintText.setText('F: 掲示板を見る').setVisible(true);
+    } else {
+      this.hintText.setVisible(false);
+    }
+  }
+
+  createQuestBoardUI() {
+    const questBoardHTML = `
+      <div id="quest-board-modal" class="modal" style="display: none;" aria-hidden="true">
+        <div class="modal-content quest-board-modal nes-container with-rounded ui-frame-box">
+          <div class="quest-board-header book-list-header">
+            <div class="quest-board-header__titlewrap">
+              <span class="quest-board-header__title">掲示板</span>
+              <span class="quest-board-header__subtitle">クエストを受注できます（同時${MAX_ACTIVE_QUESTS}件まで）</span>
+            </div>
+            <span class="quest-board-active-summary ui-frame-box" id="quest-board-active-summary"></span>
+          </div>
+          <div class="quest-board-cards-scroll-wrap">
+            <div id="quest-board-list" class="quest-board-cards"></div>
+          </div>
+          <div class="modal-footer">
+            <div class="hint-text">←→: 選択 / Enter: 受注 / F・ESC: 閉じる</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = questBoardHTML;
+    this.questBoardUIElement = tempDiv.firstElementChild as HTMLElement;
+    document.body.appendChild(this.questBoardUIElement);
+
+    this.questBoardUIElement.addEventListener('pointerdown', (e) => {
+      if (!this.questBoardOpen) return;
+      const panel = this.questBoardUIElement.querySelector('.modal-content');
+      if (panel && panel.contains(e.target as Node)) {
+        this.questBoardUIElement.focus({ preventScroll: true });
+        return;
+      }
+      if (panel && !panel.contains(e.target as Node)) {
+        this.closeQuestBoard();
+      }
+    });
+    this.questBoardUIElement.setAttribute('tabindex', '-1');
+  }
+
+  private bindQuestBoardDocumentKeys() {
+    document.addEventListener('keydown', this.questBoardDocumentKeyHandler, true);
+  }
+
+  private unbindQuestBoardDocumentKeys() {
+    document.removeEventListener('keydown', this.questBoardDocumentKeyHandler, true);
+  }
+
+  openQuestBoard() {
+    if (this.state !== FishingState.IDLE) return;
+    if (this.unifiedBookOpen) this.closeUnifiedBook();
+    if (this.shopOpen) this.closeShop();
+
+    this.questBoardOpen = true;
+    this.questBoardSelectedIndex = 0;
+    this.bindQuestBoardDocumentKeys();
+    this.openModal(this.MODAL_IDS.QUEST_BOARD);
+    this.updateQuestBoardContent();
+    requestAnimationFrame(() => {
+      this.questBoardUIElement?.focus({ preventScroll: true });
+      this.refreshKbSelectionPointer();
+    });
+  }
+
+  closeQuestBoard() {
+    this.questBoardOpen = false;
+    this.unbindQuestBoardDocumentKeys();
+    this.closeModal(this.MODAL_IDS.QUEST_BOARD);
+  }
+
+  /** クエストの分類（リボン色・ラベル用） */
+  private getQuestGroup(quest: QuestConfig): { key: 'fishing' | 'collection' | 'challenge'; label: string } {
+    const type = quest.condition.type;
+    if (type === 'quest_catch_junk') return { key: 'collection', label: '収集' };
+    if (
+      type === 'quest_tension_max' ||
+      type === 'quest_fight_duration' ||
+      type === 'quest_consecutive_success'
+    ) {
+      return { key: 'challenge', label: 'その他' };
+    }
+    return { key: 'fishing', label: '釣り' };
+  }
+
+  /** カードのアイコン HTML（魚/ゴミ画像があれば画像、なければ絵文字） */
+  private buildQuestCardIcon(quest: QuestConfig): string {
+    const fishId = quest.condition.fishId;
+    const imgPath = fishId ? getFishImagePath(fishId) : undefined;
+    if (imgPath) {
+      return `<img class="quest-card__icon-img" src="${imgPath}" alt="" draggable="false" />`;
+    }
+    return `<span class="quest-card__icon-emoji" aria-hidden="true">${quest.emoji}</span>`;
+  }
+
+  updateQuestBoardContent() {
+    if (!this.questBoardUIElement) return;
+    const summaryEl = this.questBoardUIElement.querySelector('#quest-board-active-summary') as HTMLElement;
+    const listEl = this.questBoardUIElement.querySelector('#quest-board-list') as HTMLElement;
+    if (!summaryEl || !listEl) return;
+
+    const activeCount = this.playerData.activeQuests.length;
+    summaryEl.textContent = `受注中 ${activeCount}/${MAX_ACTIVE_QUESTS}`;
+
+    const available = getAvailableQuests(this.playerData);
+    listEl.innerHTML = '';
+
+    if (available.length === 0) {
+      listEl.innerHTML = '<p class="quest-board-empty">受注できるクエストがありません</p>';
+      return;
+    }
+
+    if (this.questBoardSelectedIndex >= available.length) {
+      this.questBoardSelectedIndex = Math.max(0, available.length - 1);
+    }
+
+    available.forEach((quest, index) => {
+      const card = document.createElement('div');
+      const group = this.getQuestGroup(quest);
+      card.className = `quest-card ui-frame-box book-ui-node${index === this.questBoardSelectedIndex ? ' is-selected' : ''}`;
+      card.setAttribute('data-quest-id', quest.id);
+      card.setAttribute('data-index', String(index));
+      card.setAttribute('data-group', group.key);
+      const rewardLines: string[] = [];
+      if (quest.reward?.money) rewardLines.push(`<span class="quest-card__reward-line">💰 ${quest.reward.money}G</span>`);
+      if (quest.reward?.exp) rewardLines.push(`<span class="quest-card__reward-line">⭐ ${quest.reward.exp}EXP</span>`);
+      card.innerHTML = `
+        <div class="quest-card__ribbon quest-card__ribbon--${group.key}">${group.label}</div>
+        <div class="quest-card__icon ui-frame-box">${this.buildQuestCardIcon(quest)}</div>
+        <div class="quest-card__title">${quest.name}</div>
+        <div class="quest-card__divider"></div>
+        <p class="quest-card__desc">${quest.description}</p>
+        ${rewardLines.length > 0 ? `
+        <div class="quest-card__reward">
+          <div class="quest-card__reward-head">報酬</div>
+          <div class="quest-card__reward-values">${rewardLines.join('')}</div>
+        </div>` : ''}
+        <button type="button" class="quest-card__accept nes-btn ui-frame-box" data-quest-id="${quest.id}">受注する</button>
+      `;
+      card.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('.quest-card__accept')) {
+          this.acceptQuestFromBoard(quest.id);
+          return;
+        }
+        this.questBoardSelectedIndex = index;
+        this.updateQuestBoardSelection();
+        this.refreshKbSelectionPointer();
+      });
+      const acceptBtn = card.querySelector('.quest-card__accept');
+      acceptBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.acceptQuestFromBoard(quest.id);
+      });
+      listEl.appendChild(card);
+    });
+  }
+
+  private updateQuestBoardSelection() {
+    if (!this.questBoardUIElement) return;
+    const items = this.questBoardUIElement.querySelectorAll('.quest-card');
+    items.forEach((item, i) => {
+      item.classList.toggle('is-selected', i === this.questBoardSelectedIndex);
+    });
+    const selected = items[this.questBoardSelectedIndex] as HTMLElement | undefined;
+    selected?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    this.refreshKbSelectionPointer();
+  }
+
+  private getQuestBoardGridColumns(items: NodeListOf<Element>): number {
+    if (items.length <= 1) return 1;
+    const firstTop = (items[0] as HTMLElement).offsetTop;
+    let cols = 0;
+    for (const item of items) {
+      if ((item as HTMLElement).offsetTop !== firstTop) break;
+      cols++;
+    }
+    return Math.max(1, cols || this.questBoardGridCols);
+  }
+
+  private moveQuestBoardSelection(dir: 'up' | 'down' | 'left' | 'right'): boolean {
+    if (!this.questBoardUIElement) return false;
+    const items = this.questBoardUIElement.querySelectorAll('.quest-card');
+    if (items.length === 0) return false;
+
+    const gridCols = this.getQuestBoardGridColumns(items);
+    const itemCount = items.length;
+    const maxRows = Math.ceil(itemCount / gridCols);
+    let newIndex = this.questBoardSelectedIndex;
+
+    if (dir === 'left') {
+      if (this.questBoardSelectedIndex % gridCols > 0) newIndex--;
+    } else if (dir === 'right') {
+      if (this.questBoardSelectedIndex % gridCols < gridCols - 1 && newIndex + 1 < itemCount) newIndex++;
+    } else if (dir === 'up') {
+      if (this.questBoardSelectedIndex >= gridCols) newIndex -= gridCols;
+    } else if (dir === 'down') {
+      const currentRow = Math.floor(this.questBoardSelectedIndex / gridCols);
+      if (currentRow < maxRows - 1 && newIndex + gridCols < itemCount) {
+        newIndex += gridCols;
+      }
+    }
+
+    if (newIndex === this.questBoardSelectedIndex || newIndex < 0 || newIndex >= itemCount) {
+      return false;
+    }
+
+    this.questBoardSelectedIndex = newIndex;
+    this.updateQuestBoardSelection();
+    return true;
+  }
+
+  acceptSelectedQuestFromBoard() {
+    const available = getAvailableQuests(this.playerData);
+    const quest = available[this.questBoardSelectedIndex];
+    if (quest) {
+      this.acceptQuestFromBoard(quest.id);
+    }
+  }
+
+  acceptQuestFromBoard(questId: string) {
+    const result = acceptQuest(this.playerData, questId);
+    if (!result.ok) {
+      this.showResult(result.reason ?? '受注できませんでした', 2000);
+      return;
+    }
+    savePlayerData(this.playerData);
+    this.updateQuestBoardContent();
+    if (this.unifiedBookOpen && this.unifiedBookTab === 'quest') {
+      this.updateUnifiedBookList();
+      this.updateUnifiedBookDetail();
+    }
+    const quest = resolveQuest(this.playerData, questId);
+    if (quest) {
+      this.showResult(`「${quest.name}」を受注しました`, 2000);
+    }
+  }
+
+  openUnifiedBook(tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'quest' | 'status' = 'inventory') {
     if (this.state !== FishingState.IDLE) return;
 
     if (this.shopOpen) this.closeShop();
+    if (this.questBoardOpen) this.closeQuestBoard();
 
     this.unifiedBookOpen = true;
     this.unifiedBookTab = tab;
@@ -7109,7 +7752,7 @@ export default class GameScene extends Phaser.Scene {
     this.closeModal(this.MODAL_IDS.UNIFIED_BOOK);
   }
 
-  toggleUnifiedBook(tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'status' = 'inventory') {
+  toggleUnifiedBook(tab: 'inventory' | 'pedia' | 'skills' | 'achievement' | 'quest' | 'status' = 'inventory') {
     if (this.unifiedBookOpen) {
       this.closeUnifiedBook();
     } else {
@@ -7162,6 +7805,17 @@ export default class GameScene extends Phaser.Scene {
       return actionButton && document.body.contains(actionButton) ? actionButton : el;
     }
 
+    if (
+      topModalId === this.MODAL_IDS.QUEST_BOARD &&
+      this.questBoardOpen &&
+      this.questBoardUIElement?.classList.contains('is-topmost')
+    ) {
+      const card = this.questBoardUIElement.querySelector('.quest-card.is-selected') as HTMLElement | null;
+      if (!card || !document.body.contains(card)) return null;
+      const acceptBtn = card.querySelector('.quest-card__accept') as HTMLElement | null;
+      return acceptBtn && document.body.contains(acceptBtn) ? acceptBtn : card;
+    }
+
     return null;
   }
 
@@ -7209,7 +7863,7 @@ export default class GameScene extends Phaser.Scene {
       return null;
     }
 
-    if (this.unifiedBookTab === 'achievement') {
+    if (this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'quest') {
       if (this.achievementNavArea === 'right') {
         const row = root.querySelector('.achievement-detail-item.achievement-detail-item--kb-selected') as HTMLElement | null;
         if (row) return row;
@@ -7264,7 +7918,7 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookUIElement.classList.toggle('is-book-kb-input', kb);
   }
 
-  /** ステータスタブ: キー操作中はマウス風ホバー見た目を抑え、マウス操作中はキー用の選択表示を抑える */
+  /** ステータスタブ: キー操作中はマウス風ホバー見た目を抑える */
   private refreshStatusPanelBookInputModeStyles() {
     if (!this.unifiedBookUIElement) return;
     const panel = this.unifiedBookUIElement.querySelector('#book-status-panel') as HTMLElement | null;
@@ -7512,7 +8166,7 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.unifiedBookTab === 'achievement' && this.unifiedBookListItems.length > 0) {
+    if ((this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'quest') && this.unifiedBookListItems.length > 0) {
       if (this.achievementNavArea === 'right') {
         this.handleAchievementRightPaneNavigation(dir, now);
         return;
@@ -7595,7 +8249,7 @@ export default class GameScene extends Phaser.Scene {
     if (currentIndex < 0 || currentIndex > lastIndex) currentIndex = 0;
 
     const columns =
-      this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'pedia' ? 1 : 3;
+      this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'quest' || this.unifiedBookTab === 'pedia' ? 1 : 3;
 
     if (dir === 'up' && currentIndex < columns && this.achievementNavArea === 'left') {
       this.enterUnifiedBookMainTabsNav();
@@ -7641,6 +8295,9 @@ export default class GameScene extends Phaser.Scene {
     if (this.unifiedBookTab === 'achievement') {
       const category = item.getAttribute('data-category');
       if (category) this.selectAchievementCategory(category, newIndex);
+    } else if (this.unifiedBookTab === 'quest') {
+      const category = item.getAttribute('data-category');
+      if (category) this.selectQuestLogCategory(category, newIndex);
     } else {
       const fishId = item.getAttribute('data-fish-id');
       if (fishId) this.selectUnifiedBookItem(fishId, newIndex);

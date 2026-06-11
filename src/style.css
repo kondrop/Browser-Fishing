@@ -585,7 +585,8 @@ body.ui-menu-input-keyboard #book-modal,
 body.ui-menu-input-keyboard #book-detail-modal,
 body.ui-menu-input-keyboard #shop-modal,
 body.ui-menu-input-keyboard #achievement-modal,
-body.ui-menu-input-keyboard #character-modal {
+body.ui-menu-input-keyboard #character-modal,
+body.ui-menu-input-keyboard #quest-board-modal {
   pointer-events: none !important;
 }
 
@@ -596,7 +597,8 @@ body.ui-menu-input-keyboard #book-modal *,
 body.ui-menu-input-keyboard #book-detail-modal *,
 body.ui-menu-input-keyboard #shop-modal *,
 body.ui-menu-input-keyboard #achievement-modal *,
-body.ui-menu-input-keyboard #character-modal * {
+body.ui-menu-input-keyboard #character-modal *,
+body.ui-menu-input-keyboard #quest-board-modal * {
   pointer-events: none !important;
 }
 
@@ -3050,14 +3052,16 @@ body.ui-menu-input-keyboard #character-modal * {
   display: none;
 }
 
-/* 実績タブ: Figma 19:241 左右比率・スクロール */
-#book-ui[data-tab="achievement"] .book-left-pane {
+/* 実績・クエストタブ: Figma 19:241 左右比率・スクロール */
+#book-ui[data-tab="achievement"] .book-left-pane,
+#book-ui[data-tab="quest"] .book-left-pane {
   width: 240px;
   flex: 0 0 240px;
   min-width: 0;
 }
 
-#book-ui[data-tab="achievement"] .book-right-pane {
+#book-ui[data-tab="achievement"] .book-right-pane,
+#book-ui[data-tab="quest"] .book-right-pane {
   flex: 1;
   min-width: 0;
   width: auto;
@@ -3065,7 +3069,8 @@ body.ui-menu-input-keyboard #character-modal * {
   gap: 0;
 }
 
-#book-ui[data-tab="achievement"] #book-list-scroll {
+#book-ui[data-tab="achievement"] #book-list-scroll,
+#book-ui[data-tab="quest"] #book-list-scroll {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -3077,7 +3082,8 @@ body.ui-menu-input-keyboard #character-modal * {
   grid-template-rows: unset;
 }
 
-#book-ui[data-tab="achievement"] .book-right-pane-inner {
+#book-ui[data-tab="achievement"] .book-right-pane-inner,
+#book-ui[data-tab="quest"] .book-right-pane-inner {
   padding: var(--space-4) var(--space-8);
   gap: var(--space-16);
   box-sizing: border-box;
@@ -3573,7 +3579,8 @@ body.ui-menu-input-keyboard #character-modal * {
 }
 
 /* 実績カテゴリは単一ノード（行なし）。book-ui-node 既定の横並び・幅を上書き */
-#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box {
+#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box,
+#book-ui[data-tab="quest"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box {
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
@@ -3586,7 +3593,8 @@ body.ui-menu-input-keyboard #character-modal * {
 }
 
 /* 左リスト共通の uiframe ではなく、スキルノード（.book-ui-node）と同じ border.png 枠に統一 */
-#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box::after {
+#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box::after,
+#book-ui[data-tab="quest"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
@@ -4885,6 +4893,10 @@ body.ui-menu-input-keyboard #character-modal * {
   outline-offset: -2px;
 }
 
+.book-status-stat-list li.is-selected:focus-visible {
+  outline: none;
+}
+
 #book-status-panel.is-status-kb-nav-input .book-status-stat-list li:focus-visible {
   outline: none;
 }
@@ -5806,10 +5818,51 @@ body.ui-menu-input-keyboard #character-modal * {
 }
 
 .fishing-fight-gauge__arena {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
+}
+
+/* バー上昇時の数字を浮かせる非クリップレイヤー（fight-bar の overflow:hidden の外側） */
+.fishing-fight-gauge__float-layer {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.fishing-fight-gauge__catch-float {
+  position: absolute;
+  transform: translate(-50%, 0);
+  display: inline-flex;
+  align-items: baseline;
+  white-space: nowrap;
+  line-height: 1;
+  will-change: transform, opacity;
+}
+
+.fishing-fight-gauge__catch-float-num,
+.fishing-fight-gauge__catch-float-pct {
+  font-family: var(--font-family-display-numeric) !important;
+  font-weight: 400;
+  color: #aef79a;
+  -webkit-text-stroke: 7px #522e17;
+  paint-order: stroke fill;
+  text-shadow:
+    0 0 4px rgba(0, 0, 0, 0.45),
+    0 2px 3px rgba(0, 0, 0, 0.5);
+}
+
+.fishing-fight-gauge__catch-float-num {
+  font-size: 44px;
+}
+
+.fishing-fight-gauge__catch-float-pct {
+  font-size: 28px;
+  margin-left: 1px;
 }
 
 .fishing-fight-gauge--preview .fishing-fight-gauge__arena {
@@ -5918,6 +5971,31 @@ body.ui-menu-input-keyboard #character-modal * {
   text-align: right;
 }
 
+.fishing-fight-gauge__catch {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.fishing-fight-gauge__catch-label {
+  font-size: 10px;
+  color: #9ed88d;
+  letter-spacing: 0.04em;
+}
+
+.fishing-fight-gauge__catch-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: #d8ffce;
+  min-width: 2.6em;
+  text-align: right;
+  display: inline-block;
+  transform-origin: center center;
+  will-change: transform;
+  text-shadow: 0 1px 2px #000;
+}
+
 .fishing-fight-gauge__critical {
   position: absolute;
   background: rgba(255, 170, 0, 0.35);
@@ -5992,6 +6070,56 @@ body.ui-menu-input-keyboard #character-modal * {
   animation: fishing-fish-catch-shake 0.1s ease-in-out infinite;
 }
 
+/* tired 中はごく控えめに小刻みに震える（catching 中は捕獲シェイクを優先） */
+@keyframes fishing-fish-tired-tremble {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  25% {
+    translate: 0.4px -0.6px;
+  }
+  50% {
+    translate: -0.4px 0.4px;
+  }
+  75% {
+    translate: 0.3px 0.5px;
+  }
+}
+
+.fishing-fight-gauge__fish.is-tired:not(.is-catching) {
+  animation: fishing-fish-tired-tremble 0.45s ease-in-out infinite;
+}
+
+/* tired 中の汗エフェクト（魚の上部に追従するレイヤー） */
+.fishing-fight-gauge__sweat {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 7;
+}
+
+.fishing-fight-gauge__sweat-drop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 9px;
+  height: 12px;
+  border-radius: 50% 50% 50% 50% / 65% 65% 35% 35%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(168, 220, 255, 0.95) 55%,
+    rgba(108, 178, 230, 0.95) 100%
+  );
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+  will-change: transform, opacity;
+}
+
 .fishing-fight-gauge__progress {
   position: absolute;
   left: var(--fishing-content-left, 19px);
@@ -6015,6 +6143,25 @@ body.ui-menu-input-keyboard #character-modal * {
   width: 0%;
   background: linear-gradient(90deg, #5a9e4a 0%, #7cb86c 45%, #9ed88d 100%);
   transition: width 0.05s linear;
+  overflow: hidden;
+  transform-origin: center center;
+}
+
+/* 捕獲バー上昇時に塗りの上を流れる光のハイライト（バー内にクリップ） */
+.fishing-fight-gauge__progress-sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0) 35%,
+    rgba(255, 255, 240, 0.85) 50%,
+    rgba(255, 255, 255, 0) 65%
+  );
+  background-size: 220% 100%;
+  background-position: 150% 0;
+  mix-blend-mode: screen;
 }
 
 .fishing-fight-gauge__skills {
@@ -6135,4 +6282,233 @@ body.ui-menu-input-keyboard #character-modal * {
 
 .balance-debug-modal__footer {
   gap: 8px;
+}
+
+/* ============================================
+ * クエスト掲示板モーダル（カード型）
+ * ============================================ */
+.modal-content.quest-board-modal {
+  max-width: 900px;
+  width: min(94vw, 900px);
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+/* ヘッダー：タイトル＋サブタイトル / 受注中バッジ */
+.quest-board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.quest-board-header__titlewrap {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-12);
+  min-width: 0;
+  flex: 1;
+}
+
+.quest-board-header__title {
+  font-size: 26px;
+  line-height: 1;
+  color: #5c4030;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.quest-board-header__subtitle {
+  font-size: var(--font-size-body-sm);
+  color: var(--color-semantic-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quest-board-active-summary {
+  flex-shrink: 0;
+  padding: var(--space-6) var(--space-12);
+  font-size: var(--font-size-body-sm);
+  color: var(--color-semantic-text-primary);
+  white-space: nowrap;
+}
+
+.quest-board-cards-scroll-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-12) var(--space-8) var(--space-8);
+}
+
+.quest-board-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  row-gap: var(--space-16);
+  column-gap: 0;
+  align-items: stretch;
+}
+
+.quest-board-empty,
+.quest-log-empty {
+  padding: var(--space-16);
+  font-size: var(--font-size-body-sm);
+  color: var(--color-semantic-text-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.quest-board-empty {
+  grid-column: 1 / -1;
+}
+
+/* カード本体 */
+.quest-card {
+  --frame-fill-color: #f3e6c4;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-16) var(--space-12) var(--space-12);
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.quest-card:hover {
+  filter: brightness(0.98);
+}
+
+.quest-card.is-selected {
+  --frame-fill-color: #fff6da;
+  transform: translateY(-2px);
+}
+
+/* リボン（左上のバナー） */
+.quest-card__ribbon {
+  position: absolute;
+  top: -4px;
+  left: 12px;
+  z-index: 3;
+  padding: 6px 10px 11px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--color-primitive-white);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.28);
+  background: var(--color-rarity-rare);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
+}
+
+.quest-card__ribbon--fishing {
+  background: var(--color-rarity-rare);
+}
+
+.quest-card__ribbon--collection {
+  background: var(--color-primitive-green-600);
+}
+
+.quest-card__ribbon--challenge {
+  background: var(--color-rarity-epic);
+}
+
+/* アイコン枠 */
+.quest-card__icon {
+  --frame-fill-color: #fffdf4;
+  width: 72px;
+  height: 72px;
+  margin-top: var(--space-8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quest-card__icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.quest-card__icon-emoji {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.quest-card__title {
+  font-size: var(--font-size-body);
+  font-weight: bold;
+  color: var(--color-semantic-text-primary);
+  text-align: center;
+  line-height: 1.25;
+}
+
+.quest-card__divider {
+  width: 100%;
+  height: 0;
+  border-top: 2px dotted var(--color-primitive-natural-sand-300);
+  margin: var(--space-2) 0;
+}
+
+.quest-card__desc {
+  margin: 0;
+  font-size: var(--font-size-body-sm);
+  color: var(--color-semantic-text-primary);
+  line-height: 1.45;
+  text-align: center;
+  flex: 1;
+}
+
+/* 報酬ボックス */
+.quest-card__reward {
+  width: 100%;
+  padding: var(--space-8);
+  border-radius: 8px;
+  background: var(--bg-panel-inner);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.quest-card__reward-head {
+  font-size: 12px;
+  color: var(--color-semantic-text-muted);
+  letter-spacing: 0.08em;
+}
+
+.quest-card__reward-head::before,
+.quest-card__reward-head::after {
+  content: '◇';
+  margin: 0 var(--space-6);
+  font-size: 10px;
+}
+
+.quest-card__reward-values {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.quest-card__reward-line {
+  font-size: var(--font-size-achievement-reward-line);
+  color: var(--color-primitive-orange-600);
+}
+
+/* 受注ボタン */
+.quest-card__accept {
+  width: 100%;
+  height: 48px;
+  margin-top: var(--space-4);
+  padding: var(--space-6) var(--space-12);
+  font-size: var(--font-size-body-sm);
+  color: var(--color-primitive-white) !important;
+  background: var(--color-primitive-green-600) !important;
+  cursor: pointer;
+}
+
+.quest-card__accept:hover {
+  filter: brightness(1.06);
 }

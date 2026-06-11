@@ -25,6 +25,8 @@ const FIGHT_BAR_DESIGN = {
   /** 外側高さ（内側9px + 上下ボーダー2pxずつ） */
   progressHeight: 13,
   progressBorder: 2,
+  /** 捕獲ポップを先端の塗りに隠れないよう左へずらす量 */
+  catchFloatTipOffsetX: 22,
   /** fight-fish.png 表示高さ（幅はアスペクト比 232:136 で算出） */
   fishHeight: 34,
   fishImageAspect: 232 / 136,
@@ -207,12 +209,16 @@ export class FishingGaugeOverlay {
 
   private fightEl: HTMLElement | null = null;
   private fightBarEl: HTMLElement | null = null;
+  private floatLayerEl: HTMLElement | null = null;
   private criticalEl: HTMLElement | null = null;
   private playerBarEl: HTMLElement | null = null;
   private fishEl: HTMLImageElement | null = null;
+  private sweatEl: HTMLElement | null = null;
   private progressFillEl: HTMLElement | null = null;
+  private progressSweepEl: HTMLElement | null = null;
   private tensionFillEl: HTMLElement | null = null;
   private tensionValueEl: HTMLElement | null = null;
+  private catchValueEl: HTMLElement | null = null;
   private fishStateEl: HTMLElement | null = null;
   private skillZEl: HTMLElement | null = null;
   private skillXEl: HTMLElement | null = null;
@@ -220,6 +226,17 @@ export class FishingGaugeOverlay {
 
   private lastFishBarPosition: number | null = null;
   private fishFacing: 'left' | 'right' = 'right';
+
+  /** 捕獲バー上昇マイクロ演出の状態（見た目専用・ロジックには影響しない） */
+  private lastCatchProgress: number | null = null;
+  private lastCatchPct: number | null = null;
+  private lastSweepAt = 0;
+  private lastPopAt = 0;
+  private sweepAnim: Animation | null = null;
+  private barPopAnim: Animation | null = null;
+
+  /** tired 中の汗エフェクトのクールタイム管理（見た目専用） */
+  private lastSweatAt = 0;
 
   /** 本番: body 直下に固定配置 */
   mountGame(): HTMLElement {
@@ -268,13 +285,23 @@ export class FishingGaugeOverlay {
     this.castStepEls = [];
     this.fightEl = null;
     this.fightBarEl = null;
+    this.floatLayerEl = null;
     this.criticalEl = null;
     this.playerBarEl = null;
     this.fishEl = null;
+    this.sweatEl = null;
     this.progressFillEl = null;
+    this.progressSweepEl = null;
     this.tensionFillEl = null;
     this.tensionValueEl = null;
+    this.catchValueEl = null;
     this.fishStateEl = null;
+    this.sweepAnim?.cancel();
+    this.barPopAnim?.cancel();
+    this.sweepAnim = null;
+    this.barPopAnim = null;
+    this.lastCatchProgress = null;
+    this.lastCatchPct = null;
     this.skillZEl = null;
     this.skillXEl = null;
     this.skillCEl = null;
@@ -319,6 +346,15 @@ export class FishingGaugeOverlay {
     if (visible) {
       this.lastFishBarPosition = null;
       this.fishFacing = 'right';
+      this.lastCatchProgress = null;
+      this.lastCatchPct = null;
+      this.lastSweepAt = 0;
+      this.lastPopAt = 0;
+      this.sweepAnim?.cancel();
+      this.barPopAnim?.cancel();
+      this.floatLayerEl?.replaceChildren();
+      this.sweatEl?.replaceChildren();
+      this.lastSweatAt = 0;
       this.fishEl?.classList.remove('is-facing-left', 'is-tired');
       this.fishEl?.setAttribute('src', FIGHT_FISH_IMAGE);
       this.fightEl.classList.add('is-fight-instant');
@@ -383,8 +419,10 @@ export class FishingGaugeOverlay {
 
     this.fishEl.style.width = `${fishWidth}px`;
     this.fishEl.style.height = `${fishHeight}px`;
-    this.fishEl.style.left = `${mapX(input.fishBarPosition) - fishWidth / 2}px`;
-    this.fishEl.style.top = `${fightPlayerBarTop + (fightPlayerBarHeight - fishHeight) / 2}px`;
+    const fishCenterX = mapX(input.fishBarPosition);
+    const fishTop = fightPlayerBarTop + (fightPlayerBarHeight - fishHeight) / 2;
+    this.fishEl.style.left = `${fishCenterX - fishWidth / 2}px`;
+    this.fishEl.style.top = `${fishTop}px`;
     this.updateFishFacing(input.fishBarPosition, input.fishDriftVelocity);
     this.fishEl.classList.toggle('is-catching', input.isCatching);
     const isTired = input.fishState === 'tired';
@@ -393,6 +431,7 @@ export class FishingGaugeOverlay {
     if (this.fishEl.getAttribute('src') !== fishSrc) {
       this.fishEl.setAttribute('src', fishSrc);
     }
+    this.updateTiredSweat(isTired, fishCenterX, fishTop, fishWidth);
 
     if (this.criticalEl) {
       if (input.criticalZoneHeight > 0) {
@@ -408,9 +447,16 @@ export class FishingGaugeOverlay {
       }
     }
 
-    const progressPct = Math.max(0, Math.min(100, input.catchProgress * 100));
+    const progress01 = Math.max(0, Math.min(1, input.catchProgress));
+    const progressPct = progress01 * 100;
     this.progressFillEl.style.width = `${progressPct}%`;
     this.progressFillEl.style.height = '100%';
+
+    const displayPct = Math.round(progressPct);
+    if (this.catchValueEl) {
+      this.catchValueEl.textContent = `${displayPct}%`;
+    }
+    this.playCatchGainEffects(progress01, displayPct);
 
     if (this.tensionFillEl) {
       const tensionPct = Math.max(0, Math.min(100, input.tension * 100));
@@ -423,6 +469,194 @@ export class FishingGaugeOverlay {
       this.fishStateEl.textContent = input.fishState === 'tired' ? 'TIRED' : 'RUN';
       this.fishStateEl.classList.toggle('is-tired', input.fishState === 'tired');
     }
+  }
+
+  /**
+   * 捕獲バー上昇時のマイクロ演出（見た目専用）。
+   * - 増加中はバー内にハイライトを一定間隔で流す
+   * - 表示%が増えたらバー先端から数字を浮かせ、バー塗りを軽くポップさせる
+   */
+  private playCatchGainEffects(progress01: number, displayPct: number): void {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    const increasing =
+      this.lastCatchProgress !== null && progress01 > this.lastCatchProgress + 1e-4;
+    if (increasing && now - this.lastSweepAt > 240) {
+      this.playProgressSweep();
+      this.lastSweepAt = now;
+    }
+
+    if (this.lastCatchPct !== null && displayPct > this.lastCatchPct) {
+      const delta = displayPct - this.lastCatchPct;
+      // 連続上昇時の連打を抑えつつ、大きいジャンプは必ず反応させる
+      if (delta >= 3 || now - this.lastPopAt > 120) {
+        this.playCatchPop(progress01, delta);
+        this.lastPopAt = now;
+      }
+    }
+
+    this.lastCatchProgress = progress01;
+    this.lastCatchPct = displayPct;
+  }
+
+  private prefersReducedMotion(): boolean {
+    return (
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
+  }
+
+  /**
+   * tired 中の魚に汗エフェクトを出す（見た目専用）。
+   * - 汗レイヤーを魚の上部に追従させ、向いている方向の上側に配置する
+   * - 短い間隔で 1〜2 個の汗しずくがぴょこっと出て、外側へ動いて消える
+   */
+  private updateTiredSweat(
+    isTired: boolean,
+    fishCenterX: number,
+    fishTop: number,
+    fishWidth: number,
+  ): void {
+    const layer = this.sweatEl;
+    if (!layer) return;
+
+    if (!isTired) {
+      layer.style.opacity = '0';
+      return;
+    }
+    layer.style.opacity = '1';
+
+    // 向いている方向の上側（右上 / 左上）に寄せる
+    const facingRight = this.fishFacing !== 'left';
+    const dir = facingRight ? 1 : -1;
+    const anchorX = fishCenterX + dir * fishWidth * 0.28;
+    layer.style.left = `${anchorX}px`;
+    layer.style.top = `${fishTop}px`;
+
+    if (typeof layer.animate !== 'function' || this.prefersReducedMotion()) return;
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    // 短い間隔でランダムに出す（毎フレーム出さないようクールタイム）
+    if (now - this.lastSweatAt < 620) return;
+    this.lastSweatAt = now + Math.random() * 220;
+
+    const dropletCount = Math.random() < 0.35 ? 2 : 1;
+    for (let i = 0; i < dropletCount; i++) {
+      this.spawnSweatDroplet(layer, dir, i);
+    }
+  }
+
+  private spawnSweatDroplet(layer: HTMLElement, dir: number, index: number): void {
+    const drop = document.createElement('span');
+    drop.className = 'fishing-fight-gauge__sweat-drop';
+    layer.appendChild(drop);
+
+    const spread = (4 + Math.random() * 6) * (index === 0 ? 1 : 0.6);
+    const riseY = -(3 + Math.random() * 3);
+    const driftX = dir * (6 + Math.random() * 7);
+    const fallY = 8 + Math.random() * 6;
+
+    const anim = drop.animate(
+      [
+        { transform: `translate(${dir * spread}px, 0) scale(0.4)`, opacity: 0 },
+        {
+          transform: `translate(${dir * spread + driftX * 0.4}px, ${riseY}px) scale(1)`,
+          opacity: 1,
+          offset: 0.3,
+        },
+        {
+          transform: `translate(${dir * spread + driftX}px, ${fallY}px) scale(0.85)`,
+          opacity: 0,
+        },
+      ],
+      { duration: 560 + Math.random() * 160, easing: 'cubic-bezier(0.4, 0.1, 0.7, 1)' },
+    );
+    const cleanup = () => drop.remove();
+    anim.onfinish = cleanup;
+    anim.oncancel = cleanup;
+  }
+
+  private playProgressSweep(): void {
+    const el = this.progressSweepEl;
+    if (!el || typeof el.animate !== 'function' || this.prefersReducedMotion()) return;
+    this.sweepAnim?.cancel();
+    this.sweepAnim = el.animate(
+      [
+        { backgroundPosition: '150% 0', opacity: 0 },
+        { backgroundPosition: '60% 0', opacity: 0.9, offset: 0.35 },
+        { backgroundPosition: '-60% 0', opacity: 0 },
+      ],
+      { duration: 520, easing: 'ease-out' },
+    );
+  }
+
+  private playCatchPop(progress01: number, strengthPct: number): void {
+    if (this.prefersReducedMotion()) return;
+    const clampedStrength = Math.min(Math.max(strengthPct, 1), 8);
+
+    this.spawnCatchFloat(progress01, clampedStrength);
+
+    const fillEl = this.progressFillEl;
+    if (fillEl && typeof fillEl.animate === 'function') {
+      const fillPeak = Math.min(1.4, 1.16 + clampedStrength * 0.03);
+      this.barPopAnim?.cancel();
+      this.barPopAnim = fillEl.animate(
+        [
+          { transform: 'scaleY(1)', filter: 'brightness(1)' },
+          { transform: `scaleY(${fillPeak})`, filter: 'brightness(1.5)', offset: 0.3 },
+          { transform: 'scaleY(1)', filter: 'brightness(1)' },
+        ],
+        { duration: 240, easing: 'ease-out' },
+      );
+    }
+  }
+
+  /**
+   * 捕獲バーの先端（塗りの右端）から増加量の数字を浮かせ、
+   * 少し上昇しながらフェードアウトさせる。fight-bar は overflow:hidden のため、
+   * 非クリップの float レイヤー（arena 直下）に配置する。
+   */
+  private spawnCatchFloat(progress01: number, strengthPct: number): void {
+    const layer = this.floatLayerEl;
+    const barEl = this.fightBarEl;
+    if (!layer || !barEl || typeof layer.animate !== 'function') return;
+
+    const d = this.dims;
+    const fillWidthPx = Math.max(0, Math.min(1, progress01)) * d.fightContentWidth;
+    const tipX =
+      barEl.offsetLeft +
+      d.fightContentLeft +
+      fillWidthPx -
+      FIGHT_BAR_DESIGN.catchFloatTipOffsetX;
+    const tipY = barEl.offsetTop + d.fightProgressTop + d.fightProgressHeight / 2;
+
+    const el = document.createElement('span');
+    el.className = 'fishing-fight-gauge__catch-float';
+    const num = Math.round(strengthPct);
+    el.innerHTML =
+      `<span class="fishing-fight-gauge__catch-float-num">+${num}</span>` +
+      `<span class="fishing-fight-gauge__catch-float-pct">%</span>`;
+    el.style.left = `${tipX}px`;
+    el.style.top = `${tipY}px`;
+    layer.appendChild(el);
+
+    // 増加量が大きいほど少しだけ大きく（控えめ）
+    const scale = Math.min(1.35, 1 + (strengthPct - 1) * 0.05);
+
+    const rise = 26 + Math.min(strengthPct, 8) * 1.5;
+    const anim = el.animate(
+      [
+        { transform: `translate(-50%, 4px) scale(${scale * 0.88})`, opacity: 0 },
+        { transform: `translate(-50%, -8%) scale(${scale})`, opacity: 1, offset: 0.12 },
+        { transform: `translate(-50%, -${rise * 0.55}px) scale(${scale})`, opacity: 1, offset: 0.55 },
+        { transform: `translate(-50%, -${rise}px) scale(${scale * 0.96})`, opacity: 0 },
+      ],
+      { duration: 1100, easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)' },
+    );
+    const cleanup = () => el.remove();
+    anim.onfinish = cleanup;
+    anim.oncancel = cleanup;
   }
 
   updateFightSkillHud(z: FightSkillHudSlot, x: FightSkillHudSlot, c: FightSkillHudSlot): void {
@@ -488,6 +722,10 @@ export class FishingGaugeOverlay {
         ? `
         <div class="fishing-fight-gauge__status" aria-hidden="true">
           <span class="fishing-fight-gauge__fish-state" data-fish-state>RUN</span>
+          <div class="fishing-fight-gauge__catch" aria-label="捕獲率">
+            <span class="fishing-fight-gauge__catch-label">CATCH</span>
+            <span class="fishing-fight-gauge__catch-value">0%</span>
+          </div>
           <div class="fishing-fight-gauge__tension" aria-label="テンション">
             <span class="fishing-fight-gauge__tension-label">TEN</span>
             <div class="fishing-fight-gauge__tension-track">
@@ -499,6 +737,10 @@ export class FishingGaugeOverlay {
         : `
         <div class="fishing-fight-gauge__status fishing-fight-gauge__status--preview" aria-hidden="true">
           <span class="fishing-fight-gauge__fish-state" data-fish-state>RUN</span>
+          <div class="fishing-fight-gauge__catch" aria-label="捕獲率">
+            <span class="fishing-fight-gauge__catch-label">CATCH</span>
+            <span class="fishing-fight-gauge__catch-value">0%</span>
+          </div>
           <div class="fishing-fight-gauge__tension" aria-label="テンション">
             <span class="fishing-fight-gauge__tension-label">TEN</span>
             <div class="fishing-fight-gauge__tension-track">
@@ -513,6 +755,7 @@ export class FishingGaugeOverlay {
         ${hint}
         ${statusHud}
         <div class="fishing-fight-gauge__arena">
+          <div class="fishing-fight-gauge__float-layer" aria-hidden="true"></div>
           <div class="fishing-fight-gauge__fight-bar" aria-hidden="true">
             <img
               class="fishing-fight-gauge__fish"
@@ -520,12 +763,15 @@ export class FishingGaugeOverlay {
               alt=""
               decoding="async"
             />
+            <div class="fishing-fight-gauge__sweat" aria-hidden="true"></div>
             <img class="fishing-fight-gauge__fight-bg" src="/images/ui/fight-bg.png" alt="" decoding="async" />
             <div class="fishing-fight-gauge__critical" hidden></div>
             <div class="fishing-fight-gauge__player-bar"></div>
             <img class="fishing-fight-gauge__fight-grid" src="/images/ui/fight-grid.png" alt="" decoding="async" />
             <div class="fishing-fight-gauge__progress" aria-label="捕獲ゲージ">
-              <div class="fishing-fight-gauge__progress-fill"></div>
+              <div class="fishing-fight-gauge__progress-fill">
+                <div class="fishing-fight-gauge__progress-sweep" aria-hidden="true"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -547,12 +793,16 @@ export class FishingGaugeOverlay {
     this.castStepEls = Array.from(scope.querySelectorAll<HTMLElement>('.fishing-cast-gauge__step'));
     this.fightEl = scope.querySelector('.fishing-fight-gauge');
     this.fightBarEl = scope.querySelector('.fishing-fight-gauge__fight-bar');
+    this.floatLayerEl = scope.querySelector('.fishing-fight-gauge__float-layer');
     this.criticalEl = scope.querySelector('.fishing-fight-gauge__critical');
     this.playerBarEl = scope.querySelector('.fishing-fight-gauge__player-bar');
     this.fishEl = scope.querySelector<HTMLImageElement>('.fishing-fight-gauge__fish');
+    this.sweatEl = scope.querySelector('.fishing-fight-gauge__sweat');
     this.progressFillEl = scope.querySelector('.fishing-fight-gauge__progress-fill');
+    this.progressSweepEl = scope.querySelector('.fishing-fight-gauge__progress-sweep');
     this.tensionFillEl = scope.querySelector('.fishing-fight-gauge__tension-fill');
     this.tensionValueEl = scope.querySelector('.fishing-fight-gauge__tension-value');
+    this.catchValueEl = scope.querySelector('.fishing-fight-gauge__catch-value');
     this.fishStateEl = scope.querySelector('[data-fish-state]');
     this.skillZEl = scope.querySelector('[data-skill="z"]');
     this.skillXEl = scope.querySelector('[data-skill="x"]');

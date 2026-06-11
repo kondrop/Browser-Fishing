@@ -199,10 +199,15 @@ function tryTriggerSkills(state: FightSimState, playerData: PlayerData, input: F
 
 function stepFishFatigue(state: FightSimState, isCatching: boolean, dt: number): void {
   const cfg = config.fighting;
-  if (isCatching) {
+  // running 中に捕獲している間だけ疲れを蓄積。tired 中は捕獲していても増えない
+  if (isCatching && state.fishState === 'running') {
     state.fishFatigue += cfg['5-56_疲れ値_増加速度'] * dt;
   }
-  state.fishFatigue = Math.max(0, state.fishFatigue - cfg['5-57_疲れ値_自然減少速度'] * dt);
+  const decayRate =
+    state.fishState === 'tired'
+      ? cfg['5-64_tired時疲れ回復速度']
+      : cfg['5-57_疲れ値_自然減少速度'];
+  state.fishFatigue = Math.max(0, state.fishFatigue - decayRate * dt);
 
   if (state.fishState === 'running' && state.fishFatigue >= cfg['5-58_疲れ値_tired閾値']) {
     state.fishState = 'tired';
@@ -302,7 +307,11 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
   state.fishMoveTimer -= dt;
   state.fishFreezeRemainingSec = Math.max(0, state.fishFreezeRemainingSec - dt);
 
-  const tiredSpeedMul = state.fishState === 'tired' ? cfg['5-60_tired時速度倍率'] : 1.0;
+  const isTired = state.fishState === 'tired';
+  const tiredSpeedMul = isTired ? cfg['5-60_tired時速度倍率'] : 1.0;
+  const tiredIntervalMul = isTired ? cfg['5-61_tired時方向更新間隔倍率'] : 1.0;
+  const tiredIntentMul = isTired ? cfg['5-62_tired時意図ブレンド倍率'] : 1.0;
+  const tiredResponseMul = isTired ? cfg['5-63_tired時速度追従性倍率'] : 1.0;
 
   if (state.fishMoveTimer <= 0 && state.fishFreezeRemainingSec <= 0) {
     const intervalScale = clamp(
@@ -310,16 +319,18 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
       cfg['5-32_方向更新間隔スケール_下限'],
       cfg['5-33_方向更新間隔スケール_上限'],
     );
-    const nextIntervalMin = Math.max(cfg['5-34_方向更新最短秒_下限'], moveIntervalMin * intervalScale);
+    const nextIntervalMin =
+      Math.max(cfg['5-34_方向更新最短秒_下限'], moveIntervalMin * intervalScale) * tiredIntervalMul;
     const nextIntervalMax = Math.max(
       nextIntervalMin + cfg['5-35_方向更新最長秒_最小差分'],
-      moveIntervalMax * intervalScale,
+      moveIntervalMax * intervalScale * tiredIntervalMul,
     );
     state.fishMoveTimer = floatBetween(nextIntervalMin, nextIntervalMax);
 
     const randomIntent = floatBetween(-1, 1);
     const intentBlend = clamp(
-      cfg['5-36_方向意図ブレンド_基準'] + fish.fishErratic * cfg['5-37_方向意図ブレンド_魚暴れ寄与'],
+      (cfg['5-36_方向意図ブレンド_基準'] + fish.fishErratic * cfg['5-37_方向意図ブレンド_魚暴れ寄与']) *
+        tiredIntentMul,
       cfg['5-38_方向意図ブレンド_下限'],
       cfg['5-39_方向意図ブレンド_上限'],
     );
@@ -332,7 +343,8 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
       (cfg['5-40_ドリフト速度_基準'] + fish.fishSpeed * cfg['5-41_ドリフト速度_魚速度寄与']) *
       tiredSpeedMul;
     const driftResponse =
-      cfg['5-42_速度追従性_基準'] + fish.fishErratic * cfg['5-43_速度追従性_魚暴れ寄与'];
+      (cfg['5-42_速度追従性_基準'] + fish.fishErratic * cfg['5-43_速度追従性_魚暴れ寄与']) *
+      tiredResponseMul;
     const driftTargetVelocity = state.fishDriftIntent * maxDriftSpeed;
     const driftVelT = Math.min(1, driftResponse * dt);
     state.fishDriftVelocity = linear(state.fishDriftVelocity, driftTargetVelocity, driftVelT);

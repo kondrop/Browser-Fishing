@@ -1,6 +1,7 @@
 // 📦 インベントリ管理
 
 import type { FishConfig } from './fishConfig';
+import type { QuestConfig } from './questConfig';
 import { getFishById, getRealFishCount } from './fish';
 import type { AchievementConfig, AchievementCondition } from './achievementConfig';
 import { achievementConfigs } from './achievementConfig';
@@ -50,6 +51,12 @@ export interface PlayerData {
   // スキルツリー
   skillPoints: number;                 // 未使用SP
   unlockedSkillNodes: Set<string>;     // 解放済みノードID
+  // クエスト
+  activeQuests: string[];              // 受注中クエストID（最大3）
+  completedQuestIds: Set<string>;      // 完了済みクエストID
+  questProgress: Map<string, number>;  // クエスト進捗（受注中のみ）
+  boardQuestIds: string[];             // 掲示板に表示中の動的クエストID
+  questRegistry: Map<string, QuestConfig>; // 動的クエスト定義
 }
 
 // プレイヤーデータの初期値
@@ -81,6 +88,11 @@ export function createInitialPlayerData(): PlayerData {
     junkCaughtCount: 0,
     skillPoints: 0,
     unlockedSkillNodes: new Set(),
+    activeQuests: [],
+    completedQuestIds: new Set(),
+    questProgress: new Map(),
+    boardQuestIds: [],
+    questRegistry: new Map(),
   };
 }
 
@@ -338,6 +350,10 @@ export function savePlayerData(playerData: PlayerData): void {
     achievementProgress: Array.from(playerData.achievementProgress.entries()),
     fishCaughtCounts: Array.from(playerData.fishCaughtCounts.entries()),
     unlockedSkillNodes: Array.from(playerData.unlockedSkillNodes),
+    completedQuestIds: Array.from(playerData.completedQuestIds),
+    questProgress: Array.from(playerData.questProgress.entries()),
+    boardQuestIds: playerData.boardQuestIds,
+    questRegistry: Array.from(playerData.questRegistry.entries()),
   };
   localStorage.setItem('fishingGame_playerData', JSON.stringify(dataToSave));
 }
@@ -380,6 +396,11 @@ export function loadPlayerData(): PlayerData {
         junkCaughtCount: parsed.junkCaughtCount || initial.junkCaughtCount,
         skillPoints: parsed.skillPoints !== undefined ? parsed.skillPoints : Math.max(0, (parsed.level ?? initial.level) - 1) * 3,
         unlockedSkillNodes: new Set(parsed.unlockedSkillNodes || []),
+        activeQuests: parsed.activeQuests || initial.activeQuests,
+        completedQuestIds: new Set(parsed.completedQuestIds || []),
+        questProgress: new Map(parsed.questProgress || []),
+        boardQuestIds: parsed.boardQuestIds || initial.boardQuestIds,
+        questRegistry: new Map(parsed.questRegistry || []),
       };
     } catch {
       console.error('Failed to load player data');
