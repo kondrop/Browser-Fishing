@@ -1,4 +1,5 @@
 import type { PlayerData } from '../data/inventory';
+import { hasSkillAbility } from '../data/skills';
 import { getEffectiveSkillStatBonuses } from './balanceDebug';
 import {
   balanceReferenceFishParams,
@@ -158,6 +159,23 @@ export class BalanceFightPreview {
       fishDriftVelocity: this.sim.fishDriftVelocity,
       tension: this.sim.tension,
       fishState: this.sim.fishState,
+    });
+    this.overlay.updateFightSkillIcons({
+      z: {
+        learned: hasSkillAbility(pd, 'abil_control_lock_on'),
+        used: this.sim.fightLockOnUsed,
+        remainingSec: this.sim.lockOnRemainingSec,
+      },
+      x: {
+        learned: hasSkillAbility(pd, 'abil_power_fight_steady'),
+        used: this.sim.fightStaggerUsed,
+        remainingSec: this.sim.fishFreezeRemainingSec,
+      },
+      c: {
+        learned: hasSkillAbility(pd, 'abil_control_smooth_drag'),
+        used: this.sim.fightSmoothDragUsed,
+        remainingSec: this.sim.smoothDragRemainingSec,
+      },
     });
   }
 }

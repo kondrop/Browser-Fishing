@@ -55,6 +55,7 @@ import {
 } from '../fight/fightSimulation';
 import {
   FishingGaugeOverlay,
+  FIGHT_SKILL_DURATIONS,
   FISHING_GAUGE_UI_SCALE,
 } from '../ui/fishingGaugeOverlay';
 
@@ -2936,7 +2937,27 @@ export default class GameScene extends Phaser.Scene {
       tension: this.fightTension,
       fishState: this.fishFightState,
     });
-    this.updateFightSkillHud();
+    this.updateFightSkillIcons();
+  }
+
+  private updateFightSkillIcons(): void {
+    this.fishingGaugeOverlay.updateFightSkillIcons({
+      z: {
+        learned: hasSkillAbility(this.playerData, 'abil_control_lock_on'),
+        used: this.fightLockOnUsedThisFight,
+        remainingSec: this.lockOnRemainingSec,
+      },
+      x: {
+        learned: hasSkillAbility(this.playerData, 'abil_power_fight_steady'),
+        used: this.fightStaggerUsedThisFight,
+        remainingSec: this.fishFreezeRemainingSec,
+      },
+      c: {
+        learned: hasSkillAbility(this.playerData, 'abil_control_smooth_drag'),
+        used: this.fightSmoothDragUsedThisFight,
+        remainingSec: this.smoothDragRemainingSec,
+      },
+    });
   }
 
   private hideAndResetFightOverlay(): void {
@@ -2980,7 +3001,7 @@ export default class GameScene extends Phaser.Scene {
   private tryUseFightLockOn() {
     if (this.fightLockOnUsedThisFight) return;
     if (!hasSkillAbility(this.playerData, 'abil_control_lock_on')) return;
-    this.lockOnRemainingSec = 1.0;
+    this.lockOnRemainingSec = FIGHT_SKILL_DURATIONS.z;
     this.fightLockOnUsedThisFight = true;
     this.showResult('スキル発動: ロックオン', 800, { resetFishingStateOnEnd: false });
   }
@@ -2998,7 +3019,7 @@ export default class GameScene extends Phaser.Scene {
   private tryUseFightSmoothDrag() {
     if (this.fightSmoothDragUsedThisFight) return;
     if (!hasSkillAbility(this.playerData, 'abil_control_smooth_drag')) return;
-    this.smoothDragRemainingSec = 3.0;
+    this.smoothDragRemainingSec = 4.0;
     this.fightSmoothDragUsedThisFight = true;
     this.showResult('スキル発動: フィッシャーズハイ', 800, { resetFishingStateOnEnd: false });
   }
@@ -3094,23 +3115,6 @@ export default class GameScene extends Phaser.Scene {
     } else if (this.catchProgress <= 0) {
         this.cancelFishing("逃げられた...");
     }
-  }
-
-  private updateFightSkillHud() {
-    const fmt = (has: boolean, used: boolean, remainSec: number, label: string) => {
-      if (!has) return '';
-      if (used) return `${label} 使用済`;
-      if (remainSec > 0.05) return `${label} ${remainSec.toFixed(1)}s`;
-      return `${label} Ready`;
-    };
-    const lock = hasSkillAbility(this.playerData, 'abil_control_lock_on');
-    const stag = hasSkillAbility(this.playerData, 'abil_power_fight_steady');
-    const hi = hasSkillAbility(this.playerData, 'abil_control_smooth_drag');
-    this.fishingGaugeOverlay.updateFightSkillHud(
-      { text: fmt(lock, this.fightLockOnUsedThisFight, this.lockOnRemainingSec, 'Z'), visible: lock },
-      { text: fmt(stag, this.fightStaggerUsedThisFight, this.fishFreezeRemainingSec, 'X'), visible: stag },
-      { text: fmt(hi, this.fightSmoothDragUsedThisFight, this.smoothDragRemainingSec, 'C'), visible: hi },
-    );
   }
 
   private buildQuestCatchContext(fishSize?: number): QuestCatchContext {

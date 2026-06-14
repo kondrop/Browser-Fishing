@@ -37,6 +37,7 @@ export interface QuestCondition {
   target: number;
   fishId?: string;
   rarity?: string;
+  maxRarity?: string;
   minSize?: number;
   maxSize?: number;
   minDuration?: number;

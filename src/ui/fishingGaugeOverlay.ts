@@ -10,6 +10,80 @@ export const FIGHT_UI_DISPLAY_SCALE = 0.85;
 const FIGHT_FISH_IMAGE = '/images/ui/fight-fish.png';
 const FIGHT_FISH_TIRED_IMAGE = '/images/ui/fight-fish-tired.png';
 
+const FIGHT_SKILL_ICON_IMAGES = {
+  z: {
+    active: '/images/ui/lock-on.png',
+    inactive: '/images/ui/lock-on_nonactive.png',
+  },
+  x: {
+    active: '/images/ui/stagger.png',
+    inactive: '/images/ui/stagger_nonactive.png',
+  },
+  c: {
+    active: '/images/ui/fischers-high.png',
+    inactive: '/images/ui/fischers-high_nonactive.png',
+  },
+} as const;
+
+/** ファイト中アクティブスキルの効果時間（秒）— UI と simulation で共通参照 */
+export const FIGHT_SKILL_DURATIONS = {
+  z: 1.5,
+  x: 1.5,
+  c: 4.0,
+} as const;
+
+/** 発動中に重ねるエフェクト画像（z/x=魚、c=プレイヤーバー） */
+const FIGHT_SKILL_EFFECT_IMAGES: Record<FightSkillKey, string> = {
+  z: '/images/ui/lock-on_effect.png',
+  x: '/images/ui/stagger_effect.png',
+  c: '/images/ui/fischers-high_effect.png',
+};
+
+/** エフェクト画像の元アスペクト（width / height） */
+const FIGHT_SKILL_EFFECT_ASPECT: Record<FightSkillKey, number> = {
+  z: 728 / 735,
+  x: 1115 / 598,
+  c: 500 / 312,
+};
+
+/** フィッシャーズハイ: プレイヤーバー高さに対する表示高さ倍率（はみ出さないよう ≤ 1） */
+const FIGHT_SKILL_EFFECT_C_HEIGHT_RATIO = 1.0;
+
+/** 魚に重ねる z/x の表示高さ＝魚アイコン高さ × 倍率 */
+const FIGHT_SKILL_EFFECT_FISH_SCALE: Record<'z' | 'x', number> = {
+  z: 1.95,
+  x: 1.7,
+};
+
+/** エフェクトの最大不透明度 */
+const FIGHT_SKILL_EFFECT_MAX_OPACITY: Record<FightSkillKey, number> = {
+  z: 0.95,
+  x: 0.95,
+  c: 0.9,
+};
+
+/** エフェクトのフェードイン時間（秒） */
+const FIGHT_SKILL_EFFECT_FADE_IN_SEC = 0.18;
+
+/** スキルアイコン PNG のアスペクト（571×309 @2x 素材） */
+const FIGHT_SKILL_ICON_ASPECT = 571 / 309;
+
+/** 発動中スキルアイコンの拡大率（スロット枠はこの倍率分を常に確保） */
+const FIGHT_SKILL_ACTIVE_SCALE = 1.12;
+/** スキルラッパー（固定スロット）内の余白を詰める量 */
+const FIGHT_SKILL_SLOT_TIGHTEN = 4;
+
+const FIGHT_SKILL_SCALE_MS = 280;
+
+export type FightSkillKey = keyof typeof FIGHT_SKILL_ICON_IMAGES;
+
+type SkillUiPhase = 'unlearned' | 'ready' | 'active' | 'deactivating' | 'spent';
+
+interface SkillUiRuntime {
+  phase: SkillUiPhase;
+  deactivationCleanup?: () => void;
+}
+
 /** Figma fight bar（1x表示。画像アセットは2x） */
 const FIGHT_BAR_DESIGN = {
   barWidth: 586,
@@ -129,9 +203,18 @@ export interface FightGaugeRenderInput {
   fishState: FishFightState;
 }
 
-export interface FightSkillHudSlot {
-  text: string;
-  visible: boolean;
+export interface FightSkillIconSlot {
+  learned: boolean;
+  /** このファイトで使用済みか */
+  used: boolean;
+  /** 効果残り秒（発動中のみ > 0） */
+  remainingSec: number;
+}
+
+export interface FightSkillIconsInput {
+  z: FightSkillIconSlot;
+  x: FightSkillIconSlot;
+  c: FightSkillIconSlot;
 }
 
 /** 本番 HUD のキャンバス上レイアウト */
@@ -143,9 +226,6 @@ export interface FishingGaugeGameLayout {
   fightAnchorX: number;
   fightAnchorY: number;
 }
-
-const FIGHT_HINT_GAME =
-  '←→でバー移動 ↑↓でテンション<br>Zロックオン Xスタッガー Cハイ';
 
 function mapTrackX(pos: number, contentLeft: number, contentWidth: number): number {
   return contentLeft + pos * contentWidth;
@@ -216,13 +296,16 @@ export class FishingGaugeOverlay {
   private sweatEl: HTMLElement | null = null;
   private progressFillEl: HTMLElement | null = null;
   private progressSweepEl: HTMLElement | null = null;
-  private tensionFillEl: HTMLElement | null = null;
-  private tensionValueEl: HTMLElement | null = null;
-  private catchValueEl: HTMLElement | null = null;
-  private fishStateEl: HTMLElement | null = null;
-  private skillZEl: HTMLElement | null = null;
-  private skillXEl: HTMLElement | null = null;
-  private skillCEl: HTMLElement | null = null;
+  private skillWrapEls: Record<FightSkillKey, HTMLElement | null> = { z: null, x: null, c: null };
+  private skillEffectEls: Record<'z' | 'x', HTMLImageElement | null> = { z: null, x: null };
+  /** フィッシャーズハイは左右両端に表示（右は反転） */
+  private cEffectEls: { left: HTMLImageElement | null; right: HTMLImageElement | null } = {
+    left: null,
+    right: null,
+  };
+  /** 直近フレームの魚・プレイヤーバーの中心/サイズ（fight-bar 基準・エフェクト追従用） */
+  private fishGeom = { cx: 0, cy: 0, w: 0, h: 0 };
+  private playerBarGeom = { cx: 0, cy: 0, w: 0, h: 0 };
 
   private lastFishBarPosition: number | null = null;
   private fishFacing: 'left' | 'right' = 'right';
@@ -234,6 +317,13 @@ export class FishingGaugeOverlay {
   private lastPopAt = 0;
   private sweepAnim: Animation | null = null;
   private barPopAnim: Animation | null = null;
+  private skillSweepAnims: Record<FightSkillKey, Animation | null> = { z: null, x: null, c: null };
+  private lastSkillSweepAt: Record<FightSkillKey, number> = { z: 0, x: 0, c: 0 };
+  private skillUiRuntime: Record<FightSkillKey, SkillUiRuntime> = {
+    z: { phase: 'unlearned' },
+    x: { phase: 'unlearned' },
+    c: { phase: 'unlearned' },
+  };
 
   /** tired 中の汗エフェクトのクールタイム管理（見た目専用） */
   private lastSweatAt = 0;
@@ -292,19 +382,18 @@ export class FishingGaugeOverlay {
     this.sweatEl = null;
     this.progressFillEl = null;
     this.progressSweepEl = null;
-    this.tensionFillEl = null;
-    this.tensionValueEl = null;
-    this.catchValueEl = null;
-    this.fishStateEl = null;
+    this.skillWrapEls = { z: null, x: null, c: null };
+    this.skillEffectEls = { z: null, x: null };
+    this.cEffectEls = { left: null, right: null };
+    this.resetSkillUiRuntime();
     this.sweepAnim?.cancel();
     this.barPopAnim?.cancel();
+    (['z', 'x', 'c'] as const).forEach((k) => this.skillSweepAnims[k]?.cancel());
+    this.skillSweepAnims = { z: null, x: null, c: null };
     this.sweepAnim = null;
     this.barPopAnim = null;
     this.lastCatchProgress = null;
     this.lastCatchPct = null;
-    this.skillZEl = null;
-    this.skillXEl = null;
-    this.skillCEl = null;
   }
 
   layoutGame(layout: FishingGaugeGameLayout): void {
@@ -355,6 +444,16 @@ export class FishingGaugeOverlay {
       this.floatLayerEl?.replaceChildren();
       this.sweatEl?.replaceChildren();
       this.lastSweatAt = 0;
+      this.lastSkillSweepAt = { z: 0, x: 0, c: 0 };
+      this.resetSkillUiRuntime();
+      [this.skillEffectEls.z, this.skillEffectEls.x, this.cEffectEls.left, this.cEffectEls.right].forEach(
+        (fx) => {
+          if (fx) {
+            fx.hidden = true;
+            fx.style.opacity = '0';
+          }
+        },
+      );
       this.fishEl?.classList.remove('is-facing-left', 'is-tired');
       this.fishEl?.setAttribute('src', FIGHT_FISH_IMAGE);
       this.fightEl.classList.add('is-fight-instant');
@@ -416,6 +515,12 @@ export class FishingGaugeOverlay {
       : 'rgba(250, 221, 180, 0.5)';
     this.playerBarEl.style.boxShadow =
       tensionT > 0.02 ? `0 0 ${tensionT * 6}px rgba(255, 100, 60, ${tensionT * 0.55})` : '';
+    this.playerBarGeom = {
+      cx: mapPlayerX(input.playerHitBarCenter),
+      cy: fightPlayerBarTop + fightPlayerBarHeight / 2,
+      w: barPx,
+      h: fightPlayerBarHeight,
+    };
 
     this.fishEl.style.width = `${fishWidth}px`;
     this.fishEl.style.height = `${fishHeight}px`;
@@ -423,6 +528,12 @@ export class FishingGaugeOverlay {
     const fishTop = fightPlayerBarTop + (fightPlayerBarHeight - fishHeight) / 2;
     this.fishEl.style.left = `${fishCenterX - fishWidth / 2}px`;
     this.fishEl.style.top = `${fishTop}px`;
+    this.fishGeom = {
+      cx: fishCenterX,
+      cy: fishTop + fishHeight / 2,
+      w: fishWidth,
+      h: fishHeight,
+    };
     this.updateFishFacing(input.fishBarPosition, input.fishDriftVelocity);
     this.fishEl.classList.toggle('is-catching', input.isCatching);
     const isTired = input.fishState === 'tired';
@@ -453,22 +564,279 @@ export class FishingGaugeOverlay {
     this.progressFillEl.style.height = '100%';
 
     const displayPct = Math.round(progressPct);
-    if (this.catchValueEl) {
-      this.catchValueEl.textContent = `${displayPct}%`;
-    }
     this.playCatchGainEffects(progress01, displayPct);
+  }
 
-    if (this.tensionFillEl) {
-      const tensionPct = Math.max(0, Math.min(100, input.tension * 100));
-      this.tensionFillEl.style.width = `${tensionPct}%`;
+  /** アクティブスキルアイコン（Z→X→C）。発動中は右から nonactive が露出し残り時間を示す */
+  updateFightSkillIcons({ z, x, c }: FightSkillIconsInput): void {
+    this.applyFightSkillIcon('z', z);
+    this.applyFightSkillIcon('x', x);
+    this.applyFightSkillIcon('c', c);
+  }
+
+  private resetSkillUiRuntime(): void {
+    (['z', 'x', 'c'] as const).forEach((key) => {
+      this.skillUiRuntime[key].deactivationCleanup?.();
+      this.skillUiRuntime[key] = { phase: 'unlearned' };
+    });
+  }
+
+  private syncSkillPhaseClasses(wrap: HTMLElement, phase: SkillUiPhase): void {
+    wrap.classList.toggle('is-unlearned', phase === 'unlearned');
+    wrap.classList.toggle('is-ready', phase === 'ready');
+    wrap.classList.toggle('is-active', phase === 'active');
+    wrap.classList.toggle('is-spent', phase === 'spent');
+    wrap.classList.toggle('is-deactivating', phase === 'deactivating');
+  }
+
+  private setSkillUiPhase(
+    key: FightSkillKey,
+    wrap: HTMLElement,
+    frontEl: HTMLElement,
+    phase: SkillUiPhase,
+  ): void {
+    const runtime = this.skillUiRuntime[key];
+    if (runtime.phase === phase) return;
+
+    runtime.deactivationCleanup?.();
+    runtime.deactivationCleanup = undefined;
+    runtime.phase = phase;
+    this.syncSkillPhaseClasses(wrap, phase);
+
+    if (phase === 'ready' || phase === 'active') {
+      frontEl.hidden = false;
+      if (phase === 'ready') {
+        frontEl.style.clipPath = 'inset(0 0 0 0)';
+      }
+    } else if (phase === 'unlearned' || phase === 'spent') {
+      frontEl.hidden = true;
+      frontEl.style.clipPath = '';
     }
-    if (this.tensionValueEl) {
-      this.tensionValueEl.textContent = `${Math.round(input.tension * 100)}%`;
+  }
+
+  private beginSkillDeactivation(
+    key: FightSkillKey,
+    wrap: HTMLElement,
+    frontEl: HTMLElement,
+  ): void {
+    const runtime = this.skillUiRuntime[key];
+    if (runtime.phase !== 'active') return;
+
+    runtime.deactivationCleanup?.();
+    runtime.phase = 'deactivating';
+    this.syncSkillPhaseClasses(wrap, 'deactivating');
+
+    const scaleEl = wrap.querySelector<HTMLElement>('.fishing-fight-gauge__skill-scale-target');
+    const finalize = () => {
+      runtime.deactivationCleanup = undefined;
+      runtime.phase = 'spent';
+      this.syncSkillPhaseClasses(wrap, 'spent');
+      frontEl.hidden = true;
+      frontEl.style.clipPath = '';
+    };
+
+    if (!scaleEl || this.prefersReducedMotion()) {
+      finalize();
+      return;
     }
-    if (this.fishStateEl) {
-      this.fishStateEl.textContent = input.fishState === 'tired' ? 'TIRED' : 'RUN';
-      this.fishStateEl.classList.toggle('is-tired', input.fishState === 'tired');
+
+    const onTransitionEnd = (event: TransitionEvent) => {
+      if (event.target !== scaleEl || event.propertyName !== 'transform') return;
+      scaleEl.removeEventListener('transitionend', onTransitionEnd);
+      clearTimeout(fallbackTimer);
+      finalize();
+    };
+
+    const fallbackTimer = window.setTimeout(() => {
+      scaleEl.removeEventListener('transitionend', onTransitionEnd);
+      finalize();
+    }, FIGHT_SKILL_SCALE_MS + 80);
+
+    runtime.deactivationCleanup = () => {
+      scaleEl.removeEventListener('transitionend', onTransitionEnd);
+      clearTimeout(fallbackTimer);
+    };
+
+    scaleEl.addEventListener('transitionend', onTransitionEnd);
+  }
+
+  private applyFightSkillIcon(key: FightSkillKey, slot: FightSkillIconSlot): void {
+    this.updateSkillEffect(key, slot);
+
+    const wrap = this.skillWrapEls[key];
+    if (!wrap) return;
+
+    const runtime = this.skillUiRuntime[key];
+    const imgs = FIGHT_SKILL_ICON_IMAGES[key];
+    const durationSec = FIGHT_SKILL_DURATIONS[key];
+    const backEl = wrap.querySelector<HTMLImageElement>('.fishing-fight-gauge__skill-back');
+    const frontEl = wrap.querySelector<HTMLElement>('.fishing-fight-gauge__skill-front');
+    const innerEl = wrap.querySelector<HTMLElement>('.fishing-fight-gauge__skill-front-inner');
+    const activeImgEl = wrap.querySelector<HTMLImageElement>('.fishing-fight-gauge__skill-active-img');
+    const sweepEl = wrap.querySelector<HTMLElement>('.fishing-fight-gauge__skill-sweep');
+    if (!backEl || !frontEl || !innerEl || !activeImgEl) return;
+
+    const setMask = (src: string) => {
+      innerEl.style.setProperty('--skill-mask', `url('${src}')`);
+    };
+
+    const logicalActive = slot.learned && slot.used && slot.remainingSec > 0.02;
+
+    if (runtime.phase === 'deactivating') {
+      return;
     }
+
+    if (runtime.phase === 'active' && slot.learned && slot.used && !logicalActive) {
+      this.beginSkillDeactivation(key, wrap, frontEl);
+      return;
+    }
+
+    if (!slot.learned) {
+      this.setSkillUiPhase(key, wrap, frontEl, 'unlearned');
+      backEl.src = imgs.inactive;
+      return;
+    }
+
+    backEl.src = imgs.inactive;
+    activeImgEl.src = imgs.active;
+    setMask(imgs.active);
+
+    const targetPhase: SkillUiPhase = logicalActive
+      ? 'active'
+      : slot.used
+        ? 'spent'
+        : 'ready';
+
+    this.setSkillUiPhase(key, wrap, frontEl, targetPhase);
+
+    if (runtime.phase === 'active') {
+      const remainRatio = Math.max(0, Math.min(1, slot.remainingSec / durationSec));
+      const rightInset = (1 - remainRatio) * 100;
+      frontEl.style.clipPath = `inset(0 ${rightInset}% 0 0)`;
+      this.maybePlaySkillSweep(key, sweepEl);
+    }
+  }
+
+  /** 発動中スキルのエフェクト画像をフェードイン＋残り時間連動の不透明度で描画 */
+  private updateSkillEffect(key: FightSkillKey, slot: FightSkillIconSlot): void {
+    if (key === 'c') {
+      this.updateFischersHighEffect(slot);
+      return;
+    }
+
+    const el = this.skillEffectEls[key];
+    if (!el) return;
+
+    const durationSec = FIGHT_SKILL_DURATIONS[key];
+    if (!this.isSkillEffectActive(slot, durationSec)) {
+      this.hideEffectEl(el);
+      return;
+    }
+
+    // 魚アイコンに重ねる
+    const g = this.fishGeom;
+    const height = g.h * FIGHT_SKILL_EFFECT_FISH_SCALE[key];
+    const width = height * FIGHT_SKILL_EFFECT_ASPECT[key];
+    el.style.width = `${width}px`;
+    el.style.height = `${height}px`;
+    el.style.left = `${g.cx}px`;
+    el.style.top = `${g.cy}px`;
+
+    if (el.hidden) el.hidden = false;
+    el.style.opacity = this.computeEffectOpacity(key, slot, durationSec).toFixed(3);
+  }
+
+  /** フィッシャーズハイ: バー高さで固定サイズ、左右両端に追従（右は反転） */
+  private updateFischersHighEffect(slot: FightSkillIconSlot): void {
+    const leftEl = this.cEffectEls.left;
+    const rightEl = this.cEffectEls.right;
+    if (!leftEl && !rightEl) return;
+
+    const durationSec = FIGHT_SKILL_DURATIONS.c;
+    if (!this.isSkillEffectActive(slot, durationSec)) {
+      if (leftEl) this.hideEffectEl(leftEl);
+      if (rightEl) this.hideEffectEl(rightEl);
+      return;
+    }
+
+    const g = this.playerBarGeom;
+    // バーの高さからはみ出ない固定サイズ（幅では変化しない）
+    const height = g.h * FIGHT_SKILL_EFFECT_C_HEIGHT_RATIO;
+    const width = height * FIGHT_SKILL_EFFECT_ASPECT.c;
+    const barLeft = g.cx - g.w / 2;
+    const barRight = g.cx + g.w / 2;
+    const opacity = this.computeEffectOpacity('c', slot, durationSec).toFixed(3);
+
+    if (leftEl) {
+      leftEl.style.width = `${width}px`;
+      leftEl.style.height = `${height}px`;
+      leftEl.style.left = `${barLeft}px`;
+      leftEl.style.top = `${g.cy}px`;
+      leftEl.style.transform = 'translateY(-50%)';
+      if (leftEl.hidden) leftEl.hidden = false;
+      leftEl.style.opacity = opacity;
+    }
+    if (rightEl) {
+      rightEl.style.width = `${width}px`;
+      rightEl.style.height = `${height}px`;
+      rightEl.style.left = `${barRight - width}px`;
+      rightEl.style.top = `${g.cy}px`;
+      rightEl.style.transform = 'translateY(-50%) scaleX(-1)';
+      if (rightEl.hidden) rightEl.hidden = false;
+      rightEl.style.opacity = opacity;
+    }
+  }
+
+  private isSkillEffectActive(slot: FightSkillIconSlot, durationSec: number): boolean {
+    return slot.learned && slot.used && slot.remainingSec > 0 && durationSec > 0;
+  }
+
+  private hideEffectEl(el: HTMLElement): void {
+    if (!el.hidden) {
+      el.hidden = true;
+      el.style.opacity = '0';
+    }
+  }
+
+  /** 出現直後の短いフェードイン × 残り時間に応じたフェードアウト（0で透明） */
+  private computeEffectOpacity(
+    key: FightSkillKey,
+    slot: FightSkillIconSlot,
+    durationSec: number,
+  ): number {
+    const remainRatio = Math.max(0, Math.min(1, slot.remainingSec / durationSec));
+    const elapsedSec = Math.max(0, durationSec - slot.remainingSec);
+    const fadeIn = this.prefersReducedMotion()
+      ? 1
+      : Math.min(1, elapsedSec / FIGHT_SKILL_EFFECT_FADE_IN_SEC);
+    const fadeOut = Math.pow(remainRatio, 0.65);
+    return FIGHT_SKILL_EFFECT_MAX_OPACITY[key] * fadeIn * fadeOut;
+  }
+
+  private maybePlaySkillSweep(key: FightSkillKey, sweepEl: HTMLElement | null): void {
+    if (!sweepEl) return;
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - this.lastSkillSweepAt[key] < 240) return;
+    this.lastSkillSweepAt[key] = now;
+    this.playHighlightSweep(sweepEl, (anim) => {
+      this.skillSweepAnims[key] = anim;
+    });
+  }
+
+  private playHighlightSweep(
+    el: HTMLElement,
+    onAnim?: (anim: Animation) => void,
+  ): void {
+    if (typeof el.animate !== 'function' || this.prefersReducedMotion()) return;
+    const anim = el.animate(
+      [
+        { backgroundPosition: '150% 0', opacity: 0 },
+        { backgroundPosition: '60% 0', opacity: 0.9, offset: 0.35 },
+        { backgroundPosition: '-60% 0', opacity: 0 },
+      ],
+      { duration: 520, easing: 'ease-out' },
+    );
+    onAnim?.(anim);
   }
 
   /**
@@ -579,16 +947,11 @@ export class FishingGaugeOverlay {
 
   private playProgressSweep(): void {
     const el = this.progressSweepEl;
-    if (!el || typeof el.animate !== 'function' || this.prefersReducedMotion()) return;
+    if (!el) return;
     this.sweepAnim?.cancel();
-    this.sweepAnim = el.animate(
-      [
-        { backgroundPosition: '150% 0', opacity: 0 },
-        { backgroundPosition: '60% 0', opacity: 0.9, offset: 0.35 },
-        { backgroundPosition: '-60% 0', opacity: 0 },
-      ],
-      { duration: 520, easing: 'ease-out' },
-    );
+    this.playHighlightSweep(el, (anim) => {
+      this.sweepAnim = anim;
+    });
   }
 
   private playCatchPop(progress01: number, strengthPct: number): void {
@@ -659,21 +1022,6 @@ export class FishingGaugeOverlay {
     anim.oncancel = cleanup;
   }
 
-  updateFightSkillHud(z: FightSkillHudSlot, x: FightSkillHudSlot, c: FightSkillHudSlot): void {
-    if (this.skillZEl) {
-      this.skillZEl.textContent = z.text;
-      this.skillZEl.hidden = !z.visible;
-    }
-    if (this.skillXEl) {
-      this.skillXEl.textContent = x.text;
-      this.skillXEl.hidden = !x.visible;
-    }
-    if (this.skillCEl) {
-      this.skillCEl.textContent = c.text;
-      this.skillCEl.hidden = !c.visible;
-    }
-  }
-
   private buildCastGaugeHtml(): string {
     const d = this.dims;
     const colors = getCastStepColors(d.castStepCount);
@@ -703,57 +1051,43 @@ export class FishingGaugeOverlay {
     `;
   }
 
+  private buildSkillIconHtml(key: FightSkillKey): string {
+    const imgs = FIGHT_SKILL_ICON_IMAGES[key];
+    return `
+          <div class="fishing-fight-gauge__skill-icon-wrap" data-skill="${key}">
+            <div class="fishing-fight-gauge__skill-scale-target">
+              <img
+                class="fishing-fight-gauge__skill-back"
+                src="${imgs.inactive}"
+                alt=""
+                decoding="async"
+              />
+              <div class="fishing-fight-gauge__skill-front" hidden>
+                <div class="fishing-fight-gauge__skill-front-inner">
+                  <img
+                    class="fishing-fight-gauge__skill-active-img"
+                    src="${imgs.active}"
+                    alt=""
+                    decoding="async"
+                  />
+                  <div class="fishing-fight-gauge__skill-sweep fishing-fight-gauge__highlight-sweep" aria-hidden="true"></div>
+                </div>
+              </div>
+            </div>
+          </div>`;
+  }
+
   private buildFightBlockHtml(variant: 'game' | 'preview'): string {
-    const hint =
-      variant === 'game'
-        ? `<p class="fishing-fight-gauge__hint">${FIGHT_HINT_GAME}</p>`
-        : '';
-    const skills =
-      variant === 'game'
-        ? `
-        <div class="fishing-fight-gauge__skills" aria-hidden="true">
-          <span class="fishing-fight-gauge__skill" data-skill="z"></span>
-          <span class="fishing-fight-gauge__skill" data-skill="x"></span>
-          <span class="fishing-fight-gauge__skill" data-skill="c"></span>
-        </div>`
-        : '';
-    const statusHud =
-      variant === 'game'
-        ? `
-        <div class="fishing-fight-gauge__status" aria-hidden="true">
-          <span class="fishing-fight-gauge__fish-state" data-fish-state>RUN</span>
-          <div class="fishing-fight-gauge__catch" aria-label="捕獲率">
-            <span class="fishing-fight-gauge__catch-label">CATCH</span>
-            <span class="fishing-fight-gauge__catch-value">0%</span>
-          </div>
-          <div class="fishing-fight-gauge__tension" aria-label="テンション">
-            <span class="fishing-fight-gauge__tension-label">TEN</span>
-            <div class="fishing-fight-gauge__tension-track">
-              <div class="fishing-fight-gauge__tension-fill"></div>
-            </div>
-            <span class="fishing-fight-gauge__tension-value">0%</span>
-          </div>
-        </div>`
-        : `
-        <div class="fishing-fight-gauge__status fishing-fight-gauge__status--preview" aria-hidden="true">
-          <span class="fishing-fight-gauge__fish-state" data-fish-state>RUN</span>
-          <div class="fishing-fight-gauge__catch" aria-label="捕獲率">
-            <span class="fishing-fight-gauge__catch-label">CATCH</span>
-            <span class="fishing-fight-gauge__catch-value">0%</span>
-          </div>
-          <div class="fishing-fight-gauge__tension" aria-label="テンション">
-            <span class="fishing-fight-gauge__tension-label">TEN</span>
-            <div class="fishing-fight-gauge__tension-track">
-              <div class="fishing-fight-gauge__tension-fill"></div>
-            </div>
-            <span class="fishing-fight-gauge__tension-value">0%</span>
-          </div>
-        </div>`;
     const hidden = variant === 'game';
+    const skillIcons = `
+        <div class="fishing-fight-gauge__skills" aria-hidden="true">
+          ${this.buildSkillIconHtml('z')}
+          ${this.buildSkillIconHtml('x')}
+          ${this.buildSkillIconHtml('c')}
+        </div>`;
     return `
       <div class="fishing-fight-gauge fishing-fight-gauge--${variant}"${hidden ? ' hidden' : ''}>
-        ${hint}
-        ${statusHud}
+        ${skillIcons}
         <div class="fishing-fight-gauge__arena">
           <div class="fishing-fight-gauge__float-layer" aria-hidden="true"></div>
           <div class="fishing-fight-gauge__fight-bar" aria-hidden="true">
@@ -770,12 +1104,15 @@ export class FishingGaugeOverlay {
             <img class="fishing-fight-gauge__fight-grid" src="/images/ui/fight-grid.png" alt="" decoding="async" />
             <div class="fishing-fight-gauge__progress" aria-label="捕獲ゲージ">
               <div class="fishing-fight-gauge__progress-fill">
-                <div class="fishing-fight-gauge__progress-sweep" aria-hidden="true"></div>
+                <div class="fishing-fight-gauge__progress-sweep fishing-fight-gauge__highlight-sweep" aria-hidden="true"></div>
               </div>
             </div>
+            <img class="fishing-fight-gauge__skill-effect" data-skill-effect="z" src="${FIGHT_SKILL_EFFECT_IMAGES.z}" alt="" decoding="async" hidden />
+            <img class="fishing-fight-gauge__skill-effect" data-skill-effect="x" src="${FIGHT_SKILL_EFFECT_IMAGES.x}" alt="" decoding="async" hidden />
+            <img class="fishing-fight-gauge__skill-effect fishing-fight-gauge__skill-effect--c-left" data-skill-effect-c="left" src="${FIGHT_SKILL_EFFECT_IMAGES.c}" alt="" decoding="async" hidden />
+            <img class="fishing-fight-gauge__skill-effect fishing-fight-gauge__skill-effect--c-right" data-skill-effect-c="right" src="${FIGHT_SKILL_EFFECT_IMAGES.c}" alt="" decoding="async" hidden />
           </div>
         </div>
-        ${skills}
       </div>
     `;
   }
@@ -800,13 +1137,19 @@ export class FishingGaugeOverlay {
     this.sweatEl = scope.querySelector('.fishing-fight-gauge__sweat');
     this.progressFillEl = scope.querySelector('.fishing-fight-gauge__progress-fill');
     this.progressSweepEl = scope.querySelector('.fishing-fight-gauge__progress-sweep');
-    this.tensionFillEl = scope.querySelector('.fishing-fight-gauge__tension-fill');
-    this.tensionValueEl = scope.querySelector('.fishing-fight-gauge__tension-value');
-    this.catchValueEl = scope.querySelector('.fishing-fight-gauge__catch-value');
-    this.fishStateEl = scope.querySelector('[data-fish-state]');
-    this.skillZEl = scope.querySelector('[data-skill="z"]');
-    this.skillXEl = scope.querySelector('[data-skill="x"]');
-    this.skillCEl = scope.querySelector('[data-skill="c"]');
+    this.skillWrapEls = {
+      z: scope.querySelector('[data-skill="z"]'),
+      x: scope.querySelector('[data-skill="x"]'),
+      c: scope.querySelector('[data-skill="c"]'),
+    };
+    this.skillEffectEls = {
+      z: scope.querySelector('[data-skill-effect="z"]'),
+      x: scope.querySelector('[data-skill-effect="x"]'),
+    };
+    this.cEffectEls = {
+      left: scope.querySelector('[data-skill-effect-c="left"]'),
+      right: scope.querySelector('[data-skill-effect-c="right"]'),
+    };
   }
 
   private applyDimensionVars(): void {
@@ -832,5 +1175,13 @@ export class FishingGaugeOverlay {
     (scope as HTMLElement).style.setProperty('--fishing-fish-width', `${d.fishWidth}px`);
     (scope as HTMLElement).style.setProperty('--fishing-fish-height', `${d.fishHeight}px`);
     (scope as HTMLElement).style.setProperty('--fishing-ui-scale', String(FIGHT_UI_DISPLAY_SCALE));
+    const skillIconHeight = 46;
+    const skillSlotHeight = skillIconHeight * FIGHT_SKILL_ACTIVE_SCALE - FIGHT_SKILL_SLOT_TIGHTEN;
+    const skillSlotWidth =
+      skillIconHeight * FIGHT_SKILL_ICON_ASPECT * FIGHT_SKILL_ACTIVE_SCALE - FIGHT_SKILL_SLOT_TIGHTEN;
+    (scope as HTMLElement).style.setProperty('--fishing-skill-icon-height', `${skillIconHeight}px`);
+    (scope as HTMLElement).style.setProperty('--fishing-skill-active-scale', String(FIGHT_SKILL_ACTIVE_SCALE));
+    (scope as HTMLElement).style.setProperty('--fishing-skill-slot-height', `${skillSlotHeight}px`);
+    (scope as HTMLElement).style.setProperty('--fishing-skill-slot-width', `${skillSlotWidth}px`);
   }
 }

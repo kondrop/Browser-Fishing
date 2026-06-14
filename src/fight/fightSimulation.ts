@@ -4,6 +4,7 @@ import type { PlayerData } from '../data/inventory';
 import { calculateCatchRateWithSize } from '../data/inventory';
 import { getRodById } from '../data/shopConfig';
 import { getSkillStatBonuses, hasSkillAbility, type SkillStatBonuses } from '../data/skills';
+import { FIGHT_SKILL_DURATIONS } from '../ui/fishingGaugeOverlay';
 import { stepFightBarVelocity, stepTension, sumControlBonus } from './fightControl';
 
 /** バランスプレビュー用の参照魚（本番の「標準的な魚」に近い値。config.fighting から読む） */
@@ -184,7 +185,7 @@ function resolveSkillBonuses(playerData: PlayerData, override?: SkillStatBonuses
 function tryTriggerSkills(state: FightSimState, playerData: PlayerData, input: FightSimStepInput): void {
   if (input.skipSkillTriggers) return;
   if (input.triggerLockOn && !state.fightLockOnUsed && hasSkillAbility(playerData, 'abil_control_lock_on')) {
-    state.lockOnRemainingSec = 1.0;
+    state.lockOnRemainingSec = FIGHT_SKILL_DURATIONS.z;
     state.fightLockOnUsed = true;
   }
   if (input.triggerStagger && !state.fightStaggerUsed && hasSkillAbility(playerData, 'abil_power_fight_steady')) {
@@ -192,7 +193,7 @@ function tryTriggerSkills(state: FightSimState, playerData: PlayerData, input: F
     state.fightStaggerUsed = true;
   }
   if (input.triggerSmoothDrag && !state.fightSmoothDragUsed && hasSkillAbility(playerData, 'abil_control_smooth_drag')) {
-    state.smoothDragRemainingSec = 3.0;
+    state.smoothDragRemainingSec = 4.0;
     state.fightSmoothDragUsed = true;
   }
 }
@@ -365,6 +366,7 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
   }
 
   state.lockOnRemainingSec = Math.max(0, state.lockOnRemainingSec - dt);
+  state.smoothDragRemainingSec = Math.max(0, state.smoothDragRemainingSec - dt);
   const barHeightForLockOn = getFightBarHeight(state, playerData, equippedRodId, skillBonuses);
   if (state.lockOnRemainingSec > 0) {
     const currentCenter = state.playerBarPosition + barHeightForLockOn / 2;

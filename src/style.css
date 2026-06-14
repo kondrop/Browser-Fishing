@@ -5792,7 +5792,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 3px;
   width: max-content;
   max-width: calc((100vw - 24px) / var(--fishing-ui-scale, 0.5));
 }
@@ -5803,7 +5803,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 3px;
   flex: 1;
   min-height: 0;
 }
@@ -6147,7 +6147,8 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   transform-origin: center center;
 }
 
-/* 捕獲バー上昇時に塗りの上を流れる光のハイライト（バー内にクリップ） */
+/* 捕獲バー / スキルアイコン共通の流れるハイライト */
+.fishing-fight-gauge__highlight-sweep,
 .fishing-fight-gauge__progress-sweep {
   position: absolute;
   inset: 0;
@@ -6168,15 +6169,108 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   display: flex;
   flex-direction: row;
   justify-content: center;
-  gap: 24px;
-  min-height: 1.2em;
+  align-items: center;
+  gap: 0px;
+  width: 100%;
+  max-width: var(--fishing-bar-width, 586px);
 }
 
-.fishing-fight-gauge__skill {
-  font-size: 12px;
-  color: #ccc;
-  text-align: center;
-  white-space: nowrap;
+.fishing-fight-gauge__skill-icon-wrap {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  height: var(--fishing-skill-slot-height, 48px);
+  width: var(--fishing-skill-slot-width, 82px);
+  overflow: visible;
+  line-height: 0;
+}
+
+.fishing-fight-gauge__skill-scale-target {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  transform: scale(1);
+  transform-origin: center center;
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.fishing-fight-gauge__skill-icon-wrap.is-active .fishing-fight-gauge__skill-scale-target {
+  transform: scale(var(--fishing-skill-active-scale, 1.12));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fishing-fight-gauge__skill-scale-target {
+    transition: none;
+  }
+}
+
+.fishing-fight-gauge__skill-back,
+.fishing-fight-gauge__skill-active-img {
+  display: block;
+  height: var(--fishing-skill-icon-height, 46px);
+  width: auto;
+  image-rendering: pixelated;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 背面: nonactive（発動中は右側から露出 / 使用済みは全面表示） */
+.fishing-fight-gauge__skill-back {
+  position: relative;
+  z-index: 0;
+}
+
+.fishing-fight-gauge__skill-icon-wrap.is-ready .fishing-fight-gauge__skill-back {
+  visibility: hidden;
+}
+
+/* 前面: active + PNG 形状マスク + 右から矩形クリップで残り時間 */
+.fishing-fight-gauge__skill-front {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  overflow: hidden;
+  transition: clip-path 0.08s linear;
+}
+
+.fishing-fight-gauge__skill-front-inner {
+  position: relative;
+  height: 100%;
+  -webkit-mask-image: var(--skill-mask);
+  mask-image: var(--skill-mask);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.fishing-fight-gauge__skill-icon-wrap.is-active .fishing-fight-gauge__skill-front-inner {
+  filter: brightness(1.08);
+}
+
+.fishing-fight-gauge__skill-sweep {
+  z-index: 2;
+}
+
+/* 発動中スキルのエフェクト（z/x=魚, c=プレイヤーバーに重ねる）。
+   位置・サイズ・不透明度は JS が毎フレーム設定（残り時間連動でフェードアウト） */
+.fishing-fight-gauge__skill-effect {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  pointer-events: none;
+  user-select: none;
+  image-rendering: pixelated;
+  will-change: opacity;
+  z-index: 6;
 }
 
 @media (max-width: 720px) {

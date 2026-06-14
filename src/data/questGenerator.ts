@@ -41,13 +41,19 @@ const TEMPLATE_DEFS: TemplateDef[] = [
   { id: 'environment', emoji: '🌊', weight: 16 },
 ];
 
-const QUEST_COUNT_RANGE: [number, number] = [4, 7];
-const JUNK_COUNT_RANGE: [number, number] = [4, 6];
+const QUEST_COUNT_RANGE: [number, number] = [1, 3];
+const JUNK_COUNT_RANGE: [number, number] = [1, 3];
+const RARITY_COUNT_RANGE: [number, number] = [3, 5];
 const MIN_SIZE_CM = 22;
 const MAX_SIZE_CM = 11;
-const QUEST_RARITY = Rarity.RARE;
+const QUEST_RARITY = Rarity.UNCOMMON;
+const QUEST_RARITY_MAX = Rarity.EPIC;
 const FIGHT_DURATION_SEC = 12;
 const TENSION_MAX_TARGET = 2;
+const REWARD_MONEY_PER_BASE = 75;
+const REWARD_MONEY_FLAT = 80;
+const REWARD_EXP_PER_BASE = 18;
+const REWARD_EXP_FLAT = 25;
 
 function getRealFish(): FishConfig[] {
   return fishDatabase.filter((f) => !f.id.startsWith('junk_'));
@@ -117,8 +123,8 @@ function calcReward(
   };
   const base = target * 1.6 * typeMul[templateId];
   return {
-    money: Math.round(base * 35 + 30),
-    exp: Math.round(base * 12 + 15),
+    money: Math.round(base * REWARD_MONEY_PER_BASE + REWARD_MONEY_FLAT),
+    exp: Math.round(base * REWARD_EXP_PER_BASE + REWARD_EXP_FLAT),
   };
 }
 
@@ -166,7 +172,7 @@ function buildDescription(templateId: QuestTemplateId, ctx: Record<string, strin
     case 'catch_size_min':
       return `${ctx.size}cm以上の魚を${ctx.count}匹釣り上げよう`;
     case 'catch_rarity':
-      return `レア度${ctx.rarity}以上の魚を${ctx.count}匹釣り上げよう`;
+      return `レア度${ctx.rarity}〜${ctx.maxRarity}の魚を${ctx.count}匹釣り上げよう`;
     case 'catch_size_max':
       return `${ctx.size}cm以下の魚を${ctx.count}匹釣り上げよう`;
     case 'tension_max':
@@ -188,8 +194,13 @@ function createQuestId(): string {
 
 export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
   const template = pickTemplate(playerData.level);
-  const useJunkCount = template.id === 'catch_junk';
-  const [countMin, countMax] = useJunkCount ? JUNK_COUNT_RANGE : QUEST_COUNT_RANGE;
+  const countRange =
+    template.id === 'catch_junk'
+      ? JUNK_COUNT_RANGE
+      : template.id === 'catch_rarity'
+        ? RARITY_COUNT_RANGE
+        : QUEST_COUNT_RANGE;
+  const [countMin, countMax] = countRange;
   const count = randomInt(countMin, countMax);
 
   const fish = pickRandom(getRealFish());
@@ -204,14 +215,17 @@ export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
     [Rarity.RARE]: '★★★',
     [Rarity.EPIC]: '★★★★',
     [Rarity.LEGENDARY]: '★★★★★',
-  }[QUEST_RARITY];
+  };
+  const minRarityLabel = rarityLabel[QUEST_RARITY];
+  const maxRarityLabel = rarityLabel[QUEST_RARITY_MAX];
 
   const ctx: Record<string, string | number> = {
     count,
     fishName: fish.name,
     junkName: specificJunk?.name ?? '',
     size: template.id === 'catch_size_min' ? MIN_SIZE_CM : MAX_SIZE_CM,
-    rarity: rarityLabel,
+    rarity: minRarityLabel,
+    maxRarity: maxRarityLabel,
     duration: FIGHT_DURATION_SEC,
     itemName: equipment?.name ?? '木の釣り竿',
     environmentName: HABITAT_LABELS[habitat],
@@ -233,7 +247,12 @@ export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
       condition = { type: 'quest_catch_size_min', target: count, minSize: MIN_SIZE_CM };
       break;
     case 'catch_rarity':
-      condition = { type: 'quest_catch_rarity', target: count, rarity: QUEST_RARITY };
+      condition = {
+        type: 'quest_catch_rarity',
+        target: count,
+        rarity: QUEST_RARITY,
+        maxRarity: QUEST_RARITY_MAX,
+      };
       break;
     case 'catch_size_max':
       condition = { type: 'quest_catch_size_max', target: count, maxSize: MAX_SIZE_CM };

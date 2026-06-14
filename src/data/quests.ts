@@ -38,6 +38,13 @@ function rarityMeetsMinimum(fishRarity: Rarity, minimum: string): boolean {
   return fishIdx >= minIdx;
 }
 
+function rarityMeetsMaximum(fishRarity: Rarity, maximum: string): boolean {
+  const fishIdx = RARITY_ORDER.indexOf(fishRarity);
+  const maxIdx = RARITY_ORDER.indexOf(maximum as Rarity);
+  if (fishIdx < 0 || maxIdx < 0) return false;
+  return fishIdx <= maxIdx;
+}
+
 export function resolveQuest(playerData: PlayerData, questId: string): QuestConfig | undefined {
   return playerData.questRegistry.get(questId) ?? getStaticQuestById(questId);
 }
@@ -225,7 +232,8 @@ function matchesFishCondition(
       return !fish.id.startsWith('junk_') && condition.fishId === fish.id;
     case 'quest_catch_rarity':
       return !fish.id.startsWith('junk_') &&
-        (condition.rarity ? rarityMeetsMinimum(fish.rarity, condition.rarity) : false);
+        (condition.rarity ? rarityMeetsMinimum(fish.rarity, condition.rarity) : false) &&
+        (condition.maxRarity ? rarityMeetsMaximum(fish.rarity, condition.maxRarity) : true);
     case 'quest_catch_size_min':
       return !fish.id.startsWith('junk_') &&
         ctx?.fishSize !== undefined && condition.minSize !== undefined
