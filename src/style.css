@@ -2007,6 +2007,14 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 
 #book-ui .book-tab-button.active.ui-frame-box::before {
   --frame-fill-color: #e8cfa6;
+  background:
+    linear-gradient(
+      to top,
+      rgba(50, 14, 14, 0.28) 0%,
+      rgba(50, 14, 14, 0.14) 42%,
+      rgba(50, 14, 14, 0) 68%
+    ),
+    var(--frame-fill-color);
 }
 
 #book-ui .book-tab-button.ui-frame-box::after {
@@ -2487,6 +2495,8 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 }
 
 .book-tab-label {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 24px;
   line-height: 1.2;
 }
 
@@ -6382,6 +6392,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
  * クエスト掲示板モーダル（カード型）
  * ============================================ */
 .modal-content.quest-board-modal {
+  --quest-board-scroll-fade-color: var(--frame-fill-color);
   max-width: 900px;
   width: min(94vw, 900px);
   max-height: 84vh;
@@ -6433,16 +6444,68 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 .quest-board-cards-scroll-wrap {
   flex: 1;
   min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.quest-board-cards-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--space-12) var(--space-8) var(--space-8);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.quest-board-cards-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.quest-board-scroll-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 52px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.quest-board-scroll-fade--bottom {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--quest-board-scroll-fade-color) 94%, transparent) 0%,
+    color-mix(in srgb, var(--quest-board-scroll-fade-color) 52%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+.quest-board-scroll-fade--top {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--quest-board-scroll-fade-color) 94%, transparent) 0%,
+    color-mix(in srgb, var(--quest-board-scroll-fade-color) 52%, transparent) 42%,
+    transparent 100%
+  );
+}
+
+.quest-board-scroll-fade.is-visible {
+  opacity: 1;
 }
 
 .quest-board-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   row-gap: var(--space-16);
-  column-gap: 0;
+  column-gap: 14px;
   align-items: stretch;
+  align-content: start;
 }
 
 .quest-board-empty,
@@ -6465,10 +6528,16 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-8);
-  padding: var(--space-16) var(--space-12) var(--space-12);
+  width: 100%;
+  gap: var(--space-4);
+  padding: 16px;
   cursor: pointer;
   transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.quest-card.book-ui-node.ui-frame-box {
+  width: 100%;
+  padding: 16px;
 }
 
 .quest-card:hover {
@@ -6511,8 +6580,8 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 /* アイコン枠 */
 .quest-card__icon {
   --frame-fill-color: #fffdf4;
-  width: 72px;
-  height: 72px;
+  width: 100px;
+  height: 100px;
   margin-top: var(--space-8);
   display: flex;
   align-items: center;
@@ -6520,8 +6589,8 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 }
 
 .quest-card__icon-img {
-  width: 100%;
-  height: 100%;
+  width: 80px;
+  height: 80px;
   object-fit: contain;
 }
 
@@ -6531,7 +6600,9 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 }
 
 .quest-card__title {
-  font-size: var(--font-size-body);
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-4);
+  font-size: 18px;
   font-weight: bold;
   color: var(--color-semantic-text-primary);
   text-align: center;
@@ -6550,7 +6621,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   font-size: var(--font-size-body-sm);
   color: var(--color-semantic-text-primary);
   line-height: 1.45;
-  text-align: center;
+  text-align: left;
   flex: 1;
 }
 
@@ -6566,27 +6637,20 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   gap: var(--space-4);
 }
 
-.quest-card__reward-head {
-  font-size: 12px;
-  color: var(--color-semantic-text-muted);
-  letter-spacing: 0.08em;
-}
-
-.quest-card__reward-head::before,
-.quest-card__reward-head::after {
-  content: '◇';
-  margin: 0 var(--space-6);
-  font-size: 10px;
+.quest-card.is-selected .quest-card__reward {
+  background: transparent;
 }
 
 .quest-card__reward-values {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   gap: var(--space-2);
 }
 
 .quest-card__reward-line {
+  display: flex;
+  font-family: var(--font-family-display-numeric) !important;
   font-size: var(--font-size-achievement-reward-line);
   color: var(--color-primitive-orange-600);
 }
@@ -6598,9 +6662,14 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   margin-top: var(--space-4);
   padding: var(--space-6) var(--space-12);
   font-size: var(--font-size-body-sm);
-  color: var(--color-primitive-white) !important;
+  color: var(--color-primitive-brown-400) !important;
   background: var(--color-primitive-green-600) !important;
   cursor: pointer;
+}
+
+.quest-card__accept-label {
+  display: inline-block;
+  transform: translateY(-3px);
 }
 
 .quest-card__accept:hover {

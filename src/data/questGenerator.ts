@@ -1,6 +1,6 @@
 // 📋 動的クエスト生成
 
-import { fishDatabase } from './fish';
+import { fishDatabase, getFishImagePath } from './fish';
 import type { FishConfig } from './fishConfig';
 import { Habitat, Rarity } from './fishTypes';
 import type { PlayerData } from './inventory';
@@ -12,6 +12,7 @@ import {
 import {
   rodConfigs,
   getBaitById,
+  getItemImagePath,
   getLureById,
   getRodById,
 } from './shopConfig';
@@ -104,6 +105,43 @@ function pickEquipment(playerData: PlayerData): EquipmentPick | null {
     if (basic) return { type: 'rod', id: 'rod_basic', name: basic.name };
   }
   return candidates.length > 0 ? pickRandom(candidates) : null;
+}
+
+function pickFishImage(fishes: FishConfig[]): string | undefined {
+  return fishes.length > 0 ? getFishImagePath(pickRandom(fishes).id) : undefined;
+}
+
+function resolveQuestThumbnailImage(
+  templateId: QuestTemplateId,
+  options: {
+    fish: FishConfig;
+    realFish: FishConfig[];
+    junkItems: FishConfig[];
+    specificJunk: FishConfig | null;
+    habitat: Habitat;
+    equipment: EquipmentPick;
+  },
+): string | undefined {
+  switch (templateId) {
+    case 'catch_junk':
+      return options.specificJunk
+        ? getFishImagePath(options.specificJunk.id)
+        : pickFishImage(options.junkItems);
+    case 'catch_fish':
+      return getFishImagePath(options.fish.id);
+    case 'equipment':
+      return getItemImagePath(options.equipment.id);
+    case 'environment':
+      return pickFishImage(options.realFish.filter((fish) => fish.habitat === options.habitat));
+    case 'catch_size_min':
+    case 'catch_size_max':
+    case 'catch_rarity':
+    case 'tension_max':
+    case 'fight_duration':
+      return pickFishImage(options.realFish);
+    default:
+      return undefined;
+  }
 }
 
 function calcReward(
@@ -203,11 +241,20 @@ export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
   const [countMin, countMax] = countRange;
   const count = randomInt(countMin, countMax);
 
-  const fish = pickRandom(getRealFish());
+  const realFish = getRealFish();
+  const fish = pickRandom(realFish);
   const junkItems = getJunkItems();
   const specificJunk = junkItems.length > 0 && Math.random() < 0.35 ? pickRandom(junkItems) : null;
   const habitat = pickRandom([Habitat.FRESHWATER, Habitat.SALTWATER, Habitat.STREAM]);
-  const equipment = pickEquipment(playerData);
+  const equipment = pickEquipment(playerData) ?? { type: 'rod' as const, id: 'rod_basic', name: '木の釣り竿' };
+  const thumbnailImage = resolveQuestThumbnailImage(template.id, {
+    fish,
+    realFish,
+    junkItems,
+    specificJunk,
+    habitat,
+    equipment,
+  });
 
   const rarityLabel = {
     [Rarity.COMMON]: '★',
@@ -227,7 +274,7 @@ export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
     rarity: minRarityLabel,
     maxRarity: maxRarityLabel,
     duration: FIGHT_DURATION_SEC,
-    itemName: equipment?.name ?? '木の釣り竿',
+    itemName: equipment.name,
     environmentName: HABITAT_LABELS[habitat],
   };
 
@@ -268,12 +315,11 @@ export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
       ctx.count = 1;
       break;
     case 'equipment': {
-      const eq = equipment ?? { type: 'rod' as const, id: 'rod_basic', name: '木の釣り竿' };
       condition = {
         type: 'quest_equipment',
         target: count,
-        equipmentType: eq.type,
-        equipmentId: eq.id,
+        equipmentType: equipment.type,
+        equipmentId: equipment.id,
       };
       break;
     }
@@ -291,6 +337,7 @@ export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
     name: buildTitle(template.id, ctx as Record<string, string>),
     description: buildDescription(template.id, ctx),
     emoji: template.emoji,
+    thumbnailImage,
     condition,
     reward,
     templateId: template.id,

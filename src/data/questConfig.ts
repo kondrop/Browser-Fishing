@@ -56,6 +56,7 @@ export interface QuestConfig {
   name: string;
   description: string;
   emoji: string;
+  thumbnailImage?: string;
   condition: QuestCondition;
   reward?: QuestReward;
   templateId?: QuestTemplateId;

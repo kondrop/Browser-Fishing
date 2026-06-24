@@ -275,6 +275,35 @@ export const inventoryUpgradeConfigs: InventoryUpgradeConfig[] = [
   },
 ];
 
+export const itemImageFileNames: Record<string, string> = {
+  // 釣り竿
+  rod_basic: '木の竿',
+  rod_bamboo: '竹の竿',
+  rod_carbon: 'カーボンロッド',
+  rod_master: '名人の竿',
+  rod_legendary: '達人の竿',
+  // エサ
+  bait_worm: 'ミミズ',
+  bait_shrimp: '小エビ',
+  bait_minnow: '小魚',
+  bait_golden: '黄金虫',
+  // ルアー
+  lure_basic: 'スプーン',
+  lure_minnow: 'ミノー',
+  lure_popper: 'ポッパー',
+  lure_legendary: 'スピナー',
+  // バッグ
+  inv_9: '基本バッグ',
+  inv_12: '中型バッグ',
+  inv_15: '大型バッグ',
+  inv_18: '釣り師のバッグ',
+};
+
+export function getItemImagePath(itemId: string): string | undefined {
+  const fileName = itemImageFileNames[itemId];
+  return fileName ? `/images/items/${fileName}.png` : undefined;
+}
+
 // ============================================
 // ヘルパー関数
 // ============================================

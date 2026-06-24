@@ -251,6 +251,10 @@ export default class GameScene extends Phaser.Scene {
   private questBoardOpen: boolean = false;
   private questBoardUIElement!: HTMLElement;
   private questBoardSelectedIndex: number = 0;
+  private questBoardCardsScrollElement: HTMLElement | null = null;
+  private questBoardScrollFadeTopElement: HTMLElement | null = null;
+  private questBoardScrollFadeBottomElement: HTMLElement | null = null;
+  private questBoardScrollFadeObserver: ResizeObserver | null = null;
   private readonly questBoardGridCols = 3;
   private questBoardDocumentKeyHandler = (e: KeyboardEvent) => {
     if (!this.questBoardOpen) return;
@@ -265,7 +269,10 @@ export default class GameScene extends Phaser.Scene {
     e.preventDefault();
     e.stopPropagation();
     this.noteUiMenuKeyboardNavigation();
-    this.moveQuestBoardSelection(dir);
+    const moved = this.moveQuestBoardSelection(dir);
+    if (!moved && (dir === 'up' || dir === 'down')) {
+      this.nudgeQuestBoardScrollOnVerticalEdge(dir);
+    }
   };
   private readonly bulletinBoardZone = { x: 750, y: 480, width: 70, height: 60 };
   /** キー選択行の右下に表示する指し示しアイコン（body 直下・fixed） */
@@ -4101,46 +4108,45 @@ export default class GameScene extends Phaser.Scene {
       <div id="book-ui" class="book-ui">
         <div class="book-header">
           <div class="book-tabs">
-            <button class="book-tab-button active ui-frame-box" data-tab="inventory" aria-label="バッグ">
+            <button class="book-tab-button active ui-frame-box" data-tab="inventory" aria-label="Bag">
               <span class="book-tab-button-inner">
                 <img class="book-tab-icon" src="/images/ui/icon/icon_bag.png" alt="" aria-hidden="true" />
-                <span class="book-tab-label">バッグ</span>
+                <span class="book-tab-label">Bag</span>
               </span>
             </button>
-            <button class="book-tab-button ui-frame-box" data-tab="status" aria-label="ステータス">
+            <button class="book-tab-button ui-frame-box" data-tab="status" aria-label="Status">
               <span class="book-tab-button-inner">
                 <img class="book-tab-icon" src="/images/ui/icon/icon_status.png" alt="" aria-hidden="true" />
-                <span class="book-tab-label">ステータス</span>
+                <span class="book-tab-label">Status</span>
               </span>
             </button>
-            <button class="book-tab-button ui-frame-box" data-tab="skills" aria-label="スキル">
+            <button class="book-tab-button ui-frame-box" data-tab="skills" aria-label="Skills">
               <span class="book-tab-button-inner">
                 <img class="book-tab-icon" src="/images/ui/icon/icon_skill.png" alt="" aria-hidden="true" />
-                <span class="book-tab-label">スキル</span>
+                <span class="book-tab-label">Skills</span>
               </span>
             </button>
-            <button class="book-tab-button ui-frame-box" data-tab="achievement" aria-label="実績">
+            <button class="book-tab-button ui-frame-box" data-tab="achievement" aria-label="Achievements">
               <span class="book-tab-button-inner">
                 <img class="book-tab-icon" src="/images/ui/icon/icon_achievement.png" alt="" aria-hidden="true" />
-                <span class="book-tab-label">実績</span>
+                <span class="book-tab-label">Achievements</span>
               </span>
             </button>
-            <button class="book-tab-button ui-frame-box" data-tab="quest" aria-label="クエスト">
+            <button class="book-tab-button ui-frame-box" data-tab="quest" aria-label="Quests">
               <span class="book-tab-button-inner">
-                <span class="book-tab-icon book-tab-icon--emoji" aria-hidden="true">📋</span>
-                <span class="book-tab-label">クエスト</span>
+                <img class="book-tab-icon" src="/images/ui/icon/icon_quest.png" alt="" aria-hidden="true" />
+                <span class="book-tab-label">Quests</span>
               </span>
             </button>
-            <button class="book-tab-button ui-frame-box" data-tab="pedia" aria-label="図鑑">
+            <button class="book-tab-button ui-frame-box" data-tab="pedia" aria-label="Pedia">
               <span class="book-tab-button-inner">
                 <img class="book-tab-icon" src="/images/ui/icon/icon_encyclopedia.png" alt="" aria-hidden="true" />
-                <span class="book-tab-label">図鑑</span>
+                <span class="book-tab-label">Pedia</span>
               </span>
             </button>
           </div>
         </div>
         <div class="book-container ui-frame-box">
-            <div class="book-list-header" id="book-list-header">Bag</div>
             <div class="book-main-row">
             <div class="book-left-pane">
               <div class="book-left-pane-list-column">
@@ -4535,21 +4541,6 @@ export default class GameScene extends Phaser.Scene {
         btn.classList.remove('active');
       }
     });
-
-    // 左ペイン（リスト）ヘッダーを更新
-    const header = this.unifiedBookUIElement.querySelector('#book-list-header') as HTMLElement;
-    const menuHeadingByTab: Record<'inventory' | 'pedia' | 'skills' | 'achievement' | 'quest' | 'status', string> = {
-      inventory: 'Bag',
-      pedia: 'Pedia',
-      skills: 'Skills',
-      achievement: 'Achievements',
-      quest: 'Quests',
-      status: 'Status',
-    };
-    if (header) {
-      header.textContent = menuHeadingByTab[tab];
-      header.style.display = 'block';
-    }
 
     if (tab === 'achievement') {
       this.unifiedBookUIElement.setAttribute('data-tab', 'achievement');
@@ -7492,11 +7483,12 @@ export default class GameScene extends Phaser.Scene {
             </div>
             <span class="quest-board-active-summary ui-frame-box" id="quest-board-active-summary"></span>
           </div>
-          <div class="quest-board-cards-scroll-wrap">
-            <div id="quest-board-list" class="quest-board-cards"></div>
-          </div>
-          <div class="modal-footer">
-            <div class="hint-text">←→: 選択 / Enter: 受注 / F・ESC: 閉じる</div>
+          <div class="quest-board-cards-scroll-wrap" id="quest-board-cards-scroll-wrap">
+            <div class="quest-board-scroll-fade quest-board-scroll-fade--top" id="quest-board-scroll-fade-top" aria-hidden="true"></div>
+            <div class="quest-board-cards-scroll" id="quest-board-cards-scroll">
+              <div id="quest-board-list" class="quest-board-cards"></div>
+            </div>
+            <div class="quest-board-scroll-fade quest-board-scroll-fade--bottom" id="quest-board-scroll-fade-bottom" aria-hidden="true"></div>
           </div>
         </div>
       </div>
@@ -7519,6 +7511,10 @@ export default class GameScene extends Phaser.Scene {
       }
     });
     this.questBoardUIElement.setAttribute('tabindex', '-1');
+    this.questBoardCardsScrollElement = this.questBoardUIElement.querySelector('#quest-board-cards-scroll') as HTMLElement;
+    this.questBoardScrollFadeTopElement = this.questBoardUIElement.querySelector('#quest-board-scroll-fade-top') as HTMLElement;
+    this.questBoardScrollFadeBottomElement = this.questBoardUIElement.querySelector('#quest-board-scroll-fade-bottom') as HTMLElement;
+    this.setupQuestBoardScrollFade();
   }
 
   private bindQuestBoardDocumentKeys() {
@@ -7527,6 +7523,50 @@ export default class GameScene extends Phaser.Scene {
 
   private unbindQuestBoardDocumentKeys() {
     document.removeEventListener('keydown', this.questBoardDocumentKeyHandler, true);
+  }
+
+  private setupQuestBoardScrollFade() {
+    const el = this.questBoardCardsScrollElement;
+    if (!el || !this.questBoardScrollFadeTopElement || !this.questBoardScrollFadeBottomElement) return;
+
+    const update = () => this.updateQuestBoardScrollFade();
+    el.addEventListener('scroll', update, { passive: true });
+
+    this.questBoardScrollFadeObserver = new ResizeObserver(update);
+    this.questBoardScrollFadeObserver.observe(el);
+    const list = el.querySelector('#quest-board-list');
+    if (list) this.questBoardScrollFadeObserver.observe(list);
+    requestAnimationFrame(update);
+  }
+
+  private updateQuestBoardScrollFade() {
+    this.updateScrollFadeIndicators(
+      this.questBoardCardsScrollElement,
+      this.questBoardScrollFadeTopElement,
+      this.questBoardScrollFadeBottomElement,
+    );
+  }
+
+  private nudgeQuestBoardScrollOnVerticalEdge(dir: 'up' | 'down'): boolean {
+    const scrollEl = this.questBoardCardsScrollElement;
+    if (!scrollEl) return false;
+
+    const max = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+    if (max <= 0) return false;
+
+    const deltaY = dir === 'down' ? this.BOOK_EDGE_SCROLL_STEP_PX : -this.BOOK_EDGE_SCROLL_STEP_PX;
+    const next = Math.min(max, Math.max(0, scrollEl.scrollTop + deltaY));
+    if (next === scrollEl.scrollTop) {
+      this.updateQuestBoardScrollFade();
+      return false;
+    }
+
+    scrollEl.scrollTop = next;
+    requestAnimationFrame(() => {
+      this.updateQuestBoardScrollFade();
+      this.refreshKbSelectionPointer();
+    });
+    return true;
   }
 
   openQuestBoard() {
@@ -7541,6 +7581,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateQuestBoardContent();
     requestAnimationFrame(() => {
       this.questBoardUIElement?.focus({ preventScroll: true });
+      this.updateQuestBoardScrollFade();
       this.refreshKbSelectionPointer();
     });
   }
@@ -7568,7 +7609,7 @@ export default class GameScene extends Phaser.Scene {
   /** カードのアイコン HTML（魚/ゴミ画像があれば画像、なければ絵文字） */
   private buildQuestCardIcon(quest: QuestConfig): string {
     const fishId = quest.condition.fishId;
-    const imgPath = fishId ? getFishImagePath(fishId) : undefined;
+    const imgPath = quest.thumbnailImage ?? (fishId ? getFishImagePath(fishId) : undefined);
     if (imgPath) {
       return `<img class="quest-card__icon-img" src="${imgPath}" alt="" draggable="false" />`;
     }
@@ -7589,6 +7630,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (available.length === 0) {
       listEl.innerHTML = '<p class="quest-board-empty">受注できるクエストがありません</p>';
+      requestAnimationFrame(() => this.updateQuestBoardScrollFade());
       return;
     }
 
@@ -7614,10 +7656,9 @@ export default class GameScene extends Phaser.Scene {
         <p class="quest-card__desc">${quest.description}</p>
         ${rewardLines.length > 0 ? `
         <div class="quest-card__reward">
-          <div class="quest-card__reward-head">報酬</div>
           <div class="quest-card__reward-values">${rewardLines.join('')}</div>
         </div>` : ''}
-        <button type="button" class="quest-card__accept nes-btn ui-frame-box" data-quest-id="${quest.id}">受注する</button>
+        <button type="button" class="quest-card__accept nes-btn ui-frame-box" data-quest-id="${quest.id}"><span class="quest-card__accept-label">受注する</span></button>
       `;
       card.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
@@ -7636,6 +7677,7 @@ export default class GameScene extends Phaser.Scene {
       });
       listEl.appendChild(card);
     });
+    requestAnimationFrame(() => this.updateQuestBoardScrollFade());
   }
 
   private updateQuestBoardSelection() {
@@ -7645,8 +7687,11 @@ export default class GameScene extends Phaser.Scene {
       item.classList.toggle('is-selected', i === this.questBoardSelectedIndex);
     });
     const selected = items[this.questBoardSelectedIndex] as HTMLElement | undefined;
-    selected?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    this.refreshKbSelectionPointer();
+    selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    requestAnimationFrame(() => {
+      this.updateQuestBoardScrollFade();
+      this.refreshKbSelectionPointer();
+    });
   }
 
   private getQuestBoardGridColumns(items: NodeListOf<Element>): number {
