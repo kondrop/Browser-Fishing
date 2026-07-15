@@ -34,6 +34,7 @@ import {
   getCompletedQuests,
   getQuestProgressDisplay,
   getQuestProgressRatio,
+  migrateBoardQuestsIfNeeded,
   onQuestConsecutiveSuccess,
   onQuestFishCaught,
   onQuestFishSold,
@@ -105,14 +106,15 @@ export default class GameScene extends Phaser.Scene {
   private state: FishingStateValue = FishingState.IDLE;
   private biteTimer?: Phaser.Time.TimerEvent;
   private biteTimeout?: Phaser.Time.TimerEvent;
-  private exclamation!: Phaser.GameObjects.Text;
   // 結果表示テキスト（HTML/CSS）
   private resultTextElement!: HTMLElement;
   private resultTextTimer?: Phaser.Time.TimerEvent;
   private catchResultElement!: HTMLElement;
   private catchResultTimer?: Phaser.Time.TimerEvent;
   private catchResultHideTimer?: Phaser.Time.TimerEvent;
-  private hintText!: Phaser.GameObjects.Text;
+  private playerHintElement!: HTMLElement;
+  private biteMarkElement!: HTMLElement;
+  private bulletinBoardLabelElement!: HTMLElement;
 
   // 投擲用
   private castPower: number = 0;
@@ -248,6 +250,7 @@ export default class GameScene extends Phaser.Scene {
   /** 実績タブ: 左＝カテゴリ一覧 / 右＝実績詳細リスト */
   private achievementNavArea: 'left' | 'right' = 'left';
   private achievementDetailSelectedIndex: number = 0;
+  private questHudElement!: HTMLElement;
   private questBoardOpen: boolean = false;
   private questBoardUIElement!: HTMLElement;
   private questBoardSelectedIndex: number = 0;
@@ -640,6 +643,9 @@ export default class GameScene extends Phaser.Scene {
   create() {
     // プレイヤーデータを読み込み
     this.playerData = loadPlayerData();
+    if (migrateBoardQuestsIfNeeded(this.playerData)) {
+      savePlayerData(this.playerData);
+    }
 
     const mainCfg = config.main;
 
@@ -734,13 +740,6 @@ export default class GameScene extends Phaser.Scene {
     this.add.rectangle(bb.x - 14, bb.y - 22, 18, 14, 0xfff8e7).setOrigin(0.5).setDepth(6);
     this.add.rectangle(bb.x + 10, bb.y - 14, 16, 12, 0xfff8e7).setOrigin(0.5).setDepth(6);
     this.add.rectangle(bb.x + 2, bb.y - 6, 20, 14, 0xfff8e7).setOrigin(0.5).setDepth(6);
-    this.add.text(bb.x, bb.y - 42, '📋 掲示板', {
-      fontSize: '14px',
-      color: '#ffffff',
-      backgroundColor: '#00000088',
-      padding: { x: 6, y: 2 },
-    }).setOrigin(0.5).setDepth(7);
-
     // ============================================
     // プレイヤー
     // ============================================
@@ -796,25 +795,6 @@ export default class GameScene extends Phaser.Scene {
 
     this.player.anims.play('player-idle');
 
-    // 合わせヒント用テキスト
-    this.hintText = this.add.text(0, 0, '', { 
-        fontSize: '35px',  // 28 * 1.25
-        fontFamily: 'DotGothic16',
-        color: '#ffffff',
-        fontStyle: 'bold',
-        stroke: '#000000',
-        strokeThickness: 5
-    }).setOrigin(0.5).setVisible(false).setDepth(200);
-
-    this.exclamation = this.add.text(0, 0, '!', { 
-        fontSize: `${Math.round(config.bite['4-1_ビックリマークサイズ'] * 1.25)}px`,
-        fontFamily: 'DotGothic16',
-        color: '#ffff00', 
-        fontStyle: 'bold',
-        stroke: '#ff0000',
-        strokeThickness: 8
-    }).setOrigin(0.5).setVisible(false).setDepth(150);
-
     // HTML/CSSで結果表示を作成
     const resultHTML = `
       <div id="result-text" class="result-text" style="display: none;"></div>
@@ -859,6 +839,8 @@ export default class GameScene extends Phaser.Scene {
     tempDivResult.innerHTML = catchResultHTML;
     this.catchResultElement = tempDivResult.firstElementChild as HTMLElement;
     document.body.appendChild(this.catchResultElement);
+
+    this.createGameWorldTextUI();
 
     // 投擲・ファイトゲージ（HTML オーバーレイ）
     this.fishingGaugeOverlay = new FishingGaugeOverlay();
@@ -1411,6 +1393,20 @@ export default class GameScene extends Phaser.Scene {
           <button type="button" id="character-settings-btn" class="nes-btn is-small">キャラ設定</button>
           <button type="button" id="balance-debug-btn" class="nes-btn is-small">バランス</button>
         </div>
+
+        <div id="quest-hud" class="quest-hud" aria-label="受注中クエスト">
+          ${Array.from({ length: MAX_ACTIVE_QUESTS }).map((_, index) => `
+            <div class="quest-hud-slot is-empty" data-index="${index}" style="--quest-progress-angle: 0deg;" aria-label="空きクエストスロット">
+              <div class="quest-hud-slot__ring" aria-hidden="true"></div>
+              <div class="quest-hud-slot__inner">
+                <img class="quest-hud-slot__img" alt="" draggable="false" />
+                <span class="quest-hud-slot__emoji" aria-hidden="true">?</span>
+              </div>
+              <span class="quest-hud-slot__progress">0%</span>
+            </div>
+          `).join('')}
+          <div id="quest-hud-popover" class="quest-hud-popover" aria-hidden="true"></div>
+        </div>
       </div>
     `;
     
@@ -1419,6 +1415,8 @@ export default class GameScene extends Phaser.Scene {
     tempDiv.innerHTML = statusHTML;
     this.statusUIElement = tempDiv.firstElementChild as HTMLElement;
     document.body.appendChild(this.statusUIElement);
+    this.questHudElement = this.statusUIElement.querySelector('#quest-hud') as HTMLElement;
+    this.bindQuestHudPopoverEvents();
 
     // デバッグボタン
     const charBtn = document.getElementById('character-settings-btn');
@@ -1444,6 +1442,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.renderStatusCharacterIcon(characterId, this.getSelectedColor());
     this.updateStatusUI();
+    this.updateQuestHudUI();
   }
 
   private lastMoney: number = -1;
@@ -1537,6 +1536,122 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateQuestHudUI() {
+    if (!this.questHudElement) return;
+    const slots = Array.from(this.questHudElement.querySelectorAll('.quest-hud-slot')) as HTMLElement[];
+    const activeQuests = getActiveQuests(this.playerData);
+
+    slots.forEach((slot, index) => {
+      const quest = activeQuests[index];
+      const img = slot.querySelector('.quest-hud-slot__img') as HTMLImageElement | null;
+      const emoji = slot.querySelector('.quest-hud-slot__emoji') as HTMLElement | null;
+      const progressText = slot.querySelector('.quest-hud-slot__progress') as HTMLElement | null;
+
+      if (!quest) {
+        slot.className = 'quest-hud-slot is-empty';
+        slot.style.setProperty('--quest-progress-angle', '0deg');
+        slot.setAttribute('aria-label', '空きクエストスロット');
+        slot.removeAttribute('title');
+        if (img) {
+          img.removeAttribute('src');
+          img.style.display = 'none';
+        }
+        if (emoji) {
+          emoji.textContent = '?';
+          emoji.style.display = '';
+        }
+        if (progressText) progressText.textContent = '0%';
+        return;
+      }
+
+      const ratio = getQuestProgressRatio(this.playerData, quest);
+      const percent = Math.round(ratio * 100);
+      const fishId = quest.condition.fishId;
+      const imgPath = quest.thumbnailImage ?? (fishId ? getFishImagePath(fishId) : undefined);
+
+      slot.className = `quest-hud-slot is-active${ratio >= 1 ? ' is-complete' : ''}`;
+      slot.style.setProperty('--quest-progress-angle', `${Math.round(ratio * 360)}deg`);
+      slot.setAttribute('aria-label', `${quest.name}: ${percent}%`);
+      slot.removeAttribute('title');
+
+      if (imgPath && img) {
+        img.src = imgPath;
+        img.style.display = '';
+        if (emoji) emoji.style.display = 'none';
+      } else {
+        if (img) {
+          img.removeAttribute('src');
+          img.style.display = 'none';
+        }
+        if (emoji) {
+          emoji.textContent = quest.emoji;
+          emoji.style.display = '';
+        }
+      }
+      if (progressText) progressText.textContent = `${percent}%`;
+    });
+
+    const popover = this.questHudElement.querySelector('#quest-hud-popover') as HTMLElement | null;
+    const openQuestId = popover?.dataset.questId;
+    if (openQuestId && !activeQuests.some((quest) => quest.id === openQuestId)) {
+      this.hideQuestHudPopover();
+    }
+  }
+
+  private bindQuestHudPopoverEvents() {
+    if (!this.questHudElement) return;
+
+    const showSlotPopover = (slot: HTMLElement) => {
+      if (slot.classList.contains('is-empty')) {
+        this.hideQuestHudPopover();
+        return;
+      }
+
+      const slotIndex = Number(slot.dataset.index ?? -1);
+      const quest = getActiveQuests(this.playerData)[slotIndex];
+      if (!quest) {
+        this.hideQuestHudPopover();
+        return;
+      }
+
+      this.showQuestHudPopover(quest, slot);
+    };
+
+    this.questHudElement.querySelectorAll('.quest-hud-slot').forEach((slot) => {
+      slot.addEventListener('mouseenter', () => showSlotPopover(slot as HTMLElement));
+      slot.addEventListener('mouseleave', () => this.hideQuestHudPopover());
+    });
+  }
+
+  private showQuestHudPopover(quest: QuestConfig, slot: HTMLElement) {
+    if (!this.questHudElement) return;
+    const popover = this.questHudElement.querySelector('#quest-hud-popover') as HTMLElement | null;
+    if (!popover) return;
+
+    const hudRect = this.questHudElement.getBoundingClientRect();
+    const slotRect = slot.getBoundingClientRect();
+    const slotCenterX = slotRect.left + slotRect.width / 2 - hudRect.left;
+
+    popover.style.setProperty('--quest-popover-anchor-x', `${slotCenterX}px`);
+    popover.innerHTML = `
+      <div class="achievement-detail-item ui-frame-box locked quest-hud-popover-card">
+        ${this.buildQuestCardHTML(quest, false, true)}
+      </div>
+    `;
+    popover.dataset.questId = quest.id;
+    popover.classList.add('is-visible');
+    popover.setAttribute('aria-hidden', 'false');
+  }
+
+  private hideQuestHudPopover() {
+    if (!this.questHudElement) return;
+    const popover = this.questHudElement.querySelector('#quest-hud-popover') as HTMLElement | null;
+    if (!popover) return;
+    popover.classList.remove('is-visible');
+    popover.setAttribute('aria-hidden', 'true');
+    delete popover.dataset.questId;
+  }
+
   private getCameraScrollForWorldCenter(worldX: number, worldY: number): { scrollX: number; scrollY: number } {
     const cam = this.cameras.main;
     return {
@@ -1616,6 +1731,88 @@ export default class GameScene extends Phaser.Scene {
     };
   }
 
+  private createGameWorldTextUI(): void {
+    const hint = document.createElement('div');
+    hint.id = 'player-world-hint';
+    hint.className = 'player-world-hint';
+    hint.style.display = 'none';
+    document.body.appendChild(hint);
+    this.playerHintElement = hint;
+
+    const biteMark = document.createElement('div');
+    biteMark.id = 'player-bite-mark';
+    biteMark.className = 'player-bite-mark';
+    biteMark.textContent = '!';
+    biteMark.style.display = 'none';
+    biteMark.style.fontSize = `${Math.round(config.bite['4-1_ビックリマークサイズ'] * 1.25)}px`;
+    document.body.appendChild(biteMark);
+    this.biteMarkElement = biteMark;
+
+    const boardLabel = document.createElement('div');
+    boardLabel.id = 'bulletin-board-world-label';
+    boardLabel.className = 'bulletin-board-world-label';
+    boardLabel.textContent = '掲示板';
+    document.body.appendChild(boardLabel);
+    this.bulletinBoardLabelElement = boardLabel;
+  }
+
+  private showPlayerHint(text: string, tone: 'normal' | 'urgent' = 'normal'): void {
+    if (!this.playerHintElement) return;
+    this.playerHintElement.textContent = text;
+    this.playerHintElement.classList.toggle('player-world-hint--urgent', tone === 'urgent');
+    this.playerHintElement.style.display = 'block';
+    this.updateGameWorldTextPositions();
+  }
+
+  private hidePlayerHint(): void {
+    if (this.playerHintElement) {
+      this.playerHintElement.style.display = 'none';
+    }
+  }
+
+  private showBiteMark(): void {
+    if (!this.biteMarkElement) return;
+    this.biteMarkElement.style.display = 'block';
+    this.updateGameWorldTextPositions();
+  }
+
+  private hideBiteMark(): void {
+    if (this.biteMarkElement) {
+      this.biteMarkElement.style.display = 'none';
+      this.biteMarkElement.style.setProperty('--world-text-scale', '1');
+    }
+  }
+
+  private updateGameWorldTextPositions(): void {
+    if (!this.player) return;
+    const playerHint = this.worldToViewport(
+      this.player.x,
+      this.player.y - this.player.displayHeight * 0.75 - 18,
+    );
+    if (this.playerHintElement) {
+      this.playerHintElement.style.left = `${playerHint.x}px`;
+      this.playerHintElement.style.top = `${playerHint.y}px`;
+    }
+
+    const biteMark = this.worldToViewport(
+      this.player.x,
+      this.player.y - this.player.displayHeight * 0.9 - 40,
+    );
+    if (this.biteMarkElement) {
+      this.biteMarkElement.style.left = `${biteMark.x}px`;
+      this.biteMarkElement.style.top = `${biteMark.y}px`;
+    }
+
+    const boardLabel = this.worldToViewport(
+      this.bulletinBoardZone.x,
+      this.bulletinBoardZone.y - 42,
+    );
+    if (this.bulletinBoardLabelElement) {
+      this.bulletinBoardLabelElement.style.left = `${boardLabel.x}px`;
+      this.bulletinBoardLabelElement.style.top = `${boardLabel.y}px`;
+    }
+  }
+
   /** 投擲ゲージをキャラの少し下（viewport 座標）に置く */
   private getCastGaugeViewportCenter(): { x: number; y: number } {
     const gap = config.casting['2-5_ゲージ_キャラ下余白'] * FISHING_GAUGE_UI_SCALE;
@@ -1652,20 +1849,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateUIPositions() {
-    const cam = this.cameras.main;
-    const width = cam.width;
-    
-    // カメラのスクロール位置（ワールド座標でのカメラ左上）
-    const scrollX = cam.scrollX;
-    const scrollY = cam.scrollY;
-    
-    const screenCenterX = scrollX + width / 2;
-    const screenTop = scrollY;
-
-    // ヒントテキスト（画面上部中央）
-    this.hintText.setPosition(screenCenterX, screenTop + 100);
-
     this.layoutFishingGaugeOverlay();
+    this.updateGameWorldTextPositions();
 
     // モーダル位置の更新はリサイズ時のみ（カメラ位置変更時は不要）
     // モーダルは固定位置なので、カメラが動いても位置を更新する必要はない
@@ -1730,6 +1915,7 @@ export default class GameScene extends Phaser.Scene {
     
     savePlayerData(this.playerData);
     this.updateStatusUI();
+    this.updateQuestHudUI();
     
     // 統合BookUIが開いている場合はリストを更新
     if (this.unifiedBookOpen) {
@@ -1764,6 +1950,7 @@ export default class GameScene extends Phaser.Scene {
     const topModalId = this.modalStack[this.modalStack.length - 1];
     
     if (hasOpenModal) {
+      this.hidePlayerHint();
       // 最上位モーダルの操作のみ処理
       if (topModalId === this.MODAL_IDS.INVENTORY && !this.detailModalOpen) {
         this.handleInventoryNavigation();
@@ -1831,12 +2018,13 @@ export default class GameScene extends Phaser.Scene {
 
     // BITE状態でエクスクラメーションを点滅
     if (this.state === FishingState.BITE) {
-        this.exclamation.setScale(1 + Math.sin(time / 50) * 0.2);
+        this.biteMarkElement?.style.setProperty('--world-text-scale', `${1 + Math.sin(time / 50) * 0.2}`);
     }
 
     this.updateFishingRig(time, delta);
     this.updateCameraFollow(delta);
     this.drawFishingRig();
+    this.updateGameWorldTextPositions();
 
     this.refreshKbSelectionPointer();
   }
@@ -2727,7 +2915,7 @@ export default class GameScene extends Phaser.Scene {
     this.prepareCastingRig();
     this.fishingGaugeOverlay.setCastVisible(true);
     this.layoutFishingGaugeOverlay();
-    this.hintText.setText('SPACE を離して投げる！').setVisible(true);
+    this.showPlayerHint('SPACE を離して投げる！');
   }
 
   updateCasting(delta: number) {
@@ -2783,7 +2971,7 @@ export default class GameScene extends Phaser.Scene {
     const castTarget = this.computeFloatTarget(distance);
     if (!this.isPointInWater(castTarget.x, castTarget.y)) {
       this.fishingGaugeOverlay.setCastVisible(false);
-      this.hintText.setVisible(false);
+      this.hidePlayerHint();
       this.state = FishingState.IDLE;
       this.showResult("水の方を向いてください", 1500);
       return;
@@ -2791,7 +2979,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.state = FishingState.WAITING;
     this.fishingGaugeOverlay.setCastVisible(false);
-    this.hintText.setVisible(false);
+    this.hidePlayerHint();
     if (this.resultTextElement) {
       this.resultTextElement.style.display = 'none';
     }
@@ -2833,7 +3021,7 @@ export default class GameScene extends Phaser.Scene {
     const waitTime = Phaser.Math.Between(minWait, maxWait);
     this.biteTimer = this.time.delayedCall(waitTime, () => this.triggerBite());
     
-    this.hintText.setText('待機中...').setVisible(true);
+    this.showPlayerHint('待機中...');
   }
 
   triggerBite() {
@@ -2841,10 +3029,10 @@ export default class GameScene extends Phaser.Scene {
     this.state = FishingState.BITE;
     
     // 派手なエフェクト
-    this.exclamation.setPosition(this.player.x, this.player.y - 50).setVisible(true);
+    this.showBiteMark();
     
     // ヒント表示
-    this.hintText.setText('🎣 SPACE を押せ！').setVisible(true);
+    this.showPlayerHint('🎣 SPACE を押せ！', 'urgent');
 
     // 反応時間
     const reactionTime = config.bite['4-3_反応時間'] * 1000;
@@ -2975,8 +3163,8 @@ export default class GameScene extends Phaser.Scene {
 
   startFighting() {
     if (this.biteTimeout) this.biteTimeout.remove();
-    this.exclamation.setVisible(false);
-    this.hintText.setVisible(false);
+    this.hideBiteMark();
+    this.hidePlayerHint();
     
     // ファイト開始時にエサを消費
     if (this.playerData.equippedBaitId) {
@@ -3191,6 +3379,7 @@ export default class GameScene extends Phaser.Scene {
             [...completedCatchQuests, ...completedStreakQuests].forEach((quest) => {
               this.showQuestNotification(quest);
             });
+            this.updateQuestHudUI();
 
             const stars = rarityStars[this.currentFish.rarity];
             const duration = config.result['6-2_成功表示時間'] * 1000;
@@ -3228,6 +3417,7 @@ export default class GameScene extends Phaser.Scene {
         allCompletedQuests.forEach((quest) => {
           this.showQuestNotification(quest);
         });
+        this.updateQuestHudUI();
         if (allCompletedQuests.length > 0 && this.unifiedBookOpen && this.unifiedBookTab === 'quest') {
           this.updateUnifiedBookList();
           this.updateUnifiedBookDetail();
@@ -3267,10 +3457,12 @@ export default class GameScene extends Phaser.Scene {
           });
           const completedLevelQuests = onQuestLevelUp(this.playerData);
           completedLevelQuests.forEach((quest) => this.showQuestNotification(quest));
+          this.updateQuestHudUI();
         }
         
         savePlayerData(this.playerData);
         this.updateStatusUI();
+        this.updateQuestHudUI();
 
         const stars = rarityStars[this.currentFish.rarity];
         const duration = config.result['6-2_成功表示時間'] * 1000;
@@ -3314,9 +3506,9 @@ export default class GameScene extends Phaser.Scene {
     if (this.biteTimer) this.biteTimer.remove();
     if (this.biteTimeout) this.biteTimeout.remove();
     this.resetFishingLineState();
-    this.exclamation.setVisible(false);
+    this.hideBiteMark();
     this.fishingGaugeOverlay.setCastVisible(false);
-    this.hintText.setVisible(false);
+    this.hidePlayerHint();
   }
 
   showResult(text: string, duration: number, options?: { resetFishingStateOnEnd?: boolean }) {
@@ -3541,7 +3733,7 @@ export default class GameScene extends Phaser.Scene {
     }
     this.hideCatchResultPopup();
     this.hideAndResetFightOverlay();
-    this.hintText.setVisible(false);
+    this.hidePlayerHint();
   }
 
   // ============================================
@@ -4553,6 +4745,16 @@ export default class GameScene extends Phaser.Scene {
     } else {
       this.unifiedBookUIElement.setAttribute('data-tab', tab);
       this.restoreBookDetailStructure();
+    }
+
+    if (this.unifiedBookDetailPlaceholderElement) {
+      if (tab === 'quest') {
+        this.unifiedBookDetailPlaceholderElement.textContent = 'クエストを選んでみよう！';
+      } else if (tab === 'achievement') {
+        this.unifiedBookDetailPlaceholderElement.textContent = 'カテゴリを選んでみよう！';
+      } else {
+        this.unifiedBookDetailPlaceholderElement.textContent = '魚を釣り上げよう！';
+      }
     }
 
     // リストと詳細を更新
@@ -7068,8 +7270,8 @@ export default class GameScene extends Phaser.Scene {
             <img src="/images/ui/Book%20UI/reward-label.svg" alt="報酬" class="achievement-detail-reward__label-image" width="48" height="14" decoding="async" />
           </div>
           <div class="achievement-detail-reward__values">
-            ${reward.money ? `<span class="achievement-detail-reward__line">💰${reward.money}G</span>` : ''}
-            ${reward.exp ? `<span class="achievement-detail-reward__line">⭐${reward.exp}EXP</span>` : ''}
+            ${reward.money ? `<span class="achievement-detail-reward__line"><span class="achievement-detail-reward__icon">💰</span><span class="achievement-detail-reward__amount">${reward.money}</span><span class="achievement-detail-reward__unit">G</span></span>` : ''}
+            ${reward.exp ? `<span class="achievement-detail-reward__line"><span class="achievement-detail-reward__icon">⭐</span><span class="achievement-detail-reward__amount">${reward.exp}</span><span class="achievement-detail-reward__unit">EXP</span></span>` : ''}
           </div>
         </div>
       </div>`
@@ -7099,8 +7301,8 @@ export default class GameScene extends Phaser.Scene {
                 <div class="achievement-detail-item__fill" style="width: ${fillW}%;"></div>
               </div>
               <div class="achievement-detail-item__meta">
-                <span>${progressLabel}</span>
-                <span>${pctLabel}%</span>
+                <span class="achievement-detail-item__progress-value">${progressLabel}</span>
+                <span class="achievement-detail-item__progress-value">${pctLabel}<span class="achievement-detail-item__progress-unit">%</span></span>
               </div>
             </div>
           </div>
@@ -7242,7 +7444,7 @@ export default class GameScene extends Phaser.Scene {
 
   createQuestLogCategoryItem(category: string, count: number, index: number): HTMLElement {
     const item = document.createElement('div');
-    item.className = 'achievement-category-item book-ui-node ui-frame-box';
+    item.className = 'quest-log-category book-ui-node ui-frame-box';
     item.setAttribute('data-category', category);
     item.setAttribute('data-index', index.toString());
 
@@ -7252,27 +7454,31 @@ export default class GameScene extends Phaser.Scene {
     };
     const data = categoryData[category] || { name: category };
 
-    const segments: string[] = [];
-    const segCount = category === 'active' ? MAX_ACTIVE_QUESTS : Math.max(count, 1);
-    for (let i = 0; i < segCount; i++) {
-      const on = category === 'active' ? i < count : i < count;
-      segments.push(
-        `<span class="achievement-category-seg ${on ? 'achievement-category-seg--on' : 'achievement-category-seg--off'}" aria-hidden="true"></span>`
-      );
+    if (category === 'active') {
+      const segments: string[] = [];
+      for (let i = 0; i < MAX_ACTIVE_QUESTS; i++) {
+        const on = i < count;
+        segments.push(
+          `<span class="quest-log-slot-seg ${on ? 'quest-log-slot-seg--on' : 'quest-log-slot-seg--off'}" aria-hidden="true"></span>`
+        );
+      }
+      item.innerHTML = `
+        <div class="quest-log-category__head">
+          <span class="quest-log-category__name">${data.name}</span>
+          <span class="quest-log-category__count"><b>${count}</b>/${MAX_ACTIVE_QUESTS}</span>
+        </div>
+        <div class="quest-log-category__slots" role="img" aria-label="受注中 ${count}/${MAX_ACTIVE_QUESTS}">
+          ${segments.join('')}
+        </div>
+      `;
+    } else {
+      item.innerHTML = `
+        <div class="quest-log-category__head">
+          <span class="quest-log-category__name">${data.name}</span>
+          <span class="quest-log-category__count"><b>${count}</b>件</span>
+        </div>
+      `;
     }
-
-    const countLabel =
-      category === 'active' ? `${count}/${MAX_ACTIVE_QUESTS} 受注中` : `${count} 完了`;
-
-    item.innerHTML = `
-      <div class="achievement-category-item__head">
-        <span class="achievement-category-item__name">${data.name}</span>
-        <span class="achievement-category-item__count">${countLabel}</span>
-      </div>
-      <div class="achievement-category-item__segments" role="img" aria-label="${data.name} ${countLabel}">
-        ${segments.join('')}
-      </div>
-    `;
 
     item.addEventListener('click', () => {
       this.selectQuestLogCategory(category, index);
@@ -7298,13 +7504,60 @@ export default class GameScene extends Phaser.Scene {
     this.updateUnifiedBookDetail();
   }
 
-  private buildQuestCardHTML(quest: QuestConfig, isCompleted: boolean): string {
+  private buildQuestCardRewardHTML(reward: QuestConfig['reward']): string {
+    const rewardLines: string[] = [];
+    if (reward?.money) {
+      rewardLines.push(
+        `<span class="quest-card__reward-line"><span class="quest-card__reward-icon">💰</span><span class="quest-card__reward-amount">${reward.money}</span><span class="quest-card__reward-unit">G</span></span>`,
+      );
+    }
+    if (reward?.exp) {
+      rewardLines.push(
+        `<span class="quest-card__reward-line"><span class="quest-card__reward-icon">⭐</span><span class="quest-card__reward-amount">${reward.exp}</span><span class="quest-card__reward-unit">EXP</span></span>`,
+      );
+    }
+    if (rewardLines.length === 0) return '';
+    return `
+      <div class="quest-card__reward">
+        <div class="quest-card__reward-values">${rewardLines.join('')}</div>
+      </div>`;
+  }
+
+  private buildQuestLogCardHTML(quest: QuestConfig, isCompleted: boolean): string {
+    const group = this.getQuestGroup(quest);
+    const progressPercent = Math.round(getQuestProgressRatio(this.playerData, quest) * 100);
+    const prog = getQuestProgressDisplay(this.playerData, quest);
+    const dispCur = isCompleted ? prog.target : prog.current;
+    const dispTgt = prog.target;
+    const unitPart = prog.unit ? ` ${prog.unit}` : '';
+    const progressLabel = `${dispCur} / ${dispTgt}${unitPart}`;
+    const fillW = isCompleted ? 100 : progressPercent;
+    const pctLabel = isCompleted ? 100 : progressPercent;
+    return `
+      <div class="quest-card__ribbon quest-card__ribbon--${group.key}">${group.label}</div>
+      <div class="quest-card__icon ui-frame-box">${this.buildQuestCardIcon(quest)}</div>
+      <div class="quest-card__title">${quest.name}</div>
+      <div class="quest-card__divider"></div>
+      <p class="quest-card__desc">${quest.description}</p>
+      ${this.buildQuestCardRewardHTML(quest.reward)}
+      <div class="quest-card__progress">
+        <div class="quest-card__progress-track">
+          <div class="quest-card__progress-fill" style="width: ${fillW}%;"></div>
+        </div>
+        <div class="quest-card__progress-meta">
+          <span class="quest-card__progress-value">${progressLabel}</span>
+          <span class="quest-card__progress-value">${pctLabel}<span class="quest-card__progress-unit">%</span></span>
+        </div>
+      </div>`;
+  }
+
+  private buildQuestCardHTML(quest: QuestConfig, isCompleted: boolean, hideProgressUnit = false): string {
     const progress = getQuestProgressRatio(this.playerData, quest);
     const progressPercent = Math.round(progress * 100);
     const prog = getQuestProgressDisplay(this.playerData, quest);
     const dispCur = isCompleted ? prog.target : prog.current;
     const dispTgt = prog.target;
-    const unitPart = prog.unit ? ` ${prog.unit}` : '';
+    const unitPart = !hideProgressUnit && prog.unit ? ` ${prog.unit}` : '';
     const progressLabel = `${dispCur} / ${dispTgt}${unitPart}`;
     const reward = quest.reward;
     const rewardBlock = reward
@@ -7315,8 +7568,8 @@ export default class GameScene extends Phaser.Scene {
             <img src="/images/ui/Book%20UI/reward-label.svg" alt="報酬" class="achievement-detail-reward__label-image" width="48" height="14" decoding="async" />
           </div>
           <div class="achievement-detail-reward__values">
-            ${reward.money ? `<span class="achievement-detail-reward__line">💰${reward.money}G</span>` : ''}
-            ${reward.exp ? `<span class="achievement-detail-reward__line">⭐${reward.exp}EXP</span>` : ''}
+            ${reward.money ? `<span class="achievement-detail-reward__line"><span class="achievement-detail-reward__icon">💰</span><span class="achievement-detail-reward__amount">${reward.money}</span><span class="achievement-detail-reward__unit">G</span></span>` : ''}
+            ${reward.exp ? `<span class="achievement-detail-reward__line"><span class="achievement-detail-reward__icon">⭐</span><span class="achievement-detail-reward__amount">${reward.exp}</span><span class="achievement-detail-reward__unit">EXP</span></span>` : ''}
           </div>
         </div>
       </div>`
@@ -7336,7 +7589,7 @@ export default class GameScene extends Phaser.Scene {
           <div class="achievement-detail-item__body">
             <div class="achievement-detail-item__top">
               <div class="achievement-detail-item__textcol">
-                <div class="achievement-detail-item__title">${quest.emoji} ${quest.name}</div>
+                <div class="achievement-detail-item__title">${quest.name}</div>
                 <p class="achievement-detail-item__desc">${quest.description}</p>
               </div>
               ${rewardBlock}
@@ -7346,8 +7599,8 @@ export default class GameScene extends Phaser.Scene {
                 <div class="achievement-detail-item__fill" style="width: ${fillW}%;"></div>
               </div>
               <div class="achievement-detail-item__meta">
-                <span>${progressLabel}</span>
-                <span>${pctLabel}%</span>
+                <span class="achievement-detail-item__progress-value">${progressLabel}</span>
+                <span class="achievement-detail-item__progress-value">${pctLabel}<span class="achievement-detail-item__progress-unit">%</span></span>
               </div>
             </div>
           </div>
@@ -7362,42 +7615,81 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookDetailPlaceholderElement.style.display = 'none';
     this.unifiedBookDetailElement.classList.add('active');
 
-    const quests =
-      category === 'active'
-        ? getActiveQuests(this.playerData)
-        : getCompletedQuests(this.playerData);
+    if (category === 'active') {
+      const quests = getActiveQuests(this.playerData);
+      const slots: string[] = [];
+
+      for (let i = 0; i < MAX_ACTIVE_QUESTS; i++) {
+        if (i < quests.length) {
+          const quest = quests[i];
+          slots.push(`
+            <div class="achievement-detail-item quest-card ui-frame-box" data-quest-id="${quest.id}">
+              ${this.buildQuestLogCardHTML(quest, false)}
+            </div>`);
+        } else {
+          slots.push(`
+            <div class="quest-log-slot-empty quest-card ui-frame-box" aria-label="空きクエストスロット">
+              <span class="quest-log-slot-empty__label">空きスロット</span>
+              <span class="quest-log-slot-empty__hint">マップの掲示板（Fキー）でクエストを受注できます</span>
+            </div>`);
+        }
+      }
+
+      this.unifiedBookDetailElement.innerHTML = `
+        <div class="achievement-detail-list quest-log-list quest-board-cards">
+          ${slots.join('')}
+        </div>
+      `;
+
+      const n = quests.length;
+      if (n === 0) {
+        this.achievementNavArea = 'left';
+        return;
+      }
+      if (this.achievementNavArea === 'right') {
+        this.achievementDetailSelectedIndex = Math.min(
+          Math.max(0, this.achievementDetailSelectedIndex),
+          n - 1,
+        );
+        requestAnimationFrame(() => {
+          this.syncAchievementDetailKeyboardSelection();
+          const list = this.unifiedBookDetailElement?.querySelectorAll(
+            '.achievement-detail-list .achievement-detail-item',
+          );
+          list?.[this.achievementDetailSelectedIndex]?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+          });
+        });
+      }
+      return;
+    }
+
+    const quests = getCompletedQuests(this.playerData);
 
     if (quests.length === 0) {
-      const emptyMessage =
-        category === 'active'
-          ? '受注中のクエストはありません。掲示板でクエストを受けてみましょう。'
-          : '完了したクエストはまだありません。';
       this.unifiedBookDetailElement.innerHTML = `
-        <div class="quest-log-empty ui-frame-box">${emptyMessage}</div>
+        <div class="quest-log-empty ui-frame-box">完了したクエストはまだありません。</div>
       `;
       this.achievementNavArea = 'left';
       return;
     }
 
     this.unifiedBookDetailElement.innerHTML = `
-      <div class="achievement-detail-list">
+      <div class="achievement-detail-list quest-log-list quest-board-cards quest-log-list--completed">
         ${quests
-          .map((quest) => {
-            const isCompleted = category === 'completed';
-            return `
-            <div class="achievement-detail-item ui-frame-box ${isCompleted ? 'unlocked' : 'locked'}">
-              ${this.buildQuestCardHTML(quest, isCompleted)}
-            </div>`;
-          })
+          .map(
+            (quest) => `
+            <div class="achievement-detail-item quest-card ui-frame-box" data-quest-id="${quest.id}">
+              ${this.buildQuestLogCardHTML(quest, true)}
+              <img class="quest-card__clear" src="/images/ui/Book%20UI/clear.png" alt="クリア済み" decoding="async" />
+            </div>`,
+          )
           .join('')}
       </div>
     `;
 
     const n = quests.length;
-    if (n === 0) {
-      this.achievementNavArea = 'left';
-      return;
-    }
     if (this.achievementNavArea === 'right') {
       this.achievementDetailSelectedIndex = Math.min(
         Math.max(0, this.achievementDetailSelectedIndex),
@@ -7463,12 +7755,13 @@ export default class GameScene extends Phaser.Scene {
 
   private updateIdleWorldHints() {
     if (this.modalStack.length > 0 || this.unifiedBookOpen) {
+      this.hidePlayerHint();
       return;
     }
     if (this.isNearBulletinBoard()) {
-      this.hintText.setText('F: 掲示板を見る').setVisible(true);
+      this.showPlayerHint('F: 掲示板を見る');
     } else {
-      this.hintText.setVisible(false);
+      this.hidePlayerHint();
     }
   }
 
@@ -7645,19 +7938,13 @@ export default class GameScene extends Phaser.Scene {
       card.setAttribute('data-quest-id', quest.id);
       card.setAttribute('data-index', String(index));
       card.setAttribute('data-group', group.key);
-      const rewardLines: string[] = [];
-      if (quest.reward?.money) rewardLines.push(`<span class="quest-card__reward-line">💰 ${quest.reward.money}G</span>`);
-      if (quest.reward?.exp) rewardLines.push(`<span class="quest-card__reward-line">⭐ ${quest.reward.exp}EXP</span>`);
       card.innerHTML = `
         <div class="quest-card__ribbon quest-card__ribbon--${group.key}">${group.label}</div>
         <div class="quest-card__icon ui-frame-box">${this.buildQuestCardIcon(quest)}</div>
         <div class="quest-card__title">${quest.name}</div>
         <div class="quest-card__divider"></div>
         <p class="quest-card__desc">${quest.description}</p>
-        ${rewardLines.length > 0 ? `
-        <div class="quest-card__reward">
-          <div class="quest-card__reward-values">${rewardLines.join('')}</div>
-        </div>` : ''}
+        ${this.buildQuestCardRewardHTML(quest.reward)}
         <button type="button" class="quest-card__accept nes-btn ui-frame-box" data-quest-id="${quest.id}"><span class="quest-card__accept-label">受注する</span></button>
       `;
       card.addEventListener('click', (e) => {
@@ -7753,6 +8040,7 @@ export default class GameScene extends Phaser.Scene {
     }
     savePlayerData(this.playerData);
     this.updateQuestBoardContent();
+    this.updateQuestHudUI();
     if (this.unifiedBookOpen && this.unifiedBookTab === 'quest') {
       this.updateUnifiedBookList();
       this.updateUnifiedBookDetail();

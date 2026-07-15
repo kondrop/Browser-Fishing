@@ -10,7 +10,9 @@ import {
   type QuestConfig,
   getStaticQuestById,
 } from './questConfig';
-import { ensureBoardQuests } from './questGenerator';
+import { ensureBoardQuests, migrateBoardQuestsIfNeeded, resetBoardQuests } from './questGenerator';
+
+export { resetBoardQuests, migrateBoardQuestsIfNeeded };
 
 const RARITY_ORDER: Rarity[] = [
   Rarity.COMMON,

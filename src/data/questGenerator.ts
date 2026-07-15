@@ -42,9 +42,10 @@ const TEMPLATE_DEFS: TemplateDef[] = [
   { id: 'environment', emoji: '🌊', weight: 16 },
 ];
 
+const CATCH_TARGET_COUNT_RANGE: [number, number] = [1, 3];
 const QUEST_COUNT_RANGE: [number, number] = [1, 3];
-const JUNK_COUNT_RANGE: [number, number] = [1, 3];
 const RARITY_COUNT_RANGE: [number, number] = [3, 5];
+const BOARD_QUEST_REWARD_MULTIPLIER = 1.5;
 const MIN_SIZE_CM = 22;
 const MAX_SIZE_CM = 11;
 const QUEST_RARITY = Rarity.UNCOMMON;
@@ -58,6 +59,11 @@ const REWARD_EXP_FLAT = 25;
 
 function getRealFish(): FishConfig[] {
   return fishDatabase.filter((f) => !f.id.startsWith('junk_'));
+}
+
+/** 特定魚クエスト用（レジェンダリーは未発見ネタバレ防止のため除外） */
+function getQuestTargetFish(): FishConfig[] {
+  return getRealFish().filter((f) => f.rarity !== Rarity.LEGENDARY);
 }
 
 function getJunkItems(): FishConfig[] {
@@ -161,8 +167,8 @@ function calcReward(
   };
   const base = target * 1.6 * typeMul[templateId];
   return {
-    money: Math.round(base * REWARD_MONEY_PER_BASE + REWARD_MONEY_FLAT),
-    exp: Math.round(base * REWARD_EXP_PER_BASE + REWARD_EXP_FLAT),
+    money: Math.round((base * REWARD_MONEY_PER_BASE + REWARD_MONEY_FLAT) * BOARD_QUEST_REWARD_MULTIPLIER),
+    exp: Math.round((base * REWARD_EXP_PER_BASE + REWARD_EXP_FLAT) * BOARD_QUEST_REWARD_MULTIPLIER),
   };
 }
 
@@ -233,8 +239,10 @@ function createQuestId(): string {
 export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
   const template = pickTemplate(playerData.level);
   const countRange =
-    template.id === 'catch_junk'
-      ? JUNK_COUNT_RANGE
+    template.id === 'catch_junk' ||
+    template.id === 'catch_fish' ||
+    template.id === 'equipment'
+      ? CATCH_TARGET_COUNT_RANGE
       : template.id === 'catch_rarity'
         ? RARITY_COUNT_RANGE
         : QUEST_COUNT_RANGE;
@@ -242,7 +250,10 @@ export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
   const count = randomInt(countMin, countMax);
 
   const realFish = getRealFish();
-  const fish = pickRandom(realFish);
+  const questTargetFish = getQuestTargetFish();
+  const fish = template.id === 'catch_fish'
+    ? pickRandom(questTargetFish)
+    : pickRandom(realFish);
   const junkItems = getJunkItems();
   const specificJunk = junkItems.length > 0 && Math.random() < 0.35 ? pickRandom(junkItems) : null;
   const habitat = pickRandom([Habitat.FRESHWATER, Habitat.SALTWATER, Habitat.STREAM]);
@@ -345,8 +356,37 @@ export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
   };
 }
 
+export const BOARD_QUEST_GENERATION_VERSION = 2;
+
 export function registerDynamicQuest(playerData: PlayerData, quest: QuestConfig): void {
   playerData.questRegistry.set(quest.id, quest);
+}
+
+/** 掲示板のクエストを全件差し替え（受注中・完了済みは保持） */
+export function resetBoardQuests(playerData: PlayerData): void {
+  const preserveIds = new Set<string>([
+    ...playerData.activeQuests,
+    ...playerData.completedQuestIds,
+  ]);
+
+  for (const id of playerData.boardQuestIds) {
+    if (!preserveIds.has(id)) {
+      playerData.questRegistry.delete(id);
+    }
+  }
+
+  playerData.boardQuestIds = [];
+  ensureBoardQuests(playerData);
+  playerData.boardQuestGenerationVersion = BOARD_QUEST_GENERATION_VERSION;
+}
+
+export function migrateBoardQuestsIfNeeded(playerData: PlayerData): boolean {
+  const version = playerData.boardQuestGenerationVersion ?? 1;
+  if (version < BOARD_QUEST_GENERATION_VERSION) {
+    resetBoardQuests(playerData);
+    return true;
+  }
+  return false;
 }
 
 export function ensureBoardQuests(playerData: PlayerData): void {

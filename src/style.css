@@ -29,6 +29,63 @@ canvas {
   image-rendering: crisp-edges;
 }
 
+.player-world-hint,
+.player-bite-mark,
+.bulletin-board-world-label {
+  position: fixed;
+  transform: translate(-50%, -100%) scale(var(--world-text-scale, 1));
+  transform-origin: center bottom;
+  z-index: 180;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.player-world-hint {
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: bold;
+  line-height: 1;
+  padding: 8px 12px;
+  text-shadow:
+    3px 0 #000000,
+    -3px 0 #000000,
+    0 3px #000000,
+    0 -3px #000000,
+    2px 2px #000000,
+    -2px 2px #000000,
+    2px -2px #000000,
+    -2px -2px #000000;
+}
+
+.player-world-hint--urgent {
+  color: #fff2a8;
+}
+
+.player-bite-mark {
+  color: #ffff00;
+  font-weight: bold;
+  line-height: 1;
+  text-shadow:
+    5px 0 #ff0000,
+    -5px 0 #ff0000,
+    0 5px #ff0000,
+    0 -5px #ff0000,
+    4px 4px #ff0000,
+    -4px 4px #ff0000,
+    4px -4px #ff0000,
+    -4px -4px #ff0000;
+}
+
+.bulletin-board-world-label {
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.53);
+  border-radius: 2px;
+}
+
 /* 全ての画像のアンチエイリアスを解除 */
 img {
   image-rendering: pixelated;
@@ -519,6 +576,201 @@ span.level-label-value {
   line-height: 1;
   pointer-events: none;
   z-index: 3;
+}
+
+/* 右下: 受注中クエストHUD */
+.quest-hud {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.quest-hud-slot {
+  --quest-progress-angle: 0deg;
+  --quest-progress-color: #58d96f;
+  position: relative;
+  width: 66px;
+  height: 66px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.35), transparent 25%),
+    #5f2d1d;
+  box-shadow:
+    0 4px 0 rgba(50, 14, 14, 0.45),
+    inset 0 0 0 4px rgba(50, 14, 14, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transition: filter 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+}
+
+.quest-hud-slot:not(.is-empty):hover {
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.35), transparent 25%),
+    var(--color-primitive-orange-600);
+  box-shadow:
+    0 4px 0 rgba(50, 14, 14, 0.45),
+    inset 0 0 0 4px rgba(194, 104, 31, 0.85);
+}
+
+.quest-hud-slot__ring {
+  position: absolute;
+  inset: 5px;
+  border-radius: inherit;
+  background:
+    conic-gradient(var(--quest-progress-color) var(--quest-progress-angle), rgba(255, 255, 255, 0.16) 0deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  z-index: 1;
+}
+
+.quest-hud-slot__inner {
+  position: relative;
+  z-index: 2;
+  width: 46px;
+  height: 46px;
+  border-radius: inherit;
+  background: #fffdf4;
+  box-shadow:
+    inset 0 0 0 3px rgba(95, 45, 29, 0.45),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quest-hud-slot__img {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.quest-hud-slot__emoji {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.quest-hud-slot__progress {
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  z-index: 3;
+  min-width: 34px;
+  transform: translateX(-50%);
+  padding: 1px 5px 2px;
+  border-radius: 999px;
+  background: rgba(50, 14, 14, 0.82);
+  color: #ffffff;
+  font-family: "Micro 5" !important;
+  font-size: 18px;
+  line-height: 1;
+  text-align: center;
+}
+
+.quest-hud-slot.is-empty {
+  filter: grayscale(1);
+  opacity: 0.52;
+}
+
+.quest-hud-slot.is-empty .quest-hud-slot__ring {
+  background: conic-gradient(#8a8178 360deg, transparent 0deg);
+}
+
+.quest-hud-slot.is-empty .quest-hud-slot__inner {
+  background: #a9a39b;
+}
+
+.quest-hud-slot.is-empty .quest-hud-slot__emoji {
+  color: rgba(50, 14, 14, 0.55);
+}
+
+.quest-hud-slot.is-empty .quest-hud-slot__progress {
+  display: none;
+}
+
+.quest-hud-slot.is-complete {
+  --quest-progress-color: #ffd24a;
+  transform: translateY(-2px);
+}
+
+.quest-hud-popover {
+  --quest-popover-anchor-x: calc(100% - 36px);
+  position: absolute;
+  left: min(var(--quest-popover-anchor-x), calc(100% - 150px));
+  bottom: calc(100% + 16px);
+  width: 220px;
+  transform: translateX(-50%) translateY(8px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0s 0.14s;
+  z-index: 12;
+}
+
+.quest-hud-popover.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0s;
+}
+
+.quest-hud-popover-card.ui-frame-box {
+  --frame-fill-color: var(--color-primitive-natural-sand-400);
+  width: 100%;
+  padding: 12px;
+}
+
+.quest-hud-popover-card .achievement-detail-item__inner {
+  min-height: 0;
+}
+
+.quest-hud-popover-card .achievement-detail-item__row {
+  gap: 0;
+  padding: var(--space-8);
+}
+
+.quest-hud-popover-card .achievement-detail-item__body {
+  gap: var(--space-10);
+}
+
+.quest-hud-popover-card .achievement-detail-item__top {
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.quest-hud-popover-card .achievement-detail-item__textcol {
+  gap: var(--space-6);
+}
+
+.quest-hud-popover-card .achievement-detail-item__desc {
+  font-size: 13px;
+}
+
+.quest-hud-popover-card .achievement-detail-reward {
+  align-items: stretch;
+  width: 100%;
+}
+
+.quest-hud-popover-card .achievement-detail-reward__panel {
+  width: 100%;
+}
+
+.quest-hud-popover-card .achievement-detail-reward__label {
+  left: 0;
+}
+
+.quest-hud-popover-card .achievement-detail-reward__values {
+  gap: var(--space-16);
+  justify-content: center;
 }
 
 /* モーダル共通スタイル */
@@ -3062,16 +3314,14 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   display: none;
 }
 
-/* 実績・クエストタブ: Figma 19:241 左右比率・スクロール */
-#book-ui[data-tab="achievement"] .book-left-pane,
-#book-ui[data-tab="quest"] .book-left-pane {
+/* 実績タブ: Figma 19:241 左右比率・スクロール */
+#book-ui[data-tab="achievement"] .book-left-pane {
   width: 240px;
   flex: 0 0 240px;
   min-width: 0;
 }
 
-#book-ui[data-tab="achievement"] .book-right-pane,
-#book-ui[data-tab="quest"] .book-right-pane {
+#book-ui[data-tab="achievement"] .book-right-pane {
   flex: 1;
   min-width: 0;
   width: auto;
@@ -3079,8 +3329,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   gap: 0;
 }
 
-#book-ui[data-tab="achievement"] #book-list-scroll,
-#book-ui[data-tab="quest"] #book-list-scroll {
+#book-ui[data-tab="achievement"] #book-list-scroll {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -3092,7 +3341,69 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   grid-template-rows: unset;
 }
 
-#book-ui[data-tab="achievement"] .book-right-pane-inner,
+#book-ui[data-tab="achievement"] .book-right-pane-inner {
+  padding: var(--space-4) var(--space-8);
+  gap: var(--space-16);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
+}
+
+/* クエストタブ: カテゴリタブ（上）+ リスト（下）の縦積み */
+#book-ui[data-tab="quest"] .book-main-row {
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+#book-ui[data-tab="quest"] .book-left-pane {
+  width: 100%;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+#book-ui[data-tab="quest"] .book-left-pane-list-column {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+#book-ui[data-tab="quest"] .book-list-scroll-wrap {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+#book-ui[data-tab="quest"] .book-list-scroll-fade {
+  display: none;
+}
+
+#book-ui[data-tab="quest"] .book-right-pane {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  gap: 0;
+}
+
+#book-ui[data-tab="quest"] #book-list-scroll {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: visible;
+  padding: 0 4px;
+  width: 100%;
+  box-sizing: border-box;
+  grid-template-columns: unset;
+  grid-template-rows: unset;
+}
+
+#book-ui[data-tab="quest"] #book-list-scroll .quest-log-category.book-ui-node.ui-frame-box {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 #book-ui[data-tab="quest"] .book-right-pane-inner {
   padding: var(--space-4) var(--space-8);
   gap: var(--space-16);
@@ -3589,8 +3900,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 }
 
 /* 実績カテゴリは単一ノード（行なし）。book-ui-node 既定の横並び・幅を上書き */
-#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box,
-#book-ui[data-tab="quest"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box {
+#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box {
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
@@ -3603,8 +3913,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 }
 
 /* 左リスト共通の uiframe ではなく、スキルノード（.book-ui-node）と同じ border.png 枠に統一 */
-#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box::after,
-#book-ui[data-tab="quest"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box::after {
+#book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
@@ -3912,6 +4221,27 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   font-size: var(--font-size-achievement-reward-line);
 }
 
+.quest-hud-popover-card .achievement-detail-reward__line {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+}
+
+.quest-hud-popover-card .achievement-detail-reward__amount,
+.quest-hud-popover-card .achievement-detail-reward__unit,
+.quest-hud-popover-card .achievement-detail-item__progress-value,
+.quest-hud-popover-card .achievement-detail-item__progress-unit {
+  font-family: var(--font-family-display-numeric) !important;
+}
+
+.quest-hud-popover-card .achievement-detail-reward__amount {
+  font-size: calc(var(--font-size-achievement-reward-line) + 6px);
+}
+
+.quest-hud-popover-card .achievement-detail-reward__unit {
+  font-size: calc(var(--font-size-achievement-reward-line) + 3px);
+}
+
 .achievement-detail-item__progress {
   display: flex;
   flex-direction: column;
@@ -3943,6 +4273,15 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   font-size: var(--font-size-achievement-category-count);
   color: var(--color-semantic-text-primary);
   white-space: nowrap;
+}
+
+.quest-hud-popover-card .achievement-detail-item__progress-value {
+  font-size: calc(var(--font-size-achievement-category-count) + 6px);
+}
+
+.quest-hud-popover-card .achievement-detail-item__progress-unit {
+  font-size: calc(var(--font-size-achievement-category-count) + 3px);
+  margin-left: 1px;
 }
 
 .achievement-detail-stamp {
@@ -6628,7 +6967,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 /* 報酬ボックス */
 .quest-card__reward {
   width: 100%;
-  padding: var(--space-8);
+  padding: 0 var(--space-8);
   border-radius: 8px;
   background: var(--bg-panel-inner);
   display: flex;
@@ -6645,14 +6984,27 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-10);
 }
 
 .quest-card__reward-line {
   display: flex;
-  font-family: var(--font-family-display-numeric) !important;
-  font-size: var(--font-size-achievement-reward-line);
+  align-items: baseline;
+  gap: 1px;
   color: var(--color-primitive-orange-600);
+}
+
+.quest-card__reward-amount,
+.quest-card__reward-unit {
+  font-family: var(--font-family-display-numeric) !important;
+}
+
+.quest-card__reward-amount {
+  font-size: calc(var(--font-size-achievement-reward-line) + 12px);
+}
+
+.quest-card__reward-unit {
+  font-size: calc(var(--font-size-achievement-reward-line) + 8px);
 }
 
 /* 受注ボタン */
@@ -6674,4 +7026,363 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 
 .quest-card__accept:hover {
   filter: brightness(1.06);
+}
+
+/* 進捗（Book UI クエストログ用。掲示板カードの受注ボタンと同位置） */
+.quest-card__progress {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.quest-card__progress-track {
+  height: 20px;
+  border-radius: 5px;
+  background-color: var(--color-primitive-natural-sand-300);
+  overflow: hidden;
+  width: 100%;
+}
+
+.quest-card__progress-fill {
+  height: 100%;
+  background: var(--color-semantic-bg-active);
+  transition: width 0.3s;
+  border-radius: 5px 0 0 5px;
+  max-width: 100%;
+}
+
+.quest-card__progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+  font-size: var(--font-size-achievement-category-count);
+  color: var(--color-semantic-text-primary);
+  white-space: nowrap;
+}
+
+.quest-card__progress-value,
+.quest-card__progress-unit {
+  font-family: var(--font-family-display-numeric);
+}
+
+/* ============================================
+   クエストログ（Book UI クエストタブ）
+   ============================================ */
+
+.quest-log-category {
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-16);
+  align-items: center;
+  justify-content: flex-start;
+  padding: 16px;
+  margin: 0;
+  background: var(--color-semantic-bg-book-container);
+  box-sizing: border-box;
+  width: 100%;
+  font-family: var(--font-family-body);
+}
+
+#book-ui[data-tab="quest"] #book-list-scroll .quest-log-category.book-ui-node.ui-frame-box {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 0;
+  gap: var(--space-16);
+  padding: 16px;
+  --frame-fill-color: #f2e2b6;
+}
+
+#book-ui[data-tab="quest"] #book-list-scroll .quest-log-category.book-ui-node.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui #book-list-scroll .quest-log-category.is-selected.ui-frame-box::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui[data-tab="quest"] #book-list-scroll .quest-log-category.book-ui-node.ui-frame-box.is-selected {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui[data-tab="quest"]
+  #book-list-scroll
+  .quest-log-category.book-ui-node.ui-frame-box:not(.is-selected):hover {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-ui[data-tab="quest"]
+  #book-list-scroll
+  .quest-log-category.book-ui-node.ui-frame-box:not(.is-selected):hover::after {
+  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#book-ui.is-book-kb-input[data-tab="quest"]
+  #book-list-scroll
+  .quest-log-category.book-ui-node.ui-frame-box:not(.is-selected):hover {
+  --frame-fill-color: #cbb792;
+}
+
+#book-ui.is-book-kb-input[data-tab="quest"]
+  #book-list-scroll
+  .quest-log-category.book-ui-node.ui-frame-box:not(.is-selected):hover::after {
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+.quest-log-category__head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  line-height: normal;
+}
+
+.quest-log-category__name {
+  font-size: var(--font-size-achievement-category-name);
+  color: var(--color-semantic-text-primary);
+}
+
+.quest-log-category__count {
+  font-size: var(--font-size-achievement-category-count);
+  color: var(--color-semantic-text-muted);
+}
+
+.quest-log-category__count b {
+  font-family: var(--font-family-display-numeric);
+}
+
+.quest-log-category__slots {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.quest-log-slot-seg {
+  position: relative;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.quest-log-slot-seg::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 1px solid var(--color-semantic-border-soft);
+  box-sizing: border-box;
+}
+
+.quest-log-slot-seg--on {
+  --quest-log-slot-seg-fill: var(--color-semantic-bg-active);
+}
+
+.quest-log-slot-seg--off {
+  --quest-log-slot-seg-fill: var(--color-semantic-bg-nonactive);
+}
+
+.quest-log-slot-seg--on::before,
+.quest-log-slot-seg--off::before {
+  background: var(--quest-log-slot-seg-fill);
+}
+
+/* 受注中・完了一覧: 掲示板と同じ3列グリッド + quest-card */
+#book-ui[data-tab="quest"] .achievement-detail-list.quest-log-list.quest-board-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0 var(--space-8);
+  align-items: stretch;
+  align-content: start;
+  flex-direction: unset;
+  padding: var(--space-4) 0;
+}
+
+#book-ui[data-tab="quest"] .achievement-detail-list.quest-log-list.quest-board-cards.quest-log-list--completed {
+  gap: var(--space-16) var(--space-8);
+}
+
+#book-ui[data-tab="quest"] .quest-log-list.quest-board-cards .quest-card,
+#book-ui[data-tab="quest"] .quest-log-list.quest-log-list--completed .quest-card {
+  --frame-fill-color: #f3e6c4;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: var(--space-4);
+  padding: 16px;
+  cursor: default;
+}
+
+#book-ui[data-tab="quest"] .quest-log-list--completed .quest-card.ui-frame-box::before,
+#book-ui[data-tab="quest"] .quest-log-list--completed .quest-card.ui-frame-box::after {
+  opacity: 0.6;
+}
+
+#book-ui[data-tab="quest"] .quest-log-list--completed .quest-card__clear {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-4deg);
+  width: 160px;
+  max-width: calc(100% - 24px);
+  height: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+  z-index: 4;
+}
+
+#book-ui[data-tab="quest"] .quest-log-list .achievement-detail-item.quest-card.ui-frame-box {
+  --frame-scale: 3;
+  padding: 16px;
+}
+
+#book-ui[data-tab="quest"]
+  .quest-log-list
+  .achievement-detail-item.quest-card.ui-frame-box.achievement-detail-item--kb-selected {
+  --frame-fill-color: #fff6da;
+  transform: translateY(-2px);
+}
+
+/* 空きスロット（カード枠内） */
+#book-ui[data-tab="quest"] .quest-log-slot-empty.quest-card {
+  --frame-fill-color: var(--color-semantic-bg-nonactive);
+  min-height: 280px;
+  justify-content: center;
+  cursor: default;
+  text-align: center;
+  gap: var(--space-4);
+}
+
+.quest-log-slot-empty__label {
+  color: var(--color-semantic-text-muted);
+}
+
+.quest-log-slot-empty__hint {
+  font-size: var(--font-size-body-sm);
+  color: var(--color-semantic-text-muted);
+  line-height: 1.4;
+}
+
+.quest-log-chip {
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  color: var(--color-primitive-white);
+  flex-shrink: 0;
+}
+
+.quest-log-chip--fishing {
+  background: var(--color-rarity-rare);
+}
+
+.quest-log-chip--collection {
+  background: var(--color-primitive-green-600);
+}
+
+.quest-log-chip--challenge {
+  background: var(--color-rarity-epic);
+}
+
+/* 完了一覧（コンパクト行） */
+#book-ui .quest-log-row.ui-frame-box {
+  --frame-scale: 4;
+}
+
+.quest-log-row.ui-frame-box::before,
+.quest-log-row.ui-frame-box::after {
+  opacity: 0.6;
+}
+
+.quest-log-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+}
+
+.quest-log-row__icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quest-log-row__icon .quest-card__icon-img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.quest-log-row__icon .quest-card__icon-emoji {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.quest-log-row__textcol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.quest-log-row__titlerow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.quest-log-row__title {
+  font-size: var(--font-size-achievement-item-title);
+  color: var(--color-semantic-text-primary);
+  line-height: normal;
+}
+
+.quest-log-row__desc {
+  margin: 0;
+  font-size: var(--font-size-achievement-item-desc);
+  color: var(--color-semantic-text-muted);
+  line-height: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-log-row__reward {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: var(--font-size-body-sm);
+  color: var(--color-primitive-orange-600);
+  white-space: nowrap;
+}
+
+.quest-log-row__reward-line {
+  font-family: var(--font-family-display-numeric);
+}
+
+.quest-log-row__clear {
+  height: 32px;
+  width: auto;
+  image-rendering: pixelated;
+  flex-shrink: 0;
 }

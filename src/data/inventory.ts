@@ -57,6 +57,7 @@ export interface PlayerData {
   questProgress: Map<string, number>;  // クエスト進捗（受注中のみ）
   boardQuestIds: string[];             // 掲示板に表示中の動的クエストID
   questRegistry: Map<string, QuestConfig>; // 動的クエスト定義
+  boardQuestGenerationVersion?: number; // 掲示板クエスト生成ルールのバージョン
 }
 
 // プレイヤーデータの初期値
@@ -93,6 +94,7 @@ export function createInitialPlayerData(): PlayerData {
     questProgress: new Map(),
     boardQuestIds: [],
     questRegistry: new Map(),
+    boardQuestGenerationVersion: 2,
   };
 }
 
