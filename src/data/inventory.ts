@@ -8,6 +8,7 @@ import { achievementConfigs } from './achievementConfig';
 import { fishConfigs } from './fishConfig';
 import { getExpMultiplierForFish, getSellPriceMultiplier } from './skills';
 import { config } from '../config';
+import type { AquariumFishEntry } from './aquarium';
 
 /** バッグ内の1匹（入手順で inventory 配列に格納） */
 export interface InventoryEntry {
@@ -58,6 +59,10 @@ export interface PlayerData {
   boardQuestIds: string[];             // 掲示板に表示中の動的クエストID
   questRegistry: Map<string, QuestConfig>; // 動的クエスト定義
   boardQuestGenerationVersion?: number; // 掲示板クエスト生成ルールのバージョン
+  // アクアリウム
+  ownedTools: string[];              // 所持どうぐID（'tool_aquarium' 等）
+  aquariumFoodCount: number;         // アクアリウムフード残数
+  aquarium: AquariumFishEntry[];     // 水槽内の魚（最大3）
 }
 
 // プレイヤーデータの初期値
@@ -95,6 +100,9 @@ export function createInitialPlayerData(): PlayerData {
     boardQuestIds: [],
     questRegistry: new Map(),
     boardQuestGenerationVersion: 2,
+    ownedTools: [],
+    aquariumFoodCount: 0,
+    aquarium: [],
   };
 }
 
@@ -403,6 +411,17 @@ export function loadPlayerData(): PlayerData {
         questProgress: new Map(parsed.questProgress || []),
         boardQuestIds: parsed.boardQuestIds || initial.boardQuestIds,
         questRegistry: new Map(parsed.questRegistry || []),
+        ownedTools: Array.isArray(parsed.ownedTools) ? parsed.ownedTools : initial.ownedTools,
+        aquariumFoodCount: typeof parsed.aquariumFoodCount === 'number' ? parsed.aquariumFoodCount : 0,
+        aquarium: Array.isArray(parsed.aquarium)
+          ? parsed.aquarium.map((e: any) => ({
+              fishId: e.fishId,
+              ...(e.size !== undefined ? { size: e.size } : {}),
+              feedCount: e.feedCount || 0,
+              addedAt: e.addedAt || 0,
+              lastFedAt: e.lastFedAt || 0,
+            }))
+          : [],
       };
     } catch {
       console.error('Failed to load player data');

@@ -275,6 +275,45 @@ export const inventoryUpgradeConfigs: InventoryUpgradeConfig[] = [
   },
 ];
 
+// ============================================
+// どうぐの定義（バッグ拡張以外の特殊アイテム）
+// ============================================
+export interface ToolConfig {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  icon: string;
+  consumable: boolean;   // true: 何度でも購入（個数加算）
+  quantity?: number;     // consumable のパック個数
+  requiresToolId?: string; // このどうぐを所持していないと購入不可
+}
+
+export const toolConfigs: ToolConfig[] = [
+  {
+    id: 'tool_aquarium',
+    name: 'アクアリウム',
+    description: '釣った魚を3匹まで飼える水槽。育てるとステータスボーナス！',
+    price: 12000,
+    icon: '🐠',
+    consumable: false,
+  },
+  {
+    id: 'tool_fish_food',
+    name: 'アクアリウムフード',
+    description: '水槽の魚のごはん。あげると魚が成長する。',
+    price: 300,
+    icon: '🥫',
+    consumable: true,
+    quantity: 10,
+    requiresToolId: 'tool_aquarium',
+  },
+];
+
+export function getToolById(id: string): ToolConfig | undefined {
+  return toolConfigs.find(t => t.id === id);
+}
+
 export const itemImageFileNames: Record<string, string> = {
   // 釣り竿
   rod_basic: '木の竿',
@@ -297,6 +336,9 @@ export const itemImageFileNames: Record<string, string> = {
   inv_12: '中型バッグ',
   inv_15: '大型バッグ',
   inv_18: '釣り師のバッグ',
+  // どうぐ
+  tool_aquarium: 'アクアリウム',
+  tool_fish_food: 'アクアリウムフード',
 };
 
 export function getItemImagePath(itemId: string): string | undefined {

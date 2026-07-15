@@ -1,4 +1,5 @@
 import type { PlayerData } from './inventory';
+import { getAquariumStatBonuses } from './aquarium';
 
 export type SkillTreeId = 'power' | 'speed' | 'technique' | 'control' | 'special';
 
@@ -259,6 +260,12 @@ export function getSkillStatBonuses(playerData: PlayerData): SkillStatBonuses {
       bonuses.junkRateSkillMul *= s.junkRateSkillMul;
     }
   }
+
+  const aq = getAquariumStatBonuses(playerData);
+  bonuses.castDistSkillAdd += aq.powerAdd;
+  bonuses.gaugeSpeedSkillAdd += aq.speedAdd;
+  bonuses.barRangeSkillAdd += aq.techniqueAdd;
+  bonuses.fightBarDragSkillAdd += aq.controlAdd;
 
   return bonuses;
 }
