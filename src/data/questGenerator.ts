@@ -356,7 +356,75 @@ export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
   };
 }
 
-export const BOARD_QUEST_GENERATION_VERSION = 2;
+export const BOARD_QUEST_GENERATION_VERSION = 3;
+
+const BOARD_QUEST_GEN_MAX_ATTEMPTS = 48;
+
+/** 掲示板・進行中と内容が被らないよう、テンプレ＋条件の主要パラメータで一意キーを作る */
+export function getQuestContentSignature(quest: QuestConfig): string {
+  const templateKey = quest.templateId ?? quest.condition.type;
+  const c = quest.condition;
+  const parts: (string | number)[] = [templateKey, c.target];
+
+  switch (c.type) {
+    case 'quest_catch_junk':
+      parts.push(c.fishId ?? '');
+      break;
+    case 'quest_catch_fish':
+      parts.push(c.fishId ?? '');
+      break;
+    case 'quest_catch_rarity':
+      parts.push(c.rarity ?? '', c.maxRarity ?? '');
+      break;
+    case 'quest_catch_size_min':
+      parts.push(c.minSize ?? '');
+      break;
+    case 'quest_catch_size_max':
+      parts.push(c.maxSize ?? '');
+      break;
+    case 'quest_fight_duration':
+      parts.push(c.minDuration ?? '');
+      break;
+    case 'quest_equipment':
+      parts.push(c.equipmentType ?? '', c.equipmentId ?? '');
+      break;
+    case 'quest_environment':
+      parts.push(c.habitat ?? '');
+      break;
+    default:
+      break;
+  }
+
+  return parts.join('|');
+}
+
+function collectBoardQuestContentSignatures(playerData: PlayerData): Set<string> {
+  const sigs = new Set<string>();
+  const ids = [...playerData.boardQuestIds, ...playerData.activeQuests];
+  for (const id of ids) {
+    const quest = playerData.questRegistry.get(id);
+    if (quest) sigs.add(getQuestContentSignature(quest));
+  }
+  return sigs;
+}
+
+function generateUniqueDynamicQuest(
+  playerData: PlayerData,
+  usedSignatures: Set<string>,
+): QuestConfig {
+  for (let attempt = 0; attempt < BOARD_QUEST_GEN_MAX_ATTEMPTS; attempt++) {
+    const quest = generateDynamicQuest(playerData);
+    const sig = getQuestContentSignature(quest);
+    if (!usedSignatures.has(sig)) {
+      usedSignatures.add(sig);
+      return quest;
+    }
+  }
+
+  const fallback = generateDynamicQuest(playerData);
+  usedSignatures.add(getQuestContentSignature(fallback));
+  return fallback;
+}
 
 export function registerDynamicQuest(playerData: PlayerData, quest: QuestConfig): void {
   playerData.questRegistry.set(quest.id, quest);
@@ -404,8 +472,10 @@ export function ensureBoardQuests(playerData: PlayerData): void {
     );
   });
 
+  const usedSignatures = collectBoardQuestContentSignatures(playerData);
+
   while (playerData.boardQuestIds.length < BOARD_QUEST_COUNT) {
-    const quest = generateDynamicQuest(playerData);
+    const quest = generateUniqueDynamicQuest(playerData, usedSignatures);
     registerDynamicQuest(playerData, quest);
     if (!activeAndBoardIds.has(quest.id)) {
       playerData.boardQuestIds.push(quest.id);

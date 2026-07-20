@@ -2,7 +2,7 @@
 
 import type { FishConfig } from './fishConfig';
 import type { QuestConfig } from './questConfig';
-import { getFishById, getRealFishCount } from './fish';
+import { getFishById, getRealFishCount, getFishCountByRarity } from './fish';
 import type { AchievementConfig, AchievementCondition } from './achievementConfig';
 import { achievementConfigs } from './achievementConfig';
 import { fishConfigs } from './fishConfig';
@@ -61,7 +61,8 @@ export interface PlayerData {
   boardQuestGenerationVersion?: number; // 掲示板クエスト生成ルールのバージョン
   // アクアリウム
   ownedTools: string[];              // 所持どうぐID（'tool_aquarium' 等）
-  aquariumFoodCount: number;         // アクアリウムフード残数
+  aquariumFoodCount: number;         // アクアリウムのエサ残数
+  aquariumPremiumFoodCount: number;  // 高級なエサ残数
   aquarium: AquariumFishEntry[];     // 水槽内の魚（最大3）
 }
 
@@ -102,6 +103,7 @@ export function createInitialPlayerData(): PlayerData {
     boardQuestGenerationVersion: 2,
     ownedTools: [],
     aquariumFoodCount: 0,
+    aquariumPremiumFoodCount: 0,
     aquarium: [],
   };
 }
@@ -413,6 +415,8 @@ export function loadPlayerData(): PlayerData {
         questRegistry: new Map(parsed.questRegistry || []),
         ownedTools: Array.isArray(parsed.ownedTools) ? parsed.ownedTools : initial.ownedTools,
         aquariumFoodCount: typeof parsed.aquariumFoodCount === 'number' ? parsed.aquariumFoodCount : 0,
+        aquariumPremiumFoodCount:
+          typeof parsed.aquariumPremiumFoodCount === 'number' ? parsed.aquariumPremiumFoodCount : 0,
         aquarium: Array.isArray(parsed.aquarium)
           ? parsed.aquarium.map((e: any) => ({
               fishId: e.fishId,
@@ -420,6 +424,7 @@ export function loadPlayerData(): PlayerData {
               feedCount: e.feedCount || 0,
               addedAt: e.addedAt || 0,
               lastFedAt: e.lastFedAt || 0,
+              ...(typeof e.lastFedSatietyMs === 'number' ? { lastFedSatietyMs: e.lastFedSatietyMs } : {}),
             }))
           : [],
       };
@@ -560,12 +565,10 @@ export function getAchievementProgress(playerData: PlayerData, achievement: Achi
   
   // all_rarityの場合は動的に全種類数を取得
   if (achievement.condition.type === 'all_rarity' && achievement.condition.rarity) {
-    const fishOfRarity = fishConfigs.filter(f => 
-      f.rarity === achievement.condition.rarity && !f.id.startsWith('junk_')
-    );
-    const totalCount = fishOfRarity.length;
+    const totalCount = getFishCountByRarity(achievement.condition.rarity);
     if (totalCount === 0) return 1.0;
-    return Math.min(1.0, currentValue / totalCount);
+    const current = checkCondition(playerData, achievement.condition);
+    return Math.min(1.0, current / totalCount);
   }
   
   // first_rarityの場合は、targetが1なのでそのまま使用
@@ -595,8 +598,7 @@ export function getAchievementProgressDisplay(
     return { current: v, target: 1, unit: '' };
   }
   if (c.type === 'all_rarity' && c.rarity) {
-    const fishOfRarity = fishConfigs.filter((f) => f.rarity === c.rarity && !f.id.startsWith('junk_'));
-    const target = Math.max(1, fishOfRarity.length);
+    const target = Math.max(1, getFishCountByRarity(c.rarity));
     const current = Math.min(target, checkCondition(playerData, c));
     return { current, target, unit: '種' };
   }
@@ -663,7 +665,6 @@ function checkCondition(playerData: PlayerData, condition: AchievementCondition)
             caughtCount++;
           }
         }
-        // 進捗を返す（目標値は全種類数）
         return caughtCount;
       }
       return 0;
@@ -711,6 +712,18 @@ export function unlockAchievement(playerData: PlayerData, achievement: Achieveme
   }
 }
 
+// 実績の達成目標値（魚種数などは fishConfig から動的に算出）
+function getAchievementTargetValue(achievement: AchievementConfig): number {
+  const c = achievement.condition;
+  if (c.type === 'all_collection') {
+    return Math.max(1, getRealFishCount());
+  }
+  if (c.type === 'all_rarity' && c.rarity) {
+    return Math.max(1, getFishCountByRarity(c.rarity));
+  }
+  return c.target && c.target > 0 ? c.target : 1;
+}
+
 // 実績をチェックして、達成したものを返す
 export function checkAchievements(playerData: PlayerData, categories?: string[]): AchievementConfig[] {
   const unlocked: AchievementConfig[] = [];
@@ -740,7 +753,7 @@ export function checkAchievements(playerData: PlayerData, categories?: string[])
         unlocked.push(achievement);
       }
     } else {
-      const targetValue = achievement.condition.target;
+      const targetValue = getAchievementTargetValue(achievement);
       if (currentValue >= targetValue) {
         unlockAchievement(playerData, achievement);
         unlocked.push(achievement);

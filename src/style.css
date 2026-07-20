@@ -654,6 +654,11 @@ span.level-label-value {
   image-rendering: crisp-edges;
 }
 
+.quest-hud-slot__img--item {
+  width: 28px;
+  height: 28px;
+}
+
 .quest-hud-slot__emoji {
   font-size: 24px;
   line-height: 1;
@@ -2426,7 +2431,10 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   #book-skill-category-tabs.is-nav-selected
   .book-skill-category-tab.is-active::after,
 #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
-#book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+#book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui.is-open[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui.is-open #quest-abandon-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui.is-open #quest-abandon-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
   animation: book-ui-selected-opacity-pulse 1.45s ease-in-out infinite;
 }
 
@@ -2441,7 +2449,10 @@ body.ui-menu-input-keyboard #quest-board-modal * {
     #book-skill-category-tabs.is-nav-selected
     .book-skill-category-tab.is-active::after,
   #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
-  #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+  #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
+  #book-ui.is-open[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected,
+  #book-ui.is-open #quest-abandon-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
+  #book-ui.is-open #quest-abandon-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
     animation: none;
   }
 }
@@ -2493,8 +2504,9 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   }
 }
 
-/* スキル解放確認（Book 全面オーバーレイ） */
-#book-ui #skill-unlock-confirm-layer {
+/* スキル解放 / クエスト破棄 確認（Book 全面オーバーレイ） */
+#book-ui #skill-unlock-confirm-layer,
+#book-ui #quest-abandon-confirm-layer {
   position: fixed;
   inset: 0;
   z-index: 2500;
@@ -2535,7 +2547,9 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 
 /* nes-btn の inset シャドウ / focus リングを外し、#book-skill-unlock と同じ枠・塗りに寄せる（塗りは #book-ui .ui-frame-box の --frame-fill-inset に従う） */
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box,
-#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box {
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box {
   min-height: 33px;
   padding: 8px 14px;
   margin: 0;
@@ -2548,12 +2562,15 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   border-image-outset: 0;
 }
 
-#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box {
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box,
+#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box {
   --frame-fill-color: #7cb86c;
   color: #fff;
 }
 
-#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box {
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box {
   --frame-fill-color: #b8a88c;
   color: #320e0e;
   width: 64px;
@@ -2563,40 +2580,61 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:focus,
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:focus-visible,
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:active,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box:hover,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box:focus,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box:focus-visible,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box:active,
 #book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:hover,
 #book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:focus,
 #book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:focus-visible,
-#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:active {
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:active,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:hover,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:focus,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:focus-visible,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:active {
   box-shadow: none !important;
 }
 
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:focus,
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:focus-visible,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box:focus,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box:focus-visible,
 #book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:focus,
-#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:focus-visible {
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:focus-visible,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:focus,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:focus-visible {
   outline: none;
 }
 
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box::after,
-#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box::after {
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box::after,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box::after,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box::after {
   box-shadow: none !important;
-  /* 枠は .ui-frame-box 既定の border.png（#book-skill-unlock と同じ）。非選択に uiframe を当てると緑ボタンが濁って見える */
+  /* 枠は .ui-frame-box 既定の border.png。非選択に uiframe を当てると緑ボタンが濁って見える */
 }
 
 /* キーボード／フォーカスで選択中は塗りだけ変える（枠は常に border.png） */
-#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
   --frame-fill-color: #e8cfa6;
 }
 
-#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected {
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected {
   --frame-fill-color: #c2681f;
   color: #fff;
 }
 
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:hover::after,
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:active::after,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box:hover::after,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box:active::after,
 #book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:hover::after,
-#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:active::after {
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:active::after,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:hover::after,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:active::after {
   box-shadow: none !important;
 }
 
@@ -6931,6 +6969,14 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   width: 80px;
   height: 80px;
   object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* 道具画像は余白が少なく見た目が大きいため、魚・ゴミと揃える */
+.quest-card__icon-img--item {
+  width: 56px;
+  height: 56px;
 }
 
 .quest-card__icon-emoji {
@@ -7026,6 +7072,49 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 
 .quest-card__accept:hover {
   filter: brightness(1.06);
+}
+
+/* 破棄ボタン（Book UI クエストログ・進行中のみ。#book-skill-unlock と同じ幅制御） */
+#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  align-self: stretch;
+  min-height: 33px;
+  height: 48px;
+  padding: 8px 14px;
+  text-align: center;
+  box-sizing: border-box;
+  /* .nes-btn の margin:4px + width:100% + content-box だと親 padding 内からはみ出す */
+  margin: var(--space-4) 0 0;
+  box-shadow: none !important;
+  border-image: none;
+  border-image-width: 0;
+  border-image-outset: 0;
+  font-size: var(--font-size-body-sm);
+  cursor: pointer;
+}
+
+#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:hover,
+#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:focus,
+#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:focus-visible,
+#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:active {
+  box-shadow: none !important;
+}
+
+#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box::after {
+  box-shadow: none !important;
+}
+
+#book-ui[data-tab="quest"] .quest-card__abandon-label {
+  display: inline-block;
+  transform: translateY(-3px);
+}
+
+#book-ui.is-book-kb-input[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected:hover,
+#book-ui.is-book-kb-input[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected:focus,
+#book-ui.is-book-kb-input[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected:focus-visible {
+  filter: none;
 }
 
 /* 進捗（Book UI クエストログ用。掲示板カードの受注ボタンと同位置） */
@@ -7250,9 +7339,37 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   padding: 16px;
 }
 
+/* 進行中: カード本体は操作不可・ホバーなし。破棄ボタンのみクリック可能 */
 #book-ui[data-tab="quest"]
-  .quest-log-list
-  .achievement-detail-item.quest-card.ui-frame-box.achievement-detail-item--kb-selected {
+  .quest-log-list.quest-board-cards:not(.quest-log-list--completed)
+  .achievement-detail-item.quest-card.ui-frame-box {
+  cursor: default;
+  pointer-events: none;
+}
+
+#book-ui[data-tab="quest"]
+  .quest-log-list.quest-board-cards:not(.quest-log-list--completed)
+  .achievement-detail-item.quest-card.ui-frame-box:hover,
+#book-ui[data-tab="quest"]
+  .quest-log-list.quest-board-cards:not(.quest-log-list--completed)
+  .achievement-detail-item.quest-card.ui-frame-box:hover::after {
+  filter: none;
+  --frame-fill-color: #f3e6c4;
+  transform: none;
+}
+
+#book-ui[data-tab="quest"] .quest-log-list.quest-board-cards:not(.quest-log-list--completed) .quest-card__abandon {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* 完了一覧のみカード選択ハイライト */
+#book-ui[data-tab="quest"]
+  .quest-log-list.quest-log-list--completed
+  .achievement-detail-item.quest-card.ui-frame-box.achievement-detail-item--kb-selected,
+#book-ui[data-tab="quest"]
+  .quest-log-list.quest-log-list--completed
+  .quest-card.ui-frame-box.quest-card--kb-selected {
   --frame-fill-color: #fff6da;
   transform: translateY(-2px);
 }
@@ -7329,6 +7446,11 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   object-fit: contain;
 }
 
+.quest-log-row__icon .quest-card__icon-img--item {
+  width: 22px;
+  height: 22px;
+}
+
 .quest-log-row__icon .quest-card__icon-emoji {
   font-size: 20px;
   line-height: 1;
@@ -7387,7 +7509,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   flex-shrink: 0;
 }
 
-/* ===== アクアリウム ===== */
+/* ===== アクアリウム（Book UI / Status 準拠） ===== */
 #book-ui[data-tab="aquarium"] .book-main-row {
   display: none;
 }
@@ -7402,124 +7524,208 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  gap: var(--space-10, 10px);
+  gap: 10px;
   width: 100%;
   box-sizing: border-box;
   padding: 4px 2px 2px;
+}
+
+/* 英数字は Jersey 10、和文は DotGothic16 にフォールバック（Status と同じ） */
+#book-aquarium-panel,
+#book-aquarium-panel * {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
 }
 
 .book-aquarium-panel {
   display: none;
 }
 
-.aquarium-manage-section {
+.aquarium-hero {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.aquarium-manage-top {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 10px;
+  flex-direction: row;
+  gap: 16px;
   align-items: stretch;
+  padding: 0;
+  background: none;
+  border-radius: 8px;
+  flex-shrink: 0;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
 }
 
 .aquarium-slots {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  gap: 8px;
+  flex: 1 1 0;
+  width: auto;
   min-width: 0;
+  align-items: stretch;
 }
 
 .aquarium-slots > .book-ui-row.aquarium-slot-item {
   aspect-ratio: auto;
-  width: 100%;
-  min-height: 52px;
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
   height: auto;
 }
 
 .aquarium-slot-card.book-ui-node.ui-frame-box {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 0;
   width: 100%;
-  min-height: 52px;
-  padding: 6px 10px;
+  min-height: 118px;
+  height: 100%;
+  padding: 0 6px 14px;
   position: relative;
   cursor: pointer;
-  --frame-fill-color: var(--color-semantic-surface-muted, #ebe3d4);
+  text-align: center;
+  --frame-fill-color: #f2e2b6;
 }
 
 .aquarium-slot-item.is-selected .aquarium-slot-card.ui-frame-box,
 .aquarium-slot-item.state-selected .aquarium-slot-card.ui-frame-box {
-  --frame-fill-color: var(--color-semantic-surface-selected, #f5e6c8);
+  --frame-fill-color: #e8cfa6;
 }
 
 .aquarium-slot-card.is-empty {
-  opacity: 0.7;
+  opacity: 0.72;
   justify-content: center;
 }
 
 .aquarium-slot-thumb {
-  width: 40px;
-  height: 40px;
+  width: 80px;
+  height: 80px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 24px;
+  image-rendering: pixelated;
+}
+
+.aquarium-slot-thumb canvas {
+  width: 80px;
+  height: 80px;
+  margin-top: -9px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 .aquarium-slot-info {
   min-width: 0;
-  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  margin-top: -14px;
+  box-sizing: content-box;
 }
 
 .aquarium-slot-name {
-  font-size: var(--font-size-body-md, 14px);
-  color: var(--color-semantic-text-primary, #3a2f22);
+  font-size: 16px;
+  font-family: "DotGothic16", sans-serif;
+  color: var(--color-semantic-text-primary, #320e0e);
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
   text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 14px;
+  height: fit-content;
 }
 
 .aquarium-slot-meta {
   font-size: var(--font-size-body-sm, 12px);
-  color: var(--color-semantic-text-muted, #7a6a55);
+  color: var(--color-semantic-text-muted, #5c4030);
+  line-height: 1.2;
+}
+
+.aquarium-slot-lv {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.aquarium-slot-lv-label {
+  font-size: 18px;
+  color: #5c4030;
+}
+
+.aquarium-slot-lv-num,
+.aquarium-slot-bonus {
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 24px;
+  color: var(--color-semantic-text-stat-value, #2d6b2d);
+  line-height: 1;
+}
+
+.aquarium-slot-lv-num {
+  font-size: 28px;
+}
+
+.aquarium-slot-bonus {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.aquarium-slot-bonus-label {
+  color: var(--color-primitive-orange-600, #c2681f);
+}
+
+.aquarium-slot-bonus-num {
+  color: #fff;
+  background: var(--color-primitive-green-600, #4e8a42);
+  border-radius: 2px;
+  padding: 0 6px;
+  width: fit-content;
+  height: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 }
 
 .aquarium-slot-empty-label {
   font-size: var(--font-size-body-md, 14px);
-  color: var(--color-semantic-text-muted, #7a6a55);
+  font-family: "DotGothic16", sans-serif;
+  color: var(--color-semantic-text-muted, #5c4030);
 }
 
 .aquarium-satiety-badge {
   position: absolute;
-  top: 6px;
-  right: 8px;
-  font-size: 10px;
-  padding: 1px 6px;
-  background: rgba(90, 140, 180, 0.35);
-  color: var(--color-semantic-text-primary, #3a2f22);
+  top: 4px;
+  right: 4px;
+  font-size: 14px;
+  font-family: "DotGothic16", sans-serif;
+  padding: 1px 5px;
+  background: rgba(124, 184, 108, 0.45);
+  color: var(--color-semantic-text-primary, #320e0e);
+  border-radius: 2px;
 }
 
-.aquarium-manage-detail.ui-frame-box {
-  min-height: 140px;
+.aquarium-manage-detail {
+  flex: 0 0 260px;
+  width: 260px;
+  min-width: 260px;
+  max-width: 260px;
+  align-self: stretch;
+  min-height: 118px;
   overflow-y: auto;
-  padding: 8px 10px 10px;
-  --frame-fill-color: var(--color-semantic-surface-muted, #ebe3d4);
+  overflow-x: hidden;
+  padding: 8px 14px 10px;
+  background: var(--color-primitive-natural-sand-400, #ecd5ab);
+  border-radius: 8px;
   box-sizing: border-box;
-}
-
-.aquarium-manage-footer {
+  color: var(--color-semantic-text-detail, #212121);
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-size: var(--font-size-body-sm, 12px);
-  color: var(--color-semantic-text-muted, #7a6a55);
+  flex-direction: column;
 }
 
 .aquarium-detail-panel {
@@ -7527,122 +7733,269 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   flex-direction: column;
   gap: 4px;
   width: 100%;
+  align-items: flex-start;
 }
 
-.aquarium-detail-head {
+.aquarium-detail-top {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.aquarium-detail-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  padding-left: 2px;
+}
+
+.aquarium-detail-note-title {
+  margin: 0;
+  font-family: "DotGothic16", sans-serif;
+  font-size: 20px;
+  line-height: 1.2;
+  color: var(--color-primitive-orange-600, #c2681f);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.aquarium-detail-size-badge {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0 8px;
+  border-radius: 2px;
+  background: var(--bg-panel-inner, #f2e2b6);
+  color: var(--color-semantic-text-secondary, #5c4030);
+  flex-shrink: 0;
+}
+
+.aquarium-detail-size-num {
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.aquarium-detail-size-unit {
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.aquarium-detail-lv-gauge-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
 }
 
-.aquarium-detail-thumb {
-  width: 40px;
-  height: 40px;
+.aquarium-detail-lv {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
+  white-space: nowrap;
+  padding-left: 4px;
 }
 
-.aquarium-detail-title {
-  font-size: var(--font-size-body-md, 14px);
-  color: var(--color-semantic-text-primary, #3a2f22);
+.aquarium-detail-lv-label {
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 20px;
+  line-height: normal;
+  color: var(--color-semantic-text-secondary, #5c4030);
 }
 
-.aquarium-detail-line,
-.aquarium-detail-tip {
-  font-size: var(--font-size-body-sm, 12px);
-  color: var(--color-semantic-text-primary, #3a2f22);
-  margin: 0;
+.aquarium-detail-lv-num {
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 32px;
+  line-height: normal;
+  color: var(--color-semantic-text-primary, #320e0e);
 }
 
 .aquarium-detail-growth-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex: 1 1 0;
   min-width: 0;
 }
 
-.aquarium-detail-growth-text {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
 .aquarium-growth-gauge {
-  flex: 1;
-  min-width: 40px;
-  height: 8px;
-  background: rgba(0, 0, 0, 0.12);
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+  height: 10px;
+  background: #b9a67e;
+  border: 2px solid #704a2b;
   overflow: hidden;
+  box-sizing: border-box;
+  position: relative;
 }
 
 .aquarium-growth-gauge-fill {
   height: 100%;
-  background: var(--color-primitive-orange-500, #d08745);
+  background: var(--color-primitive-green-600, #4e8a42);
   width: 0%;
 }
 
-.aquarium-detail-action {
-  align-self: stretch;
-  margin-top: 2px;
+.aquarium-detail-status-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.aquarium-detail-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  border-radius: 2px;
+  background: #f2e2b6;
+  font-family: "DotGothic16", sans-serif;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--color-semantic-text-primary, #320e0e);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.aquarium-satiety-text {
+  margin: 0;
+  font-family: "DotGothic16", sans-serif;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--color-semantic-text-primary, #320e0e);
+  white-space: nowrap;
+}
+
+.aquarium-detail-line,
+.aquarium-detail-tip {
   font-size: 12px;
-  padding: 4px 10px;
-  min-height: 0;
+  font-family: "DotGothic16", sans-serif;
+  color: var(--color-semantic-text-primary, #320e0e);
+  margin: 0;
+  line-height: 1.35;
+}
+
+/* #book-skill-unlock と同じ緑CTA（nes-btn + border.png 9スライス + 緑塗り） */
+.aquarium-detail-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box {
+  --frame-fill-color: #7cb86c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  flex: 1 1 0;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  height: auto;
+  padding: 6px 8px;
+  margin: 0;
+  text-align: center;
+  box-sizing: border-box;
+  color: #fff;
+  font-family: "DotGothic16", sans-serif !important;
+  font-size: 13px;
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none !important;
+  border-image: none;
+  border-image-width: 0;
+  border-image-outset: 0;
+}
+
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box:hover,
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box:focus,
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box:focus-visible,
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box:active {
+  color: #fff;
+  box-shadow: none !important;
+}
+
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box:focus,
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box:focus-visible {
+  outline: none;
+}
+
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box::after {
+  box-shadow: none !important;
+}
+
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box:hover::after,
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box:active::after {
+  box-shadow: none !important;
+}
+
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box.is-confirm {
+  --frame-fill-color: #c2681f;
+}
+
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box.is-disabled,
+#book-ui .aquarium-detail-action.nes-btn.ui-frame-box:disabled {
+  --frame-fill-color: #cbb792;
+  color: #5c4030;
+  cursor: not-allowed;
+  opacity: 0.85;
 }
 
 .aquarium-bag-pick-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 90px;
+  max-height: 72px;
   overflow-y: auto;
+  width: 100%;
 }
 
 .aquarium-bag-pick-row {
   text-align: left;
   padding: 6px 8px;
-  font-size: var(--font-size-body-sm, 12px);
+  font-size: 12px;
+  font-family: "DotGothic16", sans-serif;
   cursor: pointer;
-  --frame-fill-color: var(--color-semantic-surface-muted, #ebe3d4);
-  color: var(--color-semantic-text-primary, #3a2f22);
+  --frame-fill-color: #f2e2b6;
+  color: var(--color-semantic-text-primary, #320e0e);
   border: none;
   background: transparent;
 }
 
 .aquarium-bag-pick-row.is-selected {
-  --frame-fill-color: var(--color-semantic-surface-selected, #f5e6c8);
+  --frame-fill-color: #e8cfa6;
 }
 
 .aquarium-tank-section.ui-frame-box {
   flex: 1;
-  min-height: 180px;
+  min-height: 160px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px 10px;
-  --frame-fill-color: var(--color-semantic-surface-muted, #ebe3d4);
+  gap: 8px;
+  padding: 10px 12px 12px;
+  --frame-fill-color: #f2e2b6;
   box-sizing: border-box;
-}
-
-.aquarium-tank-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.aquarium-food-count {
-  font-size: var(--font-size-body-md, 14px);
-  color: var(--color-semantic-text-primary, #3a2f22);
-  white-space: nowrap;
-}
-
-.aquarium-hint {
-  font-size: var(--font-size-body-sm, 12px);
-  color: var(--color-semantic-text-muted, #7a6a55);
-  min-width: 0;
 }
 
 .aquarium-canvas-wrap {
@@ -7652,8 +8005,10 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   aspect-ratio: 16 / 9;
   max-height: 100%;
   image-rendering: pixelated;
-  background: #0b2036;
+  background: transparent;
   overflow: hidden;
+  border: 2px solid rgba(112, 74, 43, 0.45);
+  border-radius: 4px;
 }
 
 .aquarium-canvas-wrap canvas {
@@ -7662,11 +8017,121 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   display: block;
   image-rendering: pixelated;
   cursor: crosshair;
+  object-fit: cover;
+}
+
+.aquarium-tank-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.aquarium-food-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.aquarium-food-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 4px 12px 4px 6px;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: var(--color-semantic-text-primary, #320e0e);
+  white-space: nowrap;
+  --frame-fill-color: transparent;
+  min-height: 36px;
+}
+
+.aquarium-food-option.is-selected {
+  --frame-fill-color: #e8cfa6;
+}
+
+.aquarium-food-option-icon {
+  width: 28px;
+  height: 28px;
   object-fit: contain;
+  image-rendering: pixelated;
+  display: block;
+}
+
+.aquarium-food-option-count {
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 22px;
+  line-height: 1;
+  color: #320e0e;
+}
+
+.aquarium-bonus-chips {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.aquarium-bonus-chips-title {
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: 0;
+  color: #5c4030;
+  text-transform: uppercase;
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+.aquarium-bonus-chip {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(112, 74, 43, 0.10);
+  border: 1px solid rgba(112, 74, 43, 0.18);
+  border-radius: 4px;
+  color: #5c4030;
+}
+
+.aquarium-bonus-chip-label {
+  font-family: "DotGothic16", sans-serif;
+  font-size: 24px;
+  line-height: 16px;
+  color: rgba(194, 104, 31, 1);
+}
+
+.aquarium-bonus-chip-value {
+  font-family: "Jersey 10", "DotGothic16", sans-serif;
+  font-size: 24px;
+  line-height: 1;
+  color: #5c4030;
+}
+
+.aquarium-bonus-chip:not(.is-active) .aquarium-bonus-chip-value {
+  opacity: 0.5;
+}
+
+.aquarium-bonus-chip.is-active .aquarium-bonus-chip-value {
+  color: var(--color-semantic-text-stat-value, #2d6b2d);
 }
 
 @media (max-width: 720px) {
-  .aquarium-manage-top {
-    grid-template-columns: 1fr;
+  .aquarium-hero {
+    flex-direction: column;
+  }
+
+  .aquarium-manage-detail {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
 }

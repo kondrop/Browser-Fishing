@@ -294,19 +294,37 @@ export const toolConfigs: ToolConfig[] = [
     id: 'tool_aquarium',
     name: 'アクアリウム',
     description: '釣った魚を3匹まで飼える水槽。育てるとステータスボーナス！',
-    price: 12000,
+    price: 5000,
     icon: '🐠',
     consumable: false,
   },
   {
     id: 'tool_fish_food',
-    name: 'アクアリウムフード',
+    name: 'アクアリウムのエサ',
     description: '水槽の魚のごはん。あげると魚が成長する。',
     price: 300,
     icon: '🥫',
     consumable: true,
     quantity: 10,
     requiresToolId: 'tool_aquarium',
+  },
+  {
+    id: 'tool_fish_food_premium',
+    name: '高級なエサ',
+    description: '栄養たっぷりの上等なエサ。1回で大きく成長する。',
+    price: 1000,
+    icon: '🍱',
+    consumable: true,
+    quantity: 5,
+    requiresToolId: 'tool_aquarium',
+  },
+  {
+    id: 'tool_sunglasses',
+    name: 'サングラス',
+    description: 'ファイト中、釣り上げ前の魚のレアリティが色でわかるようになる。',
+    price: 12000,
+    icon: '🕶️',
+    consumable: false,
   },
 ];
 
@@ -338,7 +356,9 @@ export const itemImageFileNames: Record<string, string> = {
   inv_18: '釣り師のバッグ',
   // どうぐ
   tool_aquarium: 'アクアリウム',
-  tool_fish_food: 'アクアリウムフード',
+  tool_sunglasses: 'サングラス',
+  tool_fish_food: 'アクアリウムのエサ',
+  tool_fish_food_premium: '高級なエサ',
 };
 
 export function getItemImagePath(itemId: string): string | undefined {

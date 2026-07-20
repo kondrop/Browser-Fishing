@@ -113,6 +113,11 @@ export function getRealFishCount(): number {
   return fishDatabase.filter(f => !f.id.startsWith('junk')).length;
 }
 
+/** 指定レア度の魚種数（ゴミ除く） */
+export function getFishCountByRarity(rarity: string): number {
+  return fishDatabase.filter(f => f.rarity === rarity && !f.id.startsWith('junk_')).length;
+}
+
 /** 魚ID → public/images/fish 内のファイル名（拡張子なし） */
 export const fishImageFileNames: Record<string, string> = {
   // COMMON

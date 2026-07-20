@@ -66,7 +66,6 @@ export interface FightSimStepInput {
   leftHeld: boolean;
   rightHeld: boolean;
   tensionUpHeld: boolean;
-  tensionDownHeld: boolean;
   playerData: PlayerData;
   equippedRodId: string;
   fish: FightSimFishParams;
@@ -268,7 +267,7 @@ export function getFightBarHeight(
 
 /** 本番ファイトと同一ロジックで1フレーム進める */
 export function stepFightSimulation(state: FightSimState, input: FightSimStepInput): void {
-  const { dt, leftHeld, rightHeld, tensionUpHeld, tensionDownHeld, playerData, equippedRodId, fish } = input;
+  const { dt, leftHeld, rightHeld, tensionUpHeld, playerData, equippedRodId, fish } = input;
   const cfg = config.fighting;
   const skillBonuses = resolveSkillBonuses(playerData, input.skillBonuses);
   const equippedRod = getRodById(equippedRodId);
@@ -292,7 +291,6 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
     state.tension,
     state.tensionVelocity,
     tensionUpHeld,
-    tensionDownHeld,
     dt,
   );
   state.tension = tensionStep.tension;

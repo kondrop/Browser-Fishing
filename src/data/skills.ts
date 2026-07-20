@@ -278,6 +278,14 @@ export function hasSkillAbility(playerData: PlayerData, abilityId: SkillAbilityI
   return false;
 }
 
+/** ファイト中に魚のレアリティ色を表示できるか（スキル or どうぐ） */
+export function canRevealFightFishRarity(playerData: PlayerData): boolean {
+  return (
+    hasSkillAbility(playerData, 'abil_spec_pedia_bonus') ||
+    playerData.ownedTools.includes('tool_sunglasses')
+  );
+}
+
 export function getSellPriceMultiplier(playerData: PlayerData): number {
   return 1 + getSkillStatBonuses(playerData).sellPriceSkillMul;
 }

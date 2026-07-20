@@ -4,9 +4,11 @@ import {
   AQUARIUM_CAPACITY,
   AQUARIUM_GROWTH_STAGES,
   AQUARIUM_SATIETY_DURATION_MS,
+  AQUARIUM_FOOD_TIERS,
   AQUARIUM_RARITY_BONUS_BASE,
   AQUARIUM_HABITAT_STAT,
   AQUARIUM_STAT_OVERRIDES,
+  type AquariumFoodTier,
   type AquariumGrowthStage,
   type AquariumStatKey,
 } from './aquariumConfig';
@@ -15,9 +17,26 @@ import {
 export interface AquariumFishEntry {
   fishId: string;
   size?: number;      // バッグから引き継いだcm。表示用
-  feedCount: number;  // 累計摂食回数
+  feedCount: number;  // 累計摂食回数（成長値）
   addedAt: number;    // Date.now()
   lastFedAt: number;  // Date.now()。0 = 未摂食
+  /** 直近の摂食で適用した満腹時間。未設定時は通常エサの時間 */
+  lastFedSatietyMs?: number;
+}
+
+export function getAquariumFoodCount(playerData: PlayerData, tier: AquariumFoodTier): number {
+  if (tier === 'premium') return playerData.aquariumPremiumFoodCount ?? 0;
+  return playerData.aquariumFoodCount ?? 0;
+}
+
+export function setAquariumFoodCount(playerData: PlayerData, tier: AquariumFoodTier, count: number): void {
+  const next = Math.max(0, count);
+  if (tier === 'premium') playerData.aquariumPremiumFoodCount = next;
+  else playerData.aquariumFoodCount = next;
+}
+
+export function addAquariumFoodCount(playerData: PlayerData, tier: AquariumFoodTier, delta: number): void {
+  setAquariumFoodCount(playerData, tier, getAquariumFoodCount(playerData, tier) + delta);
 }
 
 export function hasAquarium(playerData: PlayerData): boolean {
@@ -38,14 +57,18 @@ export function getNextGrowthStage(feedCount: number): AquariumGrowthStage | nul
   return next ?? null;
 }
 
+function getEntrySatietyMs(entry: AquariumFishEntry): number {
+  return entry.lastFedSatietyMs ?? AQUARIUM_SATIETY_DURATION_MS;
+}
+
 export function isSatiated(entry: AquariumFishEntry, now: number): boolean {
   if (!entry.lastFedAt) return false;
-  return now - entry.lastFedAt < AQUARIUM_SATIETY_DURATION_MS;
+  return now - entry.lastFedAt < getEntrySatietyMs(entry);
 }
 
 export function getSatietyRemainingMs(entry: AquariumFishEntry, now: number): number {
   if (!entry.lastFedAt) return 0;
-  return Math.max(0, AQUARIUM_SATIETY_DURATION_MS - (now - entry.lastFedAt));
+  return Math.max(0, getEntrySatietyMs(entry) - (now - entry.lastFedAt));
 }
 
 export function getAquariumStatKeyForFish(fishId: string): AquariumStatKey {
@@ -122,15 +145,45 @@ export function removeFishFromAquarium(playerData: PlayerData, aquariumIndex: nu
   return true;
 }
 
+/** 水槽の魚とバッグの魚を1:1で入れかえる（バッグ満杯でも可。成長はリセット） */
+export function swapAquariumFish(
+  playerData: PlayerData,
+  aquariumIndex: number,
+  inventoryIndex: number,
+): boolean {
+  if (!hasAquarium(playerData) || !playerData.aquarium) return false;
+  if (aquariumIndex < 0 || aquariumIndex >= playerData.aquarium.length) return false;
+  if (inventoryIndex < 0 || inventoryIndex >= playerData.inventory.length) return false;
+
+  const inv = playerData.inventory[inventoryIndex];
+  if (!inv || inv.fishId.startsWith('junk_')) return false;
+  if (!getFishById(inv.fishId)) return false;
+
+  const aqua = playerData.aquarium[aquariumIndex];
+  playerData.inventory[inventoryIndex] = {
+    fishId: aqua.fishId,
+    ...(aqua.size !== undefined ? { size: aqua.size } : {}),
+  };
+  playerData.aquarium[aquariumIndex] = {
+    fishId: inv.fishId,
+    ...(inv.size !== undefined ? { size: inv.size } : {}),
+    feedCount: 0,
+    addedAt: Date.now(),
+    lastFedAt: 0,
+  };
+  return true;
+}
+
 export function feedAquariumFish(
   playerData: PlayerData,
   aquariumIndex: number,
   now: number,
+  tier: AquariumFoodTier = 'normal',
 ): { ok: boolean; leveledUp: boolean } {
   if (!playerData.aquarium || aquariumIndex < 0 || aquariumIndex >= playerData.aquarium.length) {
     return { ok: false, leveledUp: false };
   }
-  if ((playerData.aquariumFoodCount ?? 0) <= 0) {
+  if (getAquariumFoodCount(playerData, tier) <= 0) {
     return { ok: false, leveledUp: false };
   }
 
@@ -139,10 +192,12 @@ export function feedAquariumFish(
     return { ok: false, leveledUp: false };
   }
 
+  const food = AQUARIUM_FOOD_TIERS[tier];
   const beforeLevel = getGrowthStage(entry.feedCount).level;
-  playerData.aquariumFoodCount -= 1;
-  entry.feedCount += 1;
+  addAquariumFoodCount(playerData, tier, -1);
+  entry.feedCount += food.feedGain;
   entry.lastFedAt = now;
+  entry.lastFedSatietyMs = food.satietyMs;
   const afterLevel = getGrowthStage(entry.feedCount).level;
   return { ok: true, leveledUp: afterLevel > beforeLevel };
 }

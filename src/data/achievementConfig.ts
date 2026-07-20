@@ -132,7 +132,7 @@ export const achievementConfigs: AchievementConfig[] = [
     name: 'コモンマスター',
     description: 'レア度「common」の全種類を釣る',
     emoji: '🐟',
-    condition: { type: 'all_rarity', rarity: Rarity.COMMON, target: 13 }, // ゴミを除く
+    condition: { type: 'all_rarity', rarity: Rarity.COMMON, target: 13 }, // target は fishConfig から動的算出
     reward: { money: 500, exp: 150 },
   },
   {
@@ -150,7 +150,7 @@ export const achievementConfigs: AchievementConfig[] = [
     name: 'レアマスター',
     description: 'レア度「rare」の全種類を釣る',
     emoji: '⭐',
-    condition: { type: 'all_rarity', rarity: Rarity.RARE, target: 5 },
+    condition: { type: 'all_rarity', rarity: Rarity.RARE, target: 5 }, // target は fishConfig から動的算出（現在4種）
     reward: { money: 3000, exp: 800 },
   },
   {

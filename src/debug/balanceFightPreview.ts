@@ -130,7 +130,6 @@ export class BalanceFightPreview {
       leftHeld: this.keys.left,
       rightHeld: this.keys.right,
       tensionUpHeld: this.keys.up,
-      tensionDownHeld: this.keys.down,
       playerData: pd,
       equippedRodId: pd.equippedRodId,
       fish: balanceReferenceFishParams(),

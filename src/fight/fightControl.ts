@@ -34,16 +34,11 @@ export function stepFightBarVelocity(
   return velocity + (vTarget - velocity) * t;
 }
 
-/** テンション目標速度（0〜1 / 秒） */
-export function getTensionTargetVelocity(tensionUpHeld: boolean, tensionDownHeld: boolean): number {
+/** テンション目標速度（0〜1 / 秒）。↑押下で上昇、離すと同速で自動下降 */
+export function getTensionTargetVelocity(tensionUpHeld: boolean): number {
   const cfg = config.fighting;
-  if (tensionUpHeld && !tensionDownHeld) {
-    return cfg['5-49_テンション上昇力'] * cfg['5-50_テンション速度係数'];
-  }
-  if (tensionDownHeld && !tensionUpHeld) {
-    return -cfg['5-51_テンション下降力'] * cfg['5-50_テンション速度係数'];
-  }
-  return 0;
+  const speed = cfg['5-49_テンション上昇力'] * cfg['5-50_テンション速度係数'];
+  return tensionUpHeld ? speed : -speed;
 }
 
 /** テンション値を慣性付きで更新 */
@@ -51,11 +46,10 @@ export function stepTension(
   tension: number,
   tensionVelocity: number,
   tensionUpHeld: boolean,
-  tensionDownHeld: boolean,
   dt: number,
 ): { tension: number; tensionVelocity: number } {
   const cfg = config.fighting;
-  const vTarget = getTensionTargetVelocity(tensionUpHeld, tensionDownHeld);
+  const vTarget = getTensionTargetVelocity(tensionUpHeld);
   const response = cfg['5-52_テンション基本レスポンス'];
   const t = Math.min(1, response * dt);
   const newVelocity = tensionVelocity + (vTarget - tensionVelocity) * t;

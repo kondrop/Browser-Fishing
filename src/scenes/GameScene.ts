@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
-import { getRandomFish, rarityStars, getRealFishCount, getFishById, fishDatabase, rarityStarCount, rarityWeights, Habitat, Rarity, fishImageFileNames, getFishImagePath } from '../data/fish';
+import { getRandomFish, rarityStars, getRealFishCount, getFishById, fishDatabase, rarityStarCount, rarityWeights, rarityColors, Habitat, Rarity, fishImageFileNames, getFishImagePath } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
 import { loadPlayerData, savePlayerData, addFishToInventory, getInventoryCount, getInventoryDisplayOrder, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, addExp, generateRandomSize, getCastDistanceRatio, updateFishSizeRecord, calculatePriceWithSizeBonus, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp } from '../data/inventory';
 import {
   SKILL_TREE_IDS,
   SKILL_TREE_LABELS,
+  canRevealFightFishRarity,
   canUnlockSkillNode,
   getExpMultiplierForFish,
   getSellPriceMultiplier,
@@ -29,12 +30,14 @@ import {
 } from '../data/questConfig';
 import {
   acceptQuest,
+  abandonQuest,
   getActiveQuests,
   getAvailableQuests,
   getCompletedQuests,
   getQuestProgressDisplay,
   getQuestProgressRatio,
   migrateBoardQuestsIfNeeded,
+  resetBoardQuests,
   onQuestConsecutiveSuccess,
   onQuestFishCaught,
   onQuestFishSold,
@@ -42,7 +45,7 @@ import {
   resolveQuest,
   type QuestCatchContext,
 } from '../data/quests';
-import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, toolConfigs, getRodById, getBaitById, getLureById, type ToolConfig } from '../data/shopConfig';
+import { rodConfigs, baitConfigs, lureConfigs, inventoryUpgradeConfigs, toolConfigs, getRodById, getBaitById, getLureById, itemImageFileNames, type ToolConfig } from '../data/shopConfig';
 import {
   hasAquarium,
   getGrowthStage,
@@ -53,15 +56,62 @@ import {
   getAquariumStatBonuses,
   addFishToAquarium,
   removeFishFromAquarium,
+  swapAquariumFish,
   feedAquariumFish,
+  getAquariumFoodCount,
+  addAquariumFoodCount,
 } from '../data/aquarium';
 import {
   AQUARIUM_CAPACITY,
   AQUARIUM_FEED_COOLDOWN_MS,
+  AQUARIUM_FOOD_TIERS,
   AQUARIUM_RIGHT_FACING_FISH,
   AQUARIUM_FISH_BASE_SIZE,
   AQUARIUM_CANVAS_W,
   AQUARIUM_CANVAS_H,
+  AQUARIUM_BG_WARP_INSET_L,
+  AQUARIUM_BG_WARP_INSET_R,
+  AQUARIUM_BG_WARP_INSET_T,
+  AQUARIUM_BG_WARP_INSET_B,
+  AQUARIUM_BG_WARP_AMP,
+  AQUARIUM_BG_WARP_SPEED,
+  AQUARIUM_BG_WARP_Y_FREQ,
+  AQUARIUM_BG_WARP_STEP,
+  AQUARIUM_BUBBLE_SPAWNS,
+  AQUARIUM_BUBBLE_SPAWN_PER_SEC,
+  AQUARIUM_BUBBLE_MAX,
+  AQUARIUM_BUBBLE_RADIUS_MIN,
+  AQUARIUM_BUBBLE_RADIUS_MAX,
+  AQUARIUM_BUBBLE_RISE_MIN,
+  AQUARIUM_BUBBLE_RISE_MAX,
+  AQUARIUM_BUBBLE_SWAY_AMP_MIN,
+  AQUARIUM_BUBBLE_SWAY_AMP_MAX,
+  AQUARIUM_BUBBLE_SWAY_FREQ_MIN,
+  AQUARIUM_BUBBLE_SWAY_FREQ_MAX,
+  AQUARIUM_BUBBLE_DESPAWN_Y,
+  AQUARIUM_BUBBLE_SEED_COUNT,
+  AQUARIUM_INTRO_BUBBLE_COUNT,
+  AQUARIUM_INTRO_BUBBLE_SPREAD,
+  AQUARIUM_INTRO_BUBBLE_RISE_MUL,
+  AQUARIUM_GODRAY_MAX,
+  AQUARIUM_GODRAY_SPAWN_PER_SEC,
+  AQUARIUM_GODRAY_SEED_COUNT,
+  AQUARIUM_GODRAY_LIFE_MIN,
+  AQUARIUM_GODRAY_LIFE_MAX,
+  AQUARIUM_GODRAY_TOP_Y,
+  AQUARIUM_GODRAY_X_CENTER,
+  AQUARIUM_GODRAY_SPAWN_SPREAD,
+  AQUARIUM_GODRAY_EDGE_INSET,
+  AQUARIUM_GODRAY_TRAVEL_FRAC_MIN,
+  AQUARIUM_GODRAY_TRAVEL_FRAC_MAX,
+  AQUARIUM_GODRAY_ANGLE,
+  AQUARIUM_GODRAY_HALF_W_MIN,
+  AQUARIUM_GODRAY_HALF_W_MAX,
+  AQUARIUM_GODRAY_LENGTH_MIN,
+  AQUARIUM_GODRAY_LENGTH_MAX,
+  AQUARIUM_GODRAY_MAX_ALPHA,
+  AQUARIUM_GODRAY_FADE_IN_FRAC,
+  AQUARIUM_GODRAY_FADE_OUT_FRAC,
   AQUARIUM_FACING_VX_THRESHOLD,
   AQUARIUM_PITCH_MAX,
   AQUARIUM_PITCH_STOP_SPEED,
@@ -96,10 +146,15 @@ import {
   AQUARIUM_IDLE_DAMP,
   AQUARIUM_SEEK_ACCEL,
   AQUARIUM_SEEK_MAX_SPEED,
+  AQUARIUM_SEEK_LEAD_MAX_SEC,
+  AQUARIUM_PELLET_FALL_SPEED,
   AQUARIUM_PELLET_RADIUS,
   AQUARIUM_EAT_BASE_RADIUS,
   AQUARIUM_EAT_SIZE_FACTOR,
   getAquariumSpeciesScale,
+  getAquariumIndividualScale,
+  getAquariumFoodTierByToolId,
+  type AquariumFoodTier,
   type AquariumStatKey,
 } from '../data/aquariumConfig';
 
@@ -131,6 +186,7 @@ interface AquariumFoodPellet {
   x: number;
   y: number;
   swayPhase: number;
+  tier: AquariumFoodTier;
 }
 
 interface AquariumFx {
@@ -139,6 +195,32 @@ interface AquariumFx {
   y: number;
   bornAt: number;
   aquariumIndex?: number;
+}
+
+interface AquariumBubble {
+  /** ゆらぎの中心 X */
+  baseX: number;
+  x: number;
+  y: number;
+  r: number;
+  riseSpeed: number;
+  swayAmp: number;
+  swayFreq: number;
+  swayPhase: number;
+}
+
+/** 水面から差し込む光帯（ゴッドレイ） */
+interface AquariumGodRay {
+  /** 根本の X（水平移動する） */
+  x: number;
+  /** 根元〜先端で共通の半幅（px） */
+  halfW: number;
+  length: number;
+  life: number;
+  age: number;
+  /** 水平移動速度（px/秒）。符号で左右 */
+  driftVx: number;
+  maxAlpha: number;
 }
 import { characterConfigs, getCharacterById, getDefaultCharacterId } from '../data/characterConfig';
 import { calculateDisplayStatIndices, getEffectiveSkillStatBonuses } from '../debug/balanceDebug';
@@ -259,6 +341,10 @@ export default class GameScene extends Phaser.Scene {
   private skillUnlockConfirmPendingNodeId: SkillNodeId | null = null;
   /** 確認ダイアログのキーボード選択（左右・Enter と同期） */
   private skillUnlockConfirmFocus: 'cancel' | 'ok' = 'cancel';
+  /** クエスト破棄確認モーダルで確定待ちのクエストID（null で未表示） */
+  private questAbandonConfirmPendingQuestId: string | null = null;
+  /** クエスト破棄確認ダイアログのキーボード選択 */
+  private questAbandonConfirmFocus: 'cancel' | 'ok' = 'cancel';
   // プレイヤーデータ
   private playerData!: PlayerData;
 
@@ -319,6 +405,8 @@ export default class GameScene extends Phaser.Scene {
   private aquariumRemoveConfirmTimer: number | null = null;
   private aquariumSatietyIntervalId: number | null = null;
   private aquariumPendingBagIndex: number | null = null;
+  /** 占有スロットでバッグ魚との入れかえUIを表示中 */
+  private aquariumSwapMode = false;
   // 水槽ビュー
   private aquariumRafId: number | null = null;
   private aquariumLastFrameAt = 0;
@@ -328,13 +416,19 @@ export default class GameScene extends Phaser.Scene {
   private aquariumPellets: AquariumFoodPellet[] = [];
   private aquariumFishImages = new Map<string, HTMLImageElement>();
   private aquariumBgImage: HTMLImageElement | null = null;
+  private aquariumBgCache: HTMLCanvasElement | null = null;
   private aquariumBgFailed = false;
+  private aquariumFgCache: HTMLCanvasElement | null = null;
+  private aquariumFgFailed = false;
   private aquariumFx: AquariumFx[] = [];
-  private aquariumHintResetTimer: number | null = null;
+  private aquariumBubbles: AquariumBubble[] = [];
+  private aquariumGodRays: AquariumGodRay[] = [];
   private aquariumKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private aquariumCanvasEl: HTMLCanvasElement | null = null;
   private aquariumUIElement: HTMLElement | null = null;
   private aquariumCanvasBound = false;
+  private aquariumSelectedFoodTier: AquariumFoodTier = 'normal';
+  private aquariumFoodSelectBound = false;
   private unifiedBookSelectedId: string | null = null;
   private unifiedBookSelectedIndex: number | null = null;
   private unifiedBookNavRepeatDir: 'up' | 'down' | 'left' | 'right' | null = null;
@@ -655,31 +749,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // ショップアイテムの画像を読み込み（IDと日本語ファイル名のマッピング）
-    const itemImages: { [id: string]: string } = {
-      // 釣り竿（表示名） / 画像ファイル名は既存アセットに合わせる
-      'rod_basic': '木の竿',
-      'rod_bamboo': '竹の竿',
-      'rod_carbon': 'カーボンロッド',
-      'rod_master': '名人の竿',
-      'rod_legendary': '達人の竿',
-      // エサ
-      'bait_worm': 'ミミズ',
-      'bait_shrimp': '小エビ',
-      'bait_minnow': '小魚',
-      'bait_golden': '黄金虫',
-      // ルアー
-      'lure_basic': 'スプーン',
-      'lure_minnow': 'ミノー',
-      'lure_popper': 'ポッパー',
-      'lure_legendary': 'スピナー',
-      // バッグ
-      'inv_9': '基本バッグ',
-      'inv_12': '中型バッグ',
-      'inv_15': '大型バッグ',
-      'inv_18': '釣り師のバッグ',  // ファイル名に合わせて「釣り師のバッグ」
-    };
-
-    for (const [itemId, fileName] of Object.entries(itemImages)) {
+    for (const [itemId, fileName] of Object.entries(itemImageFileNames)) {
       this.load.image(itemId, `/images/items/${fileName}.png`);
     }
   }
@@ -762,6 +832,10 @@ export default class GameScene extends Phaser.Scene {
     // プレイヤーデータを読み込み
     this.playerData = loadPlayerData();
     if (migrateBoardQuestsIfNeeded(this.playerData)) {
+      savePlayerData(this.playerData);
+    }
+    // セーブデータと魚種定義のズレで未解除のまま残った実績を補正
+    if (checkAchievements(this.playerData).length > 0) {
       savePlayerData(this.playerData);
     }
 
@@ -1019,8 +1093,9 @@ export default class GameScene extends Phaser.Scene {
         this.fightSkillXKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
         this.fightSkillCKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C);
         
-        // Eキーで全て売却
+        // Eキーで全て売却（統合BookUIでは E = 次タブのため無効）
         this.input.keyboard.on('keydown-E', () => {
+            if (this.unifiedBookOpen) return;
             if (this.state === FishingState.IDLE) {
                 this.sellAll();
             }
@@ -1065,6 +1140,10 @@ export default class GameScene extends Phaser.Scene {
                   this.closeSkillUnlockConfirm();
                   return;
                 }
+                if (this.questAbandonConfirmPendingQuestId) {
+                  this.closeQuestAbandonConfirm();
+                  return;
+                }
                 this.closeUnifiedBook();
                 return;
             }
@@ -1099,12 +1178,33 @@ export default class GameScene extends Phaser.Scene {
                   }
                   return;
                 }
+                if (this.questAbandonConfirmPendingQuestId) {
+                  if (this.questAbandonConfirmFocus === 'cancel') {
+                    this.closeQuestAbandonConfirm();
+                  } else {
+                    this.applyQuestAbandonConfirm();
+                  }
+                  return;
+                }
                 if (this.unifiedBookTab === 'skills' && this.skillNavArea === 'unlock') {
                     this.triggerSkillDetailAction();
                 } else if (this.unifiedBookTab === 'status') {
                     this.triggerStatusKeyboardAction();
                 } else if (this.unifiedBookTab === 'aquarium') {
                     this.triggerAquariumKeyboardAction();
+                } else if (
+                  (this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'quest') &&
+                  this.achievementNavArea === 'left'
+                ) {
+                    this.noteUiMenuKeyboardNavigation();
+                    this.tryEnterAchievementRightPane();
+                } else if (
+                  this.unifiedBookTab === 'quest' &&
+                  this.achievementNavArea === 'right' &&
+                  this.unifiedBookSelectedId === 'active'
+                ) {
+                    this.noteUiMenuKeyboardNavigation();
+                    this.triggerQuestLogAbandonKeyboardAction();
                 }
             } else if (this.inventoryOpen && !this.detailModalOpen) {
                 this.openDetailModal();
@@ -1170,20 +1270,18 @@ export default class GameScene extends Phaser.Scene {
             }
         });
 
-        // Qキーで前のページ（統合BookUIが開いていない時のみ）
+        // Qキーで前のページ（統合BookUIが開いている時は handleUnifiedBookNavigation が Q/E でタブ循環）
         this.input.keyboard.on('keydown-Q', () => {
-            if (this.unifiedBookOpen) {
-                this.switchUnifiedBookTab('inventory');
-            } else if (this.bookOpen && !this.bookDetailOpen) {
+            if (this.unifiedBookOpen) return;
+            if (this.bookOpen && !this.bookDetailOpen) {
                 this.bookPrevPage();
             }
         });
 
-        // Eキーで次のページ（統合BookUIが開いていない時のみ）
+        // Wキーで次のページ（統合BookUIが開いている時は handleUnifiedBookNavigation が Q/E でタブ循環）
         this.input.keyboard.on('keydown-W', () => {
-            if (this.unifiedBookOpen) {
-                this.switchUnifiedBookTab('pedia');
-            } else if (this.bookOpen && !this.bookDetailOpen) {
+            if (this.unifiedBookOpen) return;
+            if (this.bookOpen && !this.bookDetailOpen) {
                 this.bookNextPage();
             }
         });
@@ -1516,7 +1614,7 @@ export default class GameScene extends Phaser.Scene {
           <button type="button" id="balance-debug-btn" class="nes-btn is-small">バランス</button>
         </div>
 
-        <div id="quest-hud" class="quest-hud" aria-label="受注中クエスト">
+        <div id="quest-hud" class="quest-hud" aria-label="進行中クエスト">
           ${Array.from({ length: MAX_ACTIVE_QUESTS }).map((_, index) => `
             <div class="quest-hud-slot is-empty" data-index="${index}" style="--quest-progress-angle: 0deg;" aria-label="空きクエストスロット">
               <div class="quest-hud-slot__ring" aria-hidden="true"></div>
@@ -1688,8 +1786,7 @@ export default class GameScene extends Phaser.Scene {
 
       const ratio = getQuestProgressRatio(this.playerData, quest);
       const percent = Math.round(ratio * 100);
-      const fishId = quest.condition.fishId;
-      const imgPath = quest.thumbnailImage ?? (fishId ? getFishImagePath(fishId) : undefined);
+      const imgPath = this.resolveQuestCardImagePath(quest);
 
       slot.className = `quest-hud-slot is-active${ratio >= 1 ? ' is-complete' : ''}`;
       slot.style.setProperty('--quest-progress-angle', `${Math.round(ratio * 360)}deg`);
@@ -1698,6 +1795,7 @@ export default class GameScene extends Phaser.Scene {
 
       if (imgPath && img) {
         img.src = imgPath;
+        img.className = this.getQuestIconImgClasses(imgPath, 'quest-hud-slot__img');
         img.style.display = '';
         if (emoji) emoji.style.display = 'none';
       } else {
@@ -3242,6 +3340,11 @@ export default class GameScene extends Phaser.Scene {
       this.fishBarPosition <= this.playerBarPosition + barHeight;
     const criticalZoneHeight = hasSkillAbility(this.playerData, 'abil_speed_opening_surge') ? 0.08 : 0;
     const playerHitBarCenter = this.playerBarPosition + barHeight / 2;
+    let fishRarityTint: string | null = null;
+    if (this.currentFish && canRevealFightFishRarity(this.playerData)) {
+      const colorNum = rarityColors[this.currentFish.rarity] ?? 0xaaaaaa;
+      fishRarityTint = `#${colorNum.toString(16).padStart(6, '0')}`;
+    }
     this.fishingGaugeOverlay.updateFight({
       fishBarPosition: this.fishBarPosition,
       playerBarPosition: this.playerBarPosition,
@@ -3253,6 +3356,7 @@ export default class GameScene extends Phaser.Scene {
       fishDriftVelocity: this.fishDriftVelocity,
       tension: this.fightTension,
       fishState: this.fishFightState,
+      fishRarityTint,
     });
     this.updateFightSkillIcons();
   }
@@ -3398,7 +3502,6 @@ export default class GameScene extends Phaser.Scene {
       leftHeld: this.cursors.left.isDown,
       rightHeld: this.cursors.right.isDown,
       tensionUpHeld: this.cursors.up.isDown,
-      tensionDownHeld: this.cursors.down.isDown,
       playerData: this.playerData,
       equippedRodId: this.playerData.equippedRodId,
       fish: fishParams,
@@ -4454,8 +4557,7 @@ export default class GameScene extends Phaser.Scene {
             </button>
             <button class="book-tab-button ui-frame-box" data-tab="aquarium" aria-label="Aquarium" hidden>
               <span class="book-tab-button-inner">
-                <!-- TODO: アイコン差し替え icon_aquarium.png -->
-                <img class="book-tab-icon" src="/images/fish/キンギョ.png" alt="" aria-hidden="true" />
+                <img class="book-tab-icon" src="/images/ui/icon/icon_aquarium.png" alt="" aria-hidden="true" />
                 <span class="book-tab-label">Aquarium</span>
               </span>
             </button>
@@ -4657,22 +4759,25 @@ export default class GameScene extends Phaser.Scene {
             </div>
             </div>
         <div id="book-aquarium-panel" class="book-aquarium-panel" style="display: none;">
-          <div class="aquarium-manage-section">
-            <div class="aquarium-manage-top">
-              <div id="aquarium-slots" class="aquarium-slots" role="list"></div>
-              <div id="aquarium-manage-detail" class="aquarium-manage-detail ui-frame-box"></div>
-            </div>
-            <div class="aquarium-manage-footer">
-              <span id="aquarium-summary-food"></span>
-              <span id="aquarium-summary-bonus"></span>
-            </div>
+          <div class="aquarium-hero">
+            <div id="aquarium-slots" class="aquarium-slots" role="list"></div>
+            <div id="aquarium-manage-detail" class="aquarium-manage-detail"></div>
           </div>
           <div class="aquarium-tank-section ui-frame-box">
-            <div class="aquarium-tank-toolbar">
-              <span class="aquarium-food-count">🥫 ×<span id="aquarium-food-count-value">0</span></span>
-              <span class="aquarium-hint" id="aquarium-hint">クリック / Z・Space: エサを投下　マウスでねらう</span>
+            <div class="aquarium-tank-footer">
+              <div class="aquarium-food-select" role="group" aria-label="エサ選択">
+                <button type="button" class="aquarium-food-option ui-frame-box" data-food-tier="normal" aria-pressed="true">
+                  <img class="aquarium-food-option-icon" src="/images/items/アクアリウムのエサ.png" alt="" width="28" height="28" />
+                  <span class="aquarium-food-option-count">×<span id="aquarium-food-count-value">0</span></span>
+                </button>
+                <button type="button" class="aquarium-food-option ui-frame-box" data-food-tier="premium" aria-pressed="false">
+                  <img class="aquarium-food-option-icon" src="/images/items/高級なエサ.png" alt="" width="28" height="28" />
+                  <span class="aquarium-food-option-count">×<span id="aquarium-premium-food-count-value">0</span></span>
+                </button>
+              </div>
+              <div id="aquarium-summary-bonus" class="aquarium-bonus-chips" aria-label="合計ボーナス"></div>
             </div>
-            <div class="aquarium-canvas-wrap">
+            <div class="aquarium-canvas-wrap" aria-label="水槽プレビュー">
               <canvas id="aquarium-canvas" width="960" height="540"></canvas>
             </div>
           </div>
@@ -4683,6 +4788,15 @@ export default class GameScene extends Phaser.Scene {
             <div class="skill-unlock-confirm-actions modal-choice-actions">
               <button type="button" id="skill-unlock-confirm-cancel" class="nes-btn ui-frame-box">やめる</button>
               <button type="button" id="skill-unlock-confirm-ok" class="nes-btn ui-frame-box">解放する</button>
+            </div>
+          </div>
+        </div>
+        <div id="quest-abandon-confirm-layer" class="skill-unlock-confirm-layer" style="display: none;" aria-hidden="true">
+          <div class="skill-unlock-confirm-dialog ui-frame-box" role="dialog" aria-modal="true" aria-labelledby="quest-abandon-confirm-message">
+            <p id="quest-abandon-confirm-message" class="skill-unlock-confirm-message"></p>
+            <div class="skill-unlock-confirm-actions modal-choice-actions">
+              <button type="button" id="quest-abandon-confirm-cancel" class="nes-btn ui-frame-box">やめる</button>
+              <button type="button" id="quest-abandon-confirm-ok" class="nes-btn ui-frame-box">破棄する</button>
             </div>
           </div>
         </div>
@@ -4769,6 +4883,33 @@ export default class GameScene extends Phaser.Scene {
     skillUnlockOkBtn?.addEventListener('focus', () => {
       this.skillUnlockConfirmFocus = 'ok';
       this.syncSkillUnlockConfirmSelection();
+    });
+
+    const questAbandonLayer = this.unifiedBookUIElement.querySelector('#quest-abandon-confirm-layer');
+    questAbandonLayer?.addEventListener('click', (e) => {
+      if (e.target === questAbandonLayer) this.closeQuestAbandonConfirm();
+    });
+    const questAbandonDialog = questAbandonLayer?.querySelector('.skill-unlock-confirm-dialog');
+    questAbandonDialog?.addEventListener('click', (e) => e.stopPropagation());
+    const questAbandonCancelBtn = this.unifiedBookUIElement.querySelector(
+      '#quest-abandon-confirm-cancel',
+    ) as HTMLButtonElement | null;
+    const questAbandonOkBtn = this.unifiedBookUIElement.querySelector(
+      '#quest-abandon-confirm-ok',
+    ) as HTMLButtonElement | null;
+    questAbandonCancelBtn?.addEventListener('click', () => {
+      this.closeQuestAbandonConfirm();
+    });
+    questAbandonOkBtn?.addEventListener('click', () => {
+      this.applyQuestAbandonConfirm();
+    });
+    questAbandonCancelBtn?.addEventListener('focus', () => {
+      this.questAbandonConfirmFocus = 'cancel';
+      this.syncQuestAbandonConfirmSelection();
+    });
+    questAbandonOkBtn?.addEventListener('focus', () => {
+      this.questAbandonConfirmFocus = 'ok';
+      this.syncQuestAbandonConfirmSelection();
     });
 
     const statusChangeRodBtn = this.unifiedBookUIElement.querySelector('#book-status-change-rod') as HTMLButtonElement | null;
@@ -4899,7 +5040,7 @@ export default class GameScene extends Phaser.Scene {
     if (!entry) return;
     const rem = getSatietyRemainingMs(entry, now);
     satietyEl.textContent =
-      rem > 0 ? `状態: 満腹（あと${Math.ceil(rem / 1000)}秒）` : '状態: おなかがすいている';
+      rem > 0 ? `満腹（あと${Math.ceil(rem / 1000)}秒）` : 'おなかがすいている';
   }
 
   private clearAquariumRemoveConfirm() {
@@ -4917,6 +5058,13 @@ export default class GameScene extends Phaser.Scene {
     return 'コントロール';
   }
 
+  private aquariumStatInitial(stat: AquariumStatKey): string {
+    if (stat === 'power') return 'P';
+    if (stat === 'speed') return 'S';
+    if (stat === 'technique') return 'T';
+    return 'C';
+  }
+
   private formatAquariumPt(value: number): string {
     return (value * 100).toFixed(1);
   }
@@ -4925,6 +5073,7 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookSelectedId = id;
     this.unifiedBookSelectedIndex = index;
     this.aquariumPendingBagIndex = null;
+    this.aquariumSwapMode = false;
     this.clearAquariumRemoveConfirm();
     this.unifiedBookListItems.forEach((el, i) => {
       const on = i === index;
@@ -4984,25 +5133,109 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
     this.clearAquariumRemoveConfirm();
+    this.aquariumSwapMode = false;
+    this.aquariumPendingBagIndex = null;
     savePlayerData(this.playerData);
-    this.syncAquariumRuntimesPreserving();
+    this.syncAquariumRuntimesPreserving({ removedIndex: aquariumIndex });
     this.updateUnifiedBookList();
     this.updateUnifiedBookDetail();
     this.showResult('バッグに戻した（成長はリセット）', 1800);
   }
 
-  private syncAquariumRuntimesPreserving() {
-    const prev = this.aquariumFishRuntimes;
+  private trySwapAquariumFish(aquariumIndex: number, inventoryIndex: number) {
+    if (!swapAquariumFish(this.playerData, aquariumIndex, inventoryIndex)) {
+      this.showResult('入れかえられません', 1500);
+      return;
+    }
+    this.aquariumSwapMode = false;
+    this.aquariumPendingBagIndex = null;
+    this.clearAquariumRemoveConfirm();
+    savePlayerData(this.playerData);
+    this.preloadAquariumImages();
+    this.updateUnifiedBookList();
+    this.updateUnifiedBookDetail();
+    this.updateAquariumFoodHud();
+    this.showResult('入れかえた！（成長はリセット）', 1800);
+  }
+
+  private hasSwappableBagFish(): boolean {
+    return this.playerData.inventory.some(
+      (inv) => !inv.fishId.startsWith('junk_') && !!getFishById(inv.fishId),
+    );
+  }
+
+  /** バッグから水槽向けに選べる魚の一覧を描画。候補があれば true */
+  private appendAquariumBagPickList(parent: HTMLElement): boolean {
+    const list = document.createElement('div');
+    list.className = 'aquarium-bag-pick-list';
+    let any = false;
+    this.playerData.inventory.forEach((inv, invIndex) => {
+      if (inv.fishId.startsWith('junk_')) return;
+      const fish = getFishById(inv.fishId);
+      if (!fish) return;
+      any = true;
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'aquarium-bag-pick-row ui-frame-box';
+      if (this.aquariumPendingBagIndex === invIndex) row.classList.add('is-selected');
+      const rarityLabel = fish.rarity.toUpperCase();
+      row.textContent = `${fish.name}  ${inv.size !== undefined ? inv.size.toFixed(1) + 'cm' : '-'}  ${rarityLabel}`;
+      row.addEventListener('click', () => {
+        this.aquariumPendingBagIndex = invIndex;
+        this.updateUnifiedBookDetail();
+      });
+      list.appendChild(row);
+    });
+    if (!any) return false;
+    parent.appendChild(list);
+    return true;
+  }
+
+  /** 水槽データとランタイムを差分同期（既存魚の位置・遊泳は維持） */
+  private syncAquariumRuntimesPreserving(opts?: { removedIndex?: number }) {
+    this.preloadAquariumImages();
     const count = (this.playerData.aquarium ?? []).length;
+    const prev = this.aquariumFishRuntimes;
+
     if (count === 0) {
       this.aquariumFishRuntimes = [];
+      this.aquariumFx = this.aquariumFx.filter((fx) => fx.aquariumIndex === undefined);
       return;
     }
-    if (prev.length === count) {
-      // indices still match
+
+    if (opts?.removedIndex !== undefined) {
+      const removed = opts.removedIndex;
+      this.aquariumFishRuntimes = prev
+        .filter((r) => r.aquariumIndex !== removed)
+        .map((r) => {
+          if (r.aquariumIndex > removed) r.aquariumIndex -= 1;
+          return r;
+        });
+      this.aquariumFx = this.aquariumFx
+        .filter((fx) => fx.aquariumIndex !== removed)
+        .map((fx) => {
+          if (fx.aquariumIndex !== undefined && fx.aquariumIndex > removed) {
+            fx.aquariumIndex -= 1;
+          }
+          return fx;
+        });
       return;
     }
-    this.initAquariumRuntimes();
+
+    // addFishToAquarium は末尾 push なので、足りない分だけ追加
+    if (prev.length < count) {
+      for (let i = prev.length; i < count; i++) {
+        const runtime = this.createAquariumRuntime(i);
+        this.aquariumFishRuntimes.push(runtime);
+        this.spawnAquariumIntroBubbles(runtime.x, runtime.y);
+      }
+      return;
+    }
+
+    if (prev.length > count) {
+      // 削除ヒントなしのフォールバック
+      this.initAquariumRuntimes();
+    }
   }
 
   private renderAquariumBookList() {
@@ -5034,14 +5267,30 @@ export default class GameScene extends Phaser.Scene {
         thumb.className = 'aquarium-slot-thumb';
         if (fish && this.textures.exists(fish.id)) {
           const canvas = document.createElement('canvas');
-          canvas.width = 40;
-          canvas.height = 40;
+          canvas.width = 80;
+          canvas.height = 80;
           thumb.appendChild(canvas);
           const ctx = canvas.getContext('2d');
           if (ctx) {
             const frame = this.textures.getFrame(fish.id);
-            const src = frame.source.image as HTMLImageElement;
-            if (src) ctx.drawImage(src, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, 40, 40);
+            const maxSize = 80;
+            const scale = Math.min(maxSize / frame.width, maxSize / frame.height);
+            const width = frame.width * scale;
+            const height = frame.height * scale;
+            const sourceImage = frame.source.image as HTMLImageElement;
+            if (sourceImage) {
+              this.drawFishImageWithOutline(
+                ctx,
+                sourceImage,
+                frame,
+                (80 - width) / 2,
+                (80 - height) / 2,
+                width,
+                height,
+                2,
+                '#ffffff',
+              );
+            }
           }
         } else {
           thumb.textContent = fish?.emoji ?? '🐟';
@@ -5051,11 +5300,15 @@ export default class GameScene extends Phaser.Scene {
         const name = document.createElement('div');
         name.className = 'aquarium-slot-name';
         name.textContent = fish?.name ?? entry.fishId;
-        const meta = document.createElement('div');
-        meta.className = 'aquarium-slot-meta';
-        meta.textContent = `Lv${stage.level} ${stage.name}  +${this.formatAquariumPt(bonus.value)}pt`;
+        const stageEl = document.createElement('div');
+        stageEl.className = 'aquarium-slot-meta aquarium-slot-lv';
+        stageEl.innerHTML = `<span class="aquarium-slot-lv-label">Lv.</span><span class="aquarium-slot-lv-num">${stage.level}</span>`;
+        const bonusEl = document.createElement('div');
+        bonusEl.className = 'aquarium-slot-meta aquarium-slot-bonus';
+        bonusEl.innerHTML = `<span class="aquarium-slot-bonus-label">${this.aquariumStatInitial(bonus.stat)}</span><span class="aquarium-slot-bonus-num">+${this.formatAquariumPt(bonus.value)}</span>`;
         info.appendChild(name);
-        info.appendChild(meta);
+        info.appendChild(stageEl);
+        info.appendChild(bonusEl);
         node.appendChild(thumb);
         node.appendChild(info);
         if (isSatiated(entry, now)) {
@@ -5078,13 +5331,7 @@ export default class GameScene extends Phaser.Scene {
       this.unifiedBookListItems.push(row);
     }
 
-    const totals = getAquariumStatBonuses(this.playerData);
-    const foodEl = this.unifiedBookUIElement.querySelector('#aquarium-summary-food');
-    const bonusEl = this.unifiedBookUIElement.querySelector('#aquarium-summary-bonus');
-    if (foodEl) foodEl.textContent = `フード所持: ${this.playerData.aquariumFoodCount}個`;
-    if (bonusEl) {
-      bonusEl.textContent = `合計ボーナス: P+${this.formatAquariumPt(totals.powerAdd)} S+${this.formatAquariumPt(totals.speedAdd)} T+${this.formatAquariumPt(totals.techniqueAdd)} C+${this.formatAquariumPt(totals.controlAdd)}`;
-    }
+    this.renderAquariumBonusChips();
 
     // 再描画後も選択を復元
     const selIdx = this.unifiedBookSelectedIndex;
@@ -5112,9 +5359,13 @@ export default class GameScene extends Phaser.Scene {
     detailEl.innerHTML = '';
     const id = this.unifiedBookSelectedId;
     if (!id || !id.startsWith('aquarium-slot-')) {
+      const tipTitle = document.createElement('p');
+      tipTitle.className = 'aquarium-detail-note-title';
+      tipTitle.textContent = 'Slot';
       const tip = document.createElement('p');
       tip.className = 'aquarium-detail-tip';
       tip.textContent = 'スロットを選んで魚を入れよう';
+      detailEl.appendChild(tipTitle);
       detailEl.appendChild(tip);
       return;
     }
@@ -5128,42 +5379,44 @@ export default class GameScene extends Phaser.Scene {
       const fish = getFishById(entry.fishId);
       const stage = getGrowthStage(entry.feedCount);
       const next = getNextGrowthStage(entry.feedCount);
-      const bonus = getAquariumBonusForEntry(entry);
 
-      const head = document.createElement('div');
-      head.className = 'aquarium-detail-head';
-      const thumb = document.createElement('div');
-      thumb.className = 'aquarium-detail-thumb';
-      if (fish && this.textures.exists(fish.id)) {
-        const canvas = document.createElement('canvas');
-        canvas.width = 40;
-        canvas.height = 40;
-        thumb.appendChild(canvas);
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const frame = this.textures.getFrame(fish.id);
-          const src = frame.source.image as HTMLImageElement;
-          if (src) ctx.drawImage(src, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, 40, 40);
-        }
+      // ── 名前 + サイズバッジ ──
+      const topBlock = document.createElement('div');
+      topBlock.className = 'aquarium-detail-top';
+
+      const nameRow = document.createElement('div');
+      nameRow.className = 'aquarium-detail-name-row';
+      const noteTitle = document.createElement('p');
+      noteTitle.className = 'aquarium-detail-note-title';
+      noteTitle.textContent = fish?.name ?? entry.fishId;
+      const sizeBadge = document.createElement('div');
+      sizeBadge.className = 'aquarium-detail-size-badge';
+      if (entry.size !== undefined) {
+        const sizeNum = document.createElement('span');
+        sizeNum.className = 'aquarium-detail-size-num';
+        sizeNum.textContent = entry.size.toFixed(1);
+        const sizeUnit = document.createElement('span');
+        sizeUnit.className = 'aquarium-detail-size-unit';
+        sizeUnit.textContent = 'cm';
+        sizeBadge.appendChild(sizeNum);
+        sizeBadge.appendChild(sizeUnit);
       } else {
-        thumb.textContent = fish?.emoji ?? '🐟';
+        const sizeNum = document.createElement('span');
+        sizeNum.className = 'aquarium-detail-size-num';
+        sizeNum.textContent = '-';
+        sizeBadge.appendChild(sizeNum);
       }
-      const titleWrap = document.createElement('div');
-      const title = document.createElement('div');
-      title.className = 'aquarium-detail-title';
-      title.textContent = fish?.name ?? entry.fishId;
-      const sizeLine = document.createElement('div');
-      sizeLine.className = 'aquarium-detail-line';
-      sizeLine.textContent = entry.size !== undefined ? `${entry.size.toFixed(1)}cm` : '-';
-      titleWrap.appendChild(title);
-      titleWrap.appendChild(sizeLine);
-      head.appendChild(thumb);
-      head.appendChild(titleWrap);
+      nameRow.appendChild(noteTitle);
+      nameRow.appendChild(sizeBadge);
 
+      // ── Lv + 成長ゲージ ──
+      const lvGaugeRow = document.createElement('div');
+      lvGaugeRow.className = 'aquarium-detail-lv-gauge-row';
+      const lvLine = document.createElement('div');
+      lvLine.className = 'aquarium-detail-lv';
+      lvLine.innerHTML = `<span class="aquarium-detail-lv-label">Lv.</span><span class="aquarium-detail-lv-num">${stage.level}</span>`;
       const growthRow = document.createElement('div');
       growthRow.className = 'aquarium-detail-growth-row';
-      const growthLine = document.createElement('div');
-      growthLine.className = 'aquarium-detail-line aquarium-detail-growth-text';
       const gauge = document.createElement('div');
       gauge.className = 'aquarium-growth-gauge';
       const fill = document.createElement('div');
@@ -5173,27 +5426,53 @@ export default class GameScene extends Phaser.Scene {
         const need = next.requiredFeeds - stage.requiredFeeds;
         const pct = need > 0 ? Math.min(100, (cur / need) * 100) : 100;
         fill.style.width = `${pct}%`;
-        const remaining = Math.max(0, next.requiredFeeds - entry.feedCount);
-        growthLine.textContent = `成長: Lv${stage.level} ${stage.name}（次まで あと${remaining}回）`;
       } else {
         fill.style.width = '100%';
-        growthLine.textContent = `成長: Lv${stage.level} ${stage.name}  MAX`;
       }
       gauge.appendChild(fill);
-      growthRow.appendChild(growthLine);
       growthRow.appendChild(gauge);
+      lvGaugeRow.appendChild(lvLine);
+      lvGaugeRow.appendChild(growthRow);
 
-      const bonusLine = document.createElement('div');
-      bonusLine.className = 'aquarium-detail-line';
-      bonusLine.textContent = `ボーナス: ${this.aquariumStatLabel(bonus.stat)} +${this.formatAquariumPt(bonus.value)}pt`;
+      topBlock.appendChild(nameRow);
+      topBlock.appendChild(lvGaugeRow);
 
-      const satietyEl = document.createElement('div');
-      satietyEl.className = 'aquarium-detail-line aquarium-satiety-text';
+      // ── 状態 ──
+      const statusRow = document.createElement('div');
+      statusRow.className = 'aquarium-detail-status-row';
+      const statusBadge = document.createElement('div');
+      statusBadge.className = 'aquarium-detail-status-badge';
+      statusBadge.textContent = '状態';
+      const satietyEl = document.createElement('p');
+      satietyEl.className = 'aquarium-satiety-text';
       const rem = getSatietyRemainingMs(entry, Date.now());
       satietyEl.textContent =
-        rem > 0 ? `状態: 満腹（あと${Math.ceil(rem / 1000)}秒）` : '状態: おなかがすいている';
+        rem > 0 ? `満腹（あと${Math.ceil(rem / 1000)}秒）` : 'おなかがすいている';
+      statusRow.appendChild(statusBadge);
+      statusRow.appendChild(satietyEl);
+
+      wrap.appendChild(topBlock);
+      wrap.appendChild(statusRow);
+
+      // ── アクション（バッグに戻す / 入れかえる） ──
+      if (this.aquariumSwapMode) {
+        const tip = document.createElement('p');
+        tip.className = 'aquarium-detail-tip';
+        tip.textContent = 'バッグの魚を選んで入れかえる';
+        wrap.appendChild(tip);
+        if (!this.appendAquariumBagPickList(wrap)) {
+          const empty = document.createElement('p');
+          empty.className = 'aquarium-detail-tip';
+          empty.textContent = '入れかえられる魚がバッグにいません';
+          wrap.appendChild(empty);
+        }
+      }
 
       const bagFull = this.playerData.inventory.length >= this.playerData.maxInventorySlots;
+      const canSwap = this.hasSwappableBagFish();
+      const actions = document.createElement('div');
+      actions.className = 'aquarium-detail-actions';
+
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.className = 'nes-btn ui-frame-box aquarium-detail-action';
@@ -5202,53 +5481,75 @@ export default class GameScene extends Phaser.Scene {
         removeBtn.textContent = 'バッグがいっぱい';
         removeBtn.classList.add('is-disabled');
       } else if (this.aquariumRemoveConfirmIndex === slotIdx) {
-        removeBtn.textContent = '成長リセット。もう一度で確定';
+        removeBtn.textContent = 'もう一度で確定';
+        removeBtn.classList.add('is-confirm');
       } else {
         removeBtn.textContent = 'バッグに戻す';
       }
-      removeBtn.addEventListener('click', () => this.tryRemoveAquariumFish(slotIdx));
+      removeBtn.addEventListener('click', () => {
+        this.aquariumSwapMode = false;
+        this.aquariumPendingBagIndex = null;
+        this.tryRemoveAquariumFish(slotIdx);
+      });
 
-      wrap.appendChild(head);
-      wrap.appendChild(growthRow);
-      wrap.appendChild(bonusLine);
-      wrap.appendChild(satietyEl);
-      wrap.appendChild(removeBtn);
+      const swapBtn = document.createElement('button');
+      swapBtn.type = 'button';
+      swapBtn.className = 'nes-btn ui-frame-box aquarium-detail-action';
+      if (!canSwap) {
+        swapBtn.disabled = true;
+        swapBtn.textContent = '入れかえる';
+        swapBtn.classList.add('is-disabled');
+      } else if (this.aquariumSwapMode) {
+        if (this.aquariumPendingBagIndex === null) {
+          swapBtn.textContent = 'やめる';
+        } else {
+          swapBtn.textContent = 'この魚と入れかえる';
+          swapBtn.classList.add('is-confirm');
+        }
+      } else {
+        swapBtn.textContent = '入れかえる';
+      }
+      swapBtn.addEventListener('click', () => {
+        if (!canSwap) return;
+        if (!this.aquariumSwapMode) {
+          this.aquariumSwapMode = true;
+          this.aquariumPendingBagIndex = null;
+          this.clearAquariumRemoveConfirm();
+          this.updateUnifiedBookDetail();
+          return;
+        }
+        if (this.aquariumPendingBagIndex === null) {
+          this.aquariumSwapMode = false;
+          this.updateUnifiedBookDetail();
+          return;
+        }
+        this.trySwapAquariumFish(slotIdx, this.aquariumPendingBagIndex);
+      });
+
+      actions.appendChild(removeBtn);
+      actions.appendChild(swapBtn);
+      wrap.appendChild(actions);
       detailEl.appendChild(wrap);
       return;
     }
 
+    const tipTitle = document.createElement('p');
+    tipTitle.className = 'aquarium-detail-note-title';
+    tipTitle.textContent = 'Empty';
     const tip = document.createElement('p');
     tip.className = 'aquarium-detail-tip';
     tip.textContent = 'バッグの魚を選んで水槽に入れる';
+    wrap.appendChild(tipTitle);
     wrap.appendChild(tip);
 
-    const list = document.createElement('div');
-    list.className = 'aquarium-bag-pick-list';
-    let any = false;
-    this.playerData.inventory.forEach((inv, invIndex) => {
-      if (inv.fishId.startsWith('junk_')) return;
-      const fish = getFishById(inv.fishId);
-      if (!fish) return;
-      any = true;
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'aquarium-bag-pick-row ui-frame-box';
-      if (this.aquariumPendingBagIndex === invIndex) row.classList.add('is-selected');
-      const rarityLabel = fish.rarity.toUpperCase();
-      row.textContent = `${fish.name}  ${inv.size !== undefined ? inv.size.toFixed(1) + 'cm' : '-'}  ${rarityLabel}`;
-      row.addEventListener('click', () => {
-        this.aquariumPendingBagIndex = invIndex;
-        this.updateUnifiedBookDetail();
-      });
-      list.appendChild(row);
-    });
-    if (!any) {
+    if (!this.appendAquariumBagPickList(wrap)) {
       const empty = document.createElement('p');
       empty.className = 'aquarium-detail-tip';
       empty.textContent = '入れられる魚がバッグにいません';
       wrap.appendChild(empty);
     } else {
-      wrap.appendChild(list);
+      const actions = document.createElement('div');
+      actions.className = 'aquarium-detail-actions';
       const addBtn = document.createElement('button');
       addBtn.type = 'button';
       addBtn.className = 'nes-btn ui-frame-box aquarium-detail-action';
@@ -5260,7 +5561,8 @@ export default class GameScene extends Phaser.Scene {
         if (this.aquariumPendingBagIndex === null) return;
         this.tryAddAquariumFish(this.aquariumPendingBagIndex);
       });
-      wrap.appendChild(addBtn);
+      actions.appendChild(addBtn);
+      wrap.appendChild(actions);
     }
     detailEl.appendChild(wrap);
   }
@@ -5270,6 +5572,7 @@ export default class GameScene extends Phaser.Scene {
     if (!this.unifiedBookUIElement) return;
     this.aquariumUIElement = this.unifiedBookUIElement.querySelector('#book-aquarium-panel') as HTMLElement | null;
     this.aquariumCanvasEl = this.unifiedBookUIElement.querySelector('#aquarium-canvas') as HTMLCanvasElement | null;
+    this.bindAquariumFoodSelect();
     if (!this.aquariumCanvasEl || this.aquariumCanvasBound) return;
 
     this.aquariumCanvasBound = true;
@@ -5286,11 +5589,27 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  /** object-fit: contain のレターボックスを考慮したキャンバス内部 X 座標 */
+  private bindAquariumFoodSelect() {
+    if (!this.aquariumUIElement || this.aquariumFoodSelectBound) return;
+    const root = this.aquariumUIElement.querySelector('.aquarium-food-select');
+    if (!root) return;
+    this.aquariumFoodSelectBound = true;
+    root.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement | null)?.closest('[data-food-tier]') as HTMLElement | null;
+      if (!btn) return;
+      e.stopPropagation();
+      const tier = btn.getAttribute('data-food-tier');
+      if (tier !== 'normal' && tier !== 'premium') return;
+      this.aquariumSelectedFoodTier = tier;
+      this.updateAquariumFoodHud();
+    });
+  }
+
+  /** object-fit: cover のクロップを考慮したキャンバス内部 X 座標 */
   private aquariumClientXToAimX(clientX: number): number {
     if (!this.aquariumCanvasEl) return 480;
     const rect = this.aquariumCanvasEl.getBoundingClientRect();
-    const scale = Math.min(rect.width / AQUARIUM_CANVAS_W, rect.height / AQUARIUM_CANVAS_H);
+    const scale = Math.max(rect.width / AQUARIUM_CANVAS_W, rect.height / AQUARIUM_CANVAS_H);
     const contentW = AQUARIUM_CANVAS_W * scale;
     const offsetX = (rect.width - contentW) / 2;
     const x = ((clientX - rect.left - offsetX) / contentW) * AQUARIUM_CANVAS_W;
@@ -5309,6 +5628,10 @@ export default class GameScene extends Phaser.Scene {
     }
     this.aquariumPellets = [];
     this.aquariumFx = [];
+    this.aquariumBubbles = [];
+    this.aquariumGodRays = [];
+    this.seedAquariumBubbles(performance.now() / 1000);
+    this.seedAquariumGodRays();
     this.aquariumLastFrameAt = performance.now();
     this.aquariumAimX = AQUARIUM_CANVAS_W / 2;
     this.bindAquariumKeys(true);
@@ -5334,12 +5657,9 @@ export default class GameScene extends Phaser.Scene {
       cancelAnimationFrame(this.aquariumRafId);
       this.aquariumRafId = null;
     }
-    if (this.aquariumHintResetTimer !== null) {
-      window.clearTimeout(this.aquariumHintResetTimer);
-      this.aquariumHintResetTimer = null;
-    }
     this.aquariumPellets = [];
     this.aquariumFx = [];
+    this.aquariumGodRays = [];
     savePlayerData(this.playerData);
   }
 
@@ -5372,23 +5692,40 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  private updateAquariumFoodHud() {
-    const root = this.aquariumUIElement ?? this.unifiedBookUIElement;
-    const el = root?.querySelector('#aquarium-food-count-value');
-    if (el) el.textContent = String(this.playerData.aquariumFoodCount);
-    const foodEl = root?.querySelector('#aquarium-summary-food');
-    if (foodEl) foodEl.textContent = `フード所持: ${this.playerData.aquariumFoodCount}個`;
+  private renderAquariumBonusChips() {
+    const bonusEl = this.unifiedBookUIElement?.querySelector('#aquarium-summary-bonus');
+    if (!bonusEl) return;
+    const totals = getAquariumStatBonuses(this.playerData);
+    const chips: Array<{ key: string; label: string; value: number }> = [
+      { key: 'power', label: 'P', value: totals.powerAdd },
+      { key: 'speed', label: 'S', value: totals.speedAdd },
+      { key: 'technique', label: 'T', value: totals.techniqueAdd },
+      { key: 'control', label: 'C', value: totals.controlAdd },
+    ];
+    const chipHtml = chips
+      .map(
+        (c) =>
+          `<span class="aquarium-bonus-chip${c.value > 0 ? ' is-active' : ''}" data-stat="${c.key}"><span class="aquarium-bonus-chip-label">${c.label}</span><span class="aquarium-bonus-chip-value">+${this.formatAquariumPt(c.value)}</span></span>`,
+      )
+      .join('');
+    bonusEl.innerHTML = `<span class="aquarium-bonus-chips-title">STATUS BONUS</span>${chipHtml}`;
   }
 
-  private setAquariumHint(text: string, resetMs = 3000) {
-    const hint = this.aquariumUIElement?.querySelector('#aquarium-hint');
-    if (!hint) return;
-    hint.textContent = text;
-    if (this.aquariumHintResetTimer !== null) window.clearTimeout(this.aquariumHintResetTimer);
-    this.aquariumHintResetTimer = window.setTimeout(() => {
-      if (hint) hint.textContent = 'クリック / Z・Space: エサを投下　マウスでねらう';
-      this.aquariumHintResetTimer = null;
-    }, resetMs);
+  private updateAquariumFoodHud() {
+    const root = this.aquariumUIElement ?? this.unifiedBookUIElement;
+    const normalEl = root?.querySelector('#aquarium-food-count-value');
+    if (normalEl) normalEl.textContent = String(getAquariumFoodCount(this.playerData, 'normal'));
+    const premiumEl = root?.querySelector('#aquarium-premium-food-count-value');
+    if (premiumEl) premiumEl.textContent = String(getAquariumFoodCount(this.playerData, 'premium'));
+
+    root?.querySelectorAll<HTMLElement>('[data-food-tier]').forEach((btn) => {
+      const tier = btn.getAttribute('data-food-tier');
+      const selected = tier === this.aquariumSelectedFoodTier;
+      btn.classList.toggle('is-selected', selected);
+      btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+
+    this.renderAquariumBonusChips();
   }
 
   private preloadAquariumImages() {
@@ -5404,19 +5741,118 @@ export default class GameScene extends Phaser.Scene {
       const bg = new Image();
       bg.onload = () => {
         this.aquariumBgImage = bg;
+        this.aquariumBgCache = this.createAquariumLayerCache(bg);
       };
       bg.onerror = () => {
         this.aquariumBgFailed = true;
         this.aquariumBgImage = null;
+        this.aquariumBgCache = null;
       };
-      bg.src = '/images/ui/aquarium-bg.png';
+      bg.src = '/images/ui/Book%20UI/aquariumbg.png';
+    }
+    if (!this.aquariumFgCache && !this.aquariumFgFailed) {
+      const fg = new Image();
+      fg.onload = () => {
+        this.aquariumFgCache = this.createAquariumLayerCache(fg);
+      };
+      fg.onerror = () => {
+        this.aquariumFgFailed = true;
+        this.aquariumFgCache = null;
+      };
+      fg.src = '/images/ui/Book%20UI/aquariumbga.png';
     }
   }
 
-  private aquariumSpriteSize(entry: { fishId: string; feedCount: number }): number {
+  private createAquariumLayerCache(img: HTMLImageElement): HTMLCanvasElement {
+    const cache = document.createElement('canvas');
+    cache.width = AQUARIUM_CANVAS_W;
+    cache.height = AQUARIUM_CANVAS_H;
+    const cctx = cache.getContext('2d');
+    if (cctx) {
+      cctx.imageSmoothingEnabled = false;
+      cctx.drawImage(img, 0, 0, AQUARIUM_CANVAS_W, AQUARIUM_CANVAS_H);
+    }
+    return cache;
+  }
+
+  /** 枠は固定のまま、内側だけ横帯ずらしで水中ゆらぎを描く */
+  private drawAquariumWarpedLayer(
+    ctx: CanvasRenderingContext2D,
+    cache: HTMLCanvasElement,
+    timeSec: number,
+  ) {
+    ctx.drawImage(cache, 0, 0);
+    const insetL = AQUARIUM_BG_WARP_INSET_L;
+    const insetR = AQUARIUM_BG_WARP_INSET_R;
+    const insetT = AQUARIUM_BG_WARP_INSET_T;
+    const insetB = AQUARIUM_BG_WARP_INSET_B;
+    const amp = AQUARIUM_BG_WARP_AMP;
+    const step = AQUARIUM_BG_WARP_STEP;
+    const innerW = AQUARIUM_CANVAS_W - insetL - insetR;
+    const yEnd = AQUARIUM_CANVAS_H - insetB;
+    if (innerW <= 0 || yEnd <= insetT) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(insetL, insetT, innerW, yEnd - insetT);
+    ctx.clip();
+    for (let y = insetT; y < yEnd; y += step) {
+      const ox = Math.sin(timeSec * AQUARIUM_BG_WARP_SPEED + y * AQUARIUM_BG_WARP_Y_FREQ) * amp;
+      const oy =
+        Math.sin(timeSec * AQUARIUM_BG_WARP_SPEED * 0.65 + y * AQUARIUM_BG_WARP_Y_FREQ * 0.55) *
+        amp *
+        0.35;
+      const srcY = Math.max(insetT, Math.min(yEnd - step, y + oy));
+      const sliceH = Math.min(step, yEnd - y);
+      ctx.drawImage(
+        cache,
+        insetL - amp,
+        srcY,
+        innerW + amp * 2,
+        sliceH,
+        insetL - amp + ox,
+        y,
+        innerW + amp * 2,
+        sliceH,
+      );
+    }
+    ctx.restore();
+  }
+
+  private drawAquariumBackground(ctx: CanvasRenderingContext2D, timeSec: number) {
+    const cache = this.aquariumBgCache;
+    if (cache) {
+      this.drawAquariumWarpedLayer(ctx, cache, timeSec);
+      return;
+    }
+
+    const g = ctx.createLinearGradient(0, 0, 0, AQUARIUM_CANVAS_H);
+    g.addColorStop(0, '#173e5e');
+    g.addColorStop(1, '#0b2036');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, AQUARIUM_CANVAS_W, AQUARIUM_CANVAS_H);
+    ctx.fillStyle = 'rgba(180, 220, 255, 0.15)';
+    for (let i = 0; i < 8; i++) {
+      const bx = (i * 137 + timeSec * 20) % AQUARIUM_CANVAS_W;
+      const by = 80 + ((i * 97 + timeSec * 30) % 400);
+      ctx.beginPath();
+      ctx.arc(bx, by, 4 + (i % 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private aquariumSpriteSize(entry: { fishId: string; feedCount: number; size?: number }): number {
     const fish = getFishById(entry.fishId);
     const stage = getGrowthStage(entry.feedCount);
-    return AQUARIUM_FISH_BASE_SIZE * stage.spriteScale * getAquariumSpeciesScale(fish?.maxSize ?? 50);
+    const maxSize = fish?.maxSize ?? 50;
+    const sizeRatio =
+      entry.size !== undefined && maxSize > 0 ? entry.size / maxSize : 0.75;
+    return (
+      AQUARIUM_FISH_BASE_SIZE *
+      stage.spriteScale *
+      getAquariumSpeciesScale(maxSize) *
+      getAquariumIndividualScale(sizeRatio)
+    );
   }
 
   private pickCruiseTarget(runtime: AquariumFishRuntime): void {
@@ -5468,29 +5904,33 @@ export default class GameScene extends Phaser.Scene {
     else this.beginAquariumState(runtime, 'cruise', timeSec);
   }
 
+  private createAquariumRuntime(aquariumIndex: number): AquariumFishRuntime {
+    const homeY = AQUARIUM_HOME_Y_MIN + Math.random() * AQUARIUM_HOME_Y_RANGE;
+    const runtime: AquariumFishRuntime = {
+      aquariumIndex,
+      x: AQUARIUM_SWIM_X_MIN + 60 + Math.random() * 720,
+      y: homeY,
+      vx: 0,
+      vy: 0,
+      targetX: AQUARIUM_SWIM_X_MIN + 60 + Math.random() * 720,
+      targetY: homeY,
+      mode: 'wander',
+      phase: Math.random() * Math.PI * 2,
+      facing: -1,
+      pitch: 0,
+      state: 'cruise',
+      stateUntil: 0,
+      speedMul: AQUARIUM_SPEED_MUL_MIN + Math.random() * AQUARIUM_SPEED_MUL_RANGE,
+      homeY,
+    };
+    this.beginAquariumState(runtime, 'cruise', performance.now() / 1000);
+    return runtime;
+  }
+
   private initAquariumRuntimes() {
-    this.aquariumFishRuntimes = (this.playerData.aquarium ?? []).map((_entry, aquariumIndex) => {
-      const homeY = AQUARIUM_HOME_Y_MIN + Math.random() * AQUARIUM_HOME_Y_RANGE;
-      const runtime: AquariumFishRuntime = {
-        aquariumIndex,
-        x: AQUARIUM_SWIM_X_MIN + 60 + Math.random() * 720,
-        y: homeY,
-        vx: 0,
-        vy: 0,
-        targetX: AQUARIUM_SWIM_X_MIN + 60 + Math.random() * 720,
-        targetY: homeY,
-        mode: 'wander',
-        phase: Math.random() * Math.PI * 2,
-        facing: -1,
-        pitch: 0,
-        state: 'cruise',
-        stateUntil: 0,
-        speedMul: AQUARIUM_SPEED_MUL_MIN + Math.random() * AQUARIUM_SPEED_MUL_RANGE,
-        homeY,
-      };
-      this.beginAquariumState(runtime, 'cruise', performance.now() / 1000);
-      return runtime;
-    });
+    this.aquariumFishRuntimes = (this.playerData.aquarium ?? []).map((_entry, aquariumIndex) =>
+      this.createAquariumRuntime(aquariumIndex),
+    );
   }
 
   private tryDropAquariumFood() {
@@ -5498,27 +5938,283 @@ export default class GameScene extends Phaser.Scene {
     if (now - this.aquariumLastFeedAt < AQUARIUM_FEED_COOLDOWN_MS) return;
     if (this.aquariumPellets.length >= 3) return;
     if ((this.playerData.aquarium?.length ?? 0) === 0) {
-      this.setAquariumHint('バッグの魚を水槽に入れよう');
       return;
     }
-    if (this.playerData.aquariumFoodCount <= 0) {
-      this.setAquariumHint('フードがない！ショップの「どうぐ」で買える');
-      return;
+
+    let tier = this.aquariumSelectedFoodTier;
+    if (getAquariumFoodCount(this.playerData, tier) <= 0) {
+      const fallback: AquariumFoodTier = tier === 'normal' ? 'premium' : 'normal';
+      if (getAquariumFoodCount(this.playerData, fallback) > 0) {
+        tier = fallback;
+        this.aquariumSelectedFoodTier = fallback;
+      } else {
+        return;
+      }
     }
-    this.playerData.aquariumFoodCount -= 1;
+
+    addAquariumFoodCount(this.playerData, tier, -1);
     savePlayerData(this.playerData);
     this.aquariumLastFeedAt = now;
     this.aquariumPellets.push({
       x: this.aquariumAimX,
       y: 30,
       swayPhase: Math.random() * Math.PI * 2,
+      tier,
     });
     this.updateAquariumFoodHud();
   }
 
+  private createAquariumBubble(yOverride?: number): AquariumBubble {
+    const spawn = AQUARIUM_BUBBLE_SPAWNS[Math.floor(Math.random() * AQUARIUM_BUBBLE_SPAWNS.length)];
+    const jitterX = (Math.random() - 0.5) * 18;
+    const jitterY = (Math.random() - 0.5) * 10;
+    const baseX = spawn.x + jitterX;
+    const r =
+      AQUARIUM_BUBBLE_RADIUS_MIN +
+      Math.random() * (AQUARIUM_BUBBLE_RADIUS_MAX - AQUARIUM_BUBBLE_RADIUS_MIN);
+    const yBottom = spawn.y + jitterY;
+    const y =
+      yOverride !== undefined
+        ? yOverride
+        : yBottom;
+    return {
+      baseX,
+      x: baseX,
+      y,
+      r,
+      riseSpeed:
+        AQUARIUM_BUBBLE_RISE_MIN +
+        Math.random() * (AQUARIUM_BUBBLE_RISE_MAX - AQUARIUM_BUBBLE_RISE_MIN),
+      swayAmp:
+        AQUARIUM_BUBBLE_SWAY_AMP_MIN +
+        Math.random() * (AQUARIUM_BUBBLE_SWAY_AMP_MAX - AQUARIUM_BUBBLE_SWAY_AMP_MIN),
+      swayFreq:
+        AQUARIUM_BUBBLE_SWAY_FREQ_MIN +
+        Math.random() * (AQUARIUM_BUBBLE_SWAY_FREQ_MAX - AQUARIUM_BUBBLE_SWAY_FREQ_MIN),
+      swayPhase: Math.random() * Math.PI * 2,
+    };
+  }
+
+  /** 魚投入位置に単発の気泡バーストを出す */
+  private spawnAquariumIntroBubbles(x: number, y: number) {
+    const spread = AQUARIUM_INTRO_BUBBLE_SPREAD;
+    for (let i = 0; i < AQUARIUM_INTRO_BUBBLE_COUNT; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * spread;
+      const baseX = x + Math.cos(angle) * dist;
+      const by = y + Math.sin(angle) * dist * 0.55;
+      const r =
+        AQUARIUM_BUBBLE_RADIUS_MIN +
+        Math.random() * (AQUARIUM_BUBBLE_RADIUS_MAX - AQUARIUM_BUBBLE_RADIUS_MIN) * 1.4;
+      this.aquariumBubbles.push({
+        baseX,
+        x: baseX,
+        y: by,
+        r,
+        riseSpeed:
+          (AQUARIUM_BUBBLE_RISE_MIN +
+            Math.random() * (AQUARIUM_BUBBLE_RISE_MAX - AQUARIUM_BUBBLE_RISE_MIN)) *
+          AQUARIUM_INTRO_BUBBLE_RISE_MUL,
+        swayAmp:
+          AQUARIUM_BUBBLE_SWAY_AMP_MIN +
+          Math.random() * (AQUARIUM_BUBBLE_SWAY_AMP_MAX - AQUARIUM_BUBBLE_SWAY_AMP_MIN),
+        swayFreq:
+          AQUARIUM_BUBBLE_SWAY_FREQ_MIN +
+          Math.random() * (AQUARIUM_BUBBLE_SWAY_FREQ_MAX - AQUARIUM_BUBBLE_SWAY_FREQ_MIN),
+        swayPhase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  /** 表示直後から気泡が見えるよう、上昇途中の位置に事前配置する */
+  private seedAquariumBubbles(timeSec: number) {
+    const yMin = AQUARIUM_BUBBLE_DESPAWN_Y + 20;
+    const yMax = 500;
+    for (let i = 0; i < AQUARIUM_BUBBLE_SEED_COUNT; i++) {
+      if (this.aquariumBubbles.length >= AQUARIUM_BUBBLE_MAX) break;
+      // 下寄りに偏らせず、水槽内にばらまく
+      const t = (i + Math.random()) / AQUARIUM_BUBBLE_SEED_COUNT;
+      const y = yMax - t * (yMax - yMin);
+      const bubble = this.createAquariumBubble(y);
+      bubble.x = bubble.baseX + Math.sin(timeSec * bubble.swayFreq + bubble.swayPhase) * bubble.swayAmp;
+      this.aquariumBubbles.push(bubble);
+    }
+  }
+
+  private tickAquariumBubbles(dt: number, timeSec: number) {
+    if (this.aquariumBubbles.length < AQUARIUM_BUBBLE_MAX) {
+      const spawnChance = AQUARIUM_BUBBLE_SPAWN_PER_SEC * dt;
+      if (Math.random() < spawnChance) {
+        this.aquariumBubbles.push(this.createAquariumBubble());
+      }
+    }
+
+    for (const b of this.aquariumBubbles) {
+      b.y -= b.riseSpeed * dt;
+      b.x = b.baseX + Math.sin(timeSec * b.swayFreq + b.swayPhase) * b.swayAmp;
+    }
+    this.aquariumBubbles = this.aquariumBubbles.filter((b) => b.y + b.r > AQUARIUM_BUBBLE_DESPAWN_Y);
+  }
+
+  private createAquariumGodRay(ageOverride?: number): AquariumGodRay {
+    const life =
+      AQUARIUM_GODRAY_LIFE_MIN +
+      Math.random() * (AQUARIUM_GODRAY_LIFE_MAX - AQUARIUM_GODRAY_LIFE_MIN);
+    const halfW =
+      AQUARIUM_GODRAY_HALF_W_MIN +
+      Math.random() * (AQUARIUM_GODRAY_HALF_W_MAX - AQUARIUM_GODRAY_HALF_W_MIN);
+    const length =
+      AQUARIUM_GODRAY_LENGTH_MIN +
+      Math.random() * (AQUARIUM_GODRAY_LENGTH_MAX - AQUARIUM_GODRAY_LENGTH_MIN);
+    const startX =
+      AQUARIUM_GODRAY_X_CENTER + (Math.random() - 0.5) * 2 * AQUARIUM_GODRAY_SPAWN_SPREAD;
+    const goRight = Math.random() < 0.5;
+    const edgeX = goRight
+      ? AQUARIUM_CANVAS_W - AQUARIUM_GODRAY_EDGE_INSET
+      : AQUARIUM_GODRAY_EDGE_INSET;
+    const travelFrac =
+      AQUARIUM_GODRAY_TRAVEL_FRAC_MIN +
+      Math.random() * (AQUARIUM_GODRAY_TRAVEL_FRAC_MAX - AQUARIUM_GODRAY_TRAVEL_FRAC_MIN);
+    const targetX = startX + (edgeX - startX) * travelFrac;
+    const driftVx = (targetX - startX) / life;
+    const age = ageOverride ?? 0;
+    return {
+      x: startX + driftVx * age,
+      halfW,
+      length,
+      life,
+      age,
+      driftVx,
+      maxAlpha: AQUARIUM_GODRAY_MAX_ALPHA * (0.65 + Math.random() * 0.35),
+    };
+  }
+
+  private seedAquariumGodRays() {
+    for (let i = 0; i < AQUARIUM_GODRAY_SEED_COUNT; i++) {
+      if (this.aquariumGodRays.length >= AQUARIUM_GODRAY_MAX) break;
+      const ray = this.createAquariumGodRay();
+      // 表示直後から途中フェーズで見えるよう、寿命の前半にばらまく
+      ray.age = ray.life * (0.15 + Math.random() * 0.45);
+      this.aquariumGodRays.push(ray);
+    }
+  }
+
+  private tickAquariumGodRays(dt: number) {
+    if (this.aquariumGodRays.length < AQUARIUM_GODRAY_MAX) {
+      if (Math.random() < AQUARIUM_GODRAY_SPAWN_PER_SEC * dt) {
+        this.aquariumGodRays.push(this.createAquariumGodRay());
+      }
+    }
+    for (const ray of this.aquariumGodRays) {
+      ray.age += dt;
+      ray.x += ray.driftVx * dt;
+    }
+    this.aquariumGodRays = this.aquariumGodRays.filter((ray) => ray.age < ray.life);
+  }
+
+  private godRayAlpha(ray: AquariumGodRay): number {
+    const t = ray.age / ray.life;
+    let fade = 1;
+    if (t < AQUARIUM_GODRAY_FADE_IN_FRAC) {
+      fade = t / AQUARIUM_GODRAY_FADE_IN_FRAC;
+    } else if (t > 1 - AQUARIUM_GODRAY_FADE_OUT_FRAC) {
+      fade = (1 - t) / AQUARIUM_GODRAY_FADE_OUT_FRAC;
+    }
+    // わずかな明滅
+    const shimmer = 0.88 + 0.12 * Math.sin(ray.age * 2.4 + ray.x * 0.01);
+    return ray.maxAlpha * fade * shimmer;
+  }
+
+  private drawAquariumGodRays(ctx: CanvasRenderingContext2D, _timeSec: number) {
+    if (this.aquariumGodRays.length === 0) return;
+
+    const insetL = AQUARIUM_BG_WARP_INSET_L;
+    const insetR = AQUARIUM_BG_WARP_INSET_R;
+    const insetT = AQUARIUM_BG_WARP_INSET_T;
+    const insetB = AQUARIUM_BG_WARP_INSET_B;
+    const innerW = AQUARIUM_CANVAS_W - insetL - insetR;
+    const innerH = AQUARIUM_CANVAS_H - insetT - insetB;
+    if (innerW <= 0 || innerH <= 0) return;
+
+    const angle = AQUARIUM_GODRAY_ANGLE;
+    const dirX = Math.sin(angle);
+    const dirY = Math.cos(angle);
+    const perpX = Math.cos(angle);
+    const perpY = -Math.sin(angle);
+    const topY = AQUARIUM_GODRAY_TOP_Y;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(insetL, insetT, innerW, innerH);
+    ctx.clip();
+    ctx.globalCompositeOperation = 'screen';
+
+    for (const ray of this.aquariumGodRays) {
+      const alpha = this.godRayAlpha(ray);
+      if (alpha <= 0.004) continue;
+
+      const ox = ray.x;
+      const oy = topY;
+      const far = ray.length;
+      const hw = ray.halfW;
+
+      const nx = ox;
+      const ny = oy;
+      const fx = ox + dirX * far;
+      const fy = oy + dirY * far;
+
+      // 根元も先端も同じ太さの平行四辺形
+      const n0x = nx - perpX * hw;
+      const n0y = ny - perpY * hw;
+      const n1x = nx + perpX * hw;
+      const n1y = ny + perpY * hw;
+      const f0x = fx - perpX * hw;
+      const f0y = fy - perpY * hw;
+      const f1x = fx + perpX * hw;
+      const f1y = fy + perpY * hw;
+
+      const midX = ox + dirX * (far * 0.55);
+      const midY = oy + dirY * (far * 0.55);
+
+      ctx.beginPath();
+      ctx.moveTo(n0x, n0y);
+      ctx.lineTo(n1x, n1y);
+      ctx.lineTo(f1x, f1y);
+      ctx.lineTo(f0x, f0y);
+      ctx.closePath();
+
+      const grad = ctx.createLinearGradient(ox, oy, midX, midY);
+      grad.addColorStop(0, `rgba(220, 240, 255, ${alpha})`);
+      grad.addColorStop(0.35, `rgba(170, 215, 255, ${alpha * 0.55})`);
+      grad.addColorStop(0.75, `rgba(140, 200, 245, ${alpha * 0.18})`);
+      grad.addColorStop(1, 'rgba(120, 180, 230, 0)');
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      const chw = hw * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(nx - perpX * chw, ny - perpY * chw);
+      ctx.lineTo(nx + perpX * chw, ny + perpY * chw);
+      ctx.lineTo(fx + perpX * chw, fy + perpY * chw);
+      ctx.lineTo(fx - perpX * chw, fy - perpY * chw);
+      ctx.closePath();
+      const coreGrad = ctx.createLinearGradient(ox, oy, midX, midY);
+      coreGrad.addColorStop(0, `rgba(255, 255, 255, ${alpha * 0.85})`);
+      coreGrad.addColorStop(0.45, `rgba(230, 245, 255, ${alpha * 0.35})`);
+      coreGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = coreGrad;
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
   private tickAquariumView(dt: number, timeSec: number) {
+    this.tickAquariumBubbles(dt, timeSec);
+    this.tickAquariumGodRays(dt);
+
     for (const pellet of this.aquariumPellets) {
-      pellet.y += 55 * dt;
+      pellet.y += AQUARIUM_PELLET_FALL_SPEED * dt;
       pellet.x += Math.sin(timeSec * 3 + pellet.swayPhase) * 12 * dt;
     }
     // miss bottom: food already consumed on drop
@@ -5530,8 +6226,6 @@ export default class GameScene extends Phaser.Scene {
       if (!entry) continue;
       const stage = getGrowthStage(entry.feedCount);
       const satiated = isSatiated(entry, nowMs);
-      const size = this.aquariumSpriteSize(entry);
-      const margin = size / 2;
 
       let nearest: AquariumFoodPellet | null = null;
       let nearestDist = Infinity;
@@ -5550,8 +6244,16 @@ export default class GameScene extends Phaser.Scene {
 
       if (nearest) {
         runtime.mode = 'seek';
+        // 落下先行狙い：到達見込み秒だけ下側を狙って取りこぼしを減らす
+        const leadSec = Math.min(
+          AQUARIUM_SEEK_LEAD_MAX_SEC,
+          nearestDist / Math.max(1, AQUARIUM_SEEK_MAX_SPEED),
+        );
         runtime.targetX = nearest.x;
-        runtime.targetY = nearest.y;
+        runtime.targetY = Math.min(
+          AQUARIUM_SWIM_Y_MAX,
+          nearest.y + AQUARIUM_PELLET_FALL_SPEED * leadSec,
+        );
         accel = AQUARIUM_SEEK_ACCEL;
         maxSpeed = AQUARIUM_SEEK_MAX_SPEED;
       } else {
@@ -5590,8 +6292,17 @@ export default class GameScene extends Phaser.Scene {
         const dx = runtime.targetX - runtime.x;
         const dy = runtime.targetY - runtime.y;
         const dist = Math.hypot(dx, dy) || 1;
-        runtime.vx += (dx / dist) * accel * dt;
-        runtime.vy += (dy / dist) * accel * dt;
+        if (runtime.mode === 'seek') {
+          // 希望速度へ直接寄せて、徘徊からの方向転換遅れを減らす
+          const desiredVx = (dx / dist) * maxSpeed;
+          const desiredVy = (dy / dist) * maxSpeed;
+          const steer = Math.min(1, (accel / Math.max(1, maxSpeed)) * dt * 1.8);
+          runtime.vx += (desiredVx - runtime.vx) * steer;
+          runtime.vy += (desiredVy - runtime.vy) * steer;
+        } else {
+          runtime.vx += (dx / dist) * accel * dt;
+          runtime.vy += (dy / dist) * accel * dt;
+        }
         const speed = Math.hypot(runtime.vx, runtime.vy);
         if (speed > maxSpeed) {
           runtime.vx = (runtime.vx / speed) * maxSpeed;
@@ -5602,12 +6313,9 @@ export default class GameScene extends Phaser.Scene {
       runtime.x += runtime.vx * dt;
       runtime.y += runtime.vy * dt;
 
-      const xMin = Math.min(AQUARIUM_SWIM_X_MAX - 1, AQUARIUM_SWIM_X_MIN + margin);
-      const xMax = Math.max(xMin + 1, AQUARIUM_SWIM_X_MAX - margin);
-      const yMin = Math.min(AQUARIUM_SWIM_Y_MAX - 1, AQUARIUM_SWIM_Y_MIN + margin * 0.6);
-      const yMax = Math.max(yMin + 1, AQUARIUM_SWIM_Y_MAX - margin * 0.6);
-      runtime.x = Math.max(xMin, Math.min(xMax, runtime.x));
-      runtime.y = Math.max(yMin, Math.min(yMax, runtime.y));
+      // 位置クランプは投下範囲と同一。サイズ連動の内側余白は食べた瞬間に押し戻す原因になるため使わない。
+      runtime.x = Math.max(AQUARIUM_SWIM_X_MIN, Math.min(AQUARIUM_SWIM_X_MAX, runtime.x));
+      runtime.y = Math.max(AQUARIUM_SWIM_Y_MIN, Math.min(AQUARIUM_SWIM_Y_MAX, runtime.y));
 
       if (Math.abs(runtime.vx) > AQUARIUM_FACING_VX_THRESHOLD) {
         runtime.facing = runtime.vx > 0 ? 1 : -1;
@@ -5641,8 +6349,8 @@ export default class GameScene extends Phaser.Scene {
       }
       if (bestIdx >= 0) {
         // food already spent on drop; restore then let feedAquariumFish consume
-        this.playerData.aquariumFoodCount += 1;
-        const result = feedAquariumFish(this.playerData, bestIdx, nowMs);
+        addAquariumFoodCount(this.playerData, pellet.tier, 1);
+        const result = feedAquariumFish(this.playerData, bestIdx, nowMs, pellet.tier);
         if (result.ok) {
           savePlayerData(this.playerData);
           const rt = this.aquariumFishRuntimes.find((r) => r.aquariumIndex === bestIdx);
@@ -5666,7 +6374,7 @@ export default class GameScene extends Phaser.Scene {
             this.updateUnifiedBookDetail();
           }
         } else {
-          this.playerData.aquariumFoodCount -= 1;
+          addAquariumFoodCount(this.playerData, pellet.tier, -1);
           remaining.push(pellet);
         }
       } else {
@@ -5685,43 +6393,8 @@ export default class GameScene extends Phaser.Scene {
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, AQUARIUM_CANVAS_W, AQUARIUM_CANVAS_H);
 
-    if (this.aquariumBgImage && this.aquariumBgImage.complete && this.aquariumBgImage.naturalWidth > 0) {
-      ctx.drawImage(this.aquariumBgImage, 0, 0, AQUARIUM_CANVAS_W, AQUARIUM_CANVAS_H);
-    } else {
-      const g = ctx.createLinearGradient(0, 0, 0, AQUARIUM_CANVAS_H);
-      g.addColorStop(0, '#173e5e');
-      g.addColorStop(1, '#0b2036');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, AQUARIUM_CANVAS_W, AQUARIUM_CANVAS_H);
-      ctx.fillStyle = 'rgba(180, 220, 255, 0.15)';
-      for (let i = 0; i < 8; i++) {
-        const bx = (i * 137 + timeSec * 20) % AQUARIUM_CANVAS_W;
-        const by = 80 + ((i * 97 + timeSec * 30) % 400);
-        ctx.beginPath();
-        ctx.arc(bx, by, 4 + (i % 3), 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // water line
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, 24);
-    for (let x = 0; x <= AQUARIUM_CANVAS_W; x += 20) {
-      ctx.lineTo(x, 24 + Math.sin(timeSec * 2 + x * 0.05) * 3);
-    }
-    ctx.stroke();
-
-    for (const pellet of this.aquariumPellets) {
-      ctx.fillStyle = '#e8c97a';
-      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(pellet.x, pellet.y, AQUARIUM_PELLET_RADIUS, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
+    this.drawAquariumBackground(ctx, timeSec);
+    this.drawAquariumGodRays(ctx, timeSec);
 
     const nowMs = Date.now();
     for (const runtime of this.aquariumFishRuntimes) {
@@ -5752,6 +6425,38 @@ export default class GameScene extends Phaser.Scene {
         ctx.fillText(fish?.emoji ?? '🐟', 0, 0);
       }
       ctx.restore();
+    }
+
+    // 気泡：前景の背面（魚の上・水草の下）
+    for (const b of this.aquariumBubbles) {
+      const alpha = Math.min(0.75, 0.35 + b.r * 0.08);
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(210, 235, 255, ${alpha})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.85})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // ハイライト
+      ctx.beginPath();
+      ctx.arc(b.x - b.r * 0.35, b.y - b.r * 0.35, Math.max(0.6, b.r * 0.28), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+      ctx.fill();
+    }
+
+    // 水草・岩前景：魚の上に重ねて回り込ませる
+    if (this.aquariumFgCache) {
+      this.drawAquariumWarpedLayer(ctx, this.aquariumFgCache, timeSec);
+    }
+
+    for (const pellet of this.aquariumPellets) {
+      ctx.fillStyle = AQUARIUM_FOOD_TIERS[pellet.tier].pelletColor;
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(pellet.x, pellet.y, AQUARIUM_PELLET_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     }
 
     for (const fx of this.aquariumFx) {
@@ -5806,6 +6511,7 @@ export default class GameScene extends Phaser.Scene {
     this.unifiedBookSelectedId = null;
     this.unifiedBookSelectedIndex = null;
     this.aquariumPendingBagIndex = null;
+    this.aquariumSwapMode = false;
     if (tab === 'status') {
       this.statusNavArea = 'stats';
       this.statusNavButtonType = 'rod';
@@ -5954,9 +6660,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'quest') {
       this.achievementNavArea = 'left';
-      this.unifiedBookDetailElement
-        ?.querySelectorAll('.achievement-detail-item--kb-selected')
-        .forEach((el) => el.classList.remove('achievement-detail-item--kb-selected'));
+      this.clearRightPaneDetailKeyboardSelection();
     }
 
     if (this.unifiedBookTab === 'pedia') {
@@ -8444,16 +9148,389 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  private enterAchievementRightPane() {
+  private syncQuestLogDetailKeyboardSelection() {
+    const root = this.unifiedBookDetailElement;
+    if (!root) return;
+
+    root.querySelectorAll('.quest-card__abandon.is-nav-selected').forEach((el) => {
+      el.classList.remove('is-nav-selected');
+    });
+    root.querySelectorAll('.quest-log-list .quest-card').forEach((el) => {
+      el.classList.remove('quest-card--kb-selected', 'achievement-detail-item--kb-selected');
+    });
+
+    if (this.achievementNavArea !== 'right') return;
+
+    if (this.unifiedBookSelectedId === 'active') {
+      const btn = this.getQuestLogAbandonAtSlot(this.achievementDetailSelectedIndex);
+      btn?.classList.add('is-nav-selected');
+      return;
+    }
+
+    const items = root.querySelectorAll('.quest-log-list.quest-log-list--completed .quest-card');
+    items.forEach((el, i) => {
+      el.classList.toggle(
+        'quest-card--kb-selected',
+        i === this.achievementDetailSelectedIndex,
+      );
+    });
+  }
+
+  private isQuestLogActiveCategory(): boolean {
+    return this.unifiedBookTab === 'quest' && this.unifiedBookSelectedId === 'active';
+  }
+
+  private getQuestLogActiveSlotCards(): HTMLElement[] {
+    if (!this.unifiedBookDetailElement) return [];
+    return Array.from(
+      this.unifiedBookDetailElement.querySelectorAll(
+        '.quest-log-list.quest-board-cards:not(.quest-log-list--completed) .quest-card',
+      ),
+    ) as HTMLElement[];
+  }
+
+  private questLogActiveSlotHasAbandon(slotIndex: number): boolean {
+    const card = this.getQuestLogActiveSlotCards()[slotIndex];
+    return !!card && !card.classList.contains('quest-log-slot-empty');
+  }
+
+  private getQuestLogAbandonAtSlot(slotIndex: number): HTMLButtonElement | null {
+    const card = this.getQuestLogActiveSlotCards()[slotIndex];
+    if (!card || card.classList.contains('quest-log-slot-empty')) return null;
+    return card.querySelector('.quest-card__abandon') as HTMLButtonElement | null;
+  }
+
+  private findFirstQuestAbandonSlotIndex(): number | null {
+    for (let i = 0; i < MAX_ACTIVE_QUESTS; i++) {
+      if (this.questLogActiveSlotHasAbandon(i)) return i;
+    }
+    return null;
+  }
+
+  private scrollQuestLogActiveSlotIntoView(slotIndex: number) {
+    this.getQuestLogActiveSlotCards()[slotIndex]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    });
+  }
+
+  private triggerQuestLogAbandonKeyboardAction() {
+    const btn = this.getQuestLogAbandonAtSlot(this.achievementDetailSelectedIndex);
+    const questId = btn?.dataset.questId;
+    if (questId) this.openQuestAbandonConfirm(questId);
+  }
+
+  private openQuestAbandonConfirm(questId: string) {
+    const quest = resolveQuest(this.playerData, questId);
+    if (!quest || !this.unifiedBookUIElement) return;
+    const layer = this.unifiedBookUIElement.querySelector('#quest-abandon-confirm-layer') as HTMLElement | null;
+    const msg = this.unifiedBookUIElement.querySelector('#quest-abandon-confirm-message');
+    if (msg) msg.textContent = `「${quest.name}」を破棄しますか？進捗は失われ、報酬は得られません。`;
+    this.questAbandonConfirmPendingQuestId = questId;
+    this.questAbandonConfirmFocus = 'cancel';
+    this.syncQuestAbandonConfirmSelection();
+    if (layer) {
+      layer.style.display = 'flex';
+      layer.setAttribute('aria-hidden', 'false');
+    }
+    const cancelBtn = this.unifiedBookUIElement.querySelector(
+      '#quest-abandon-confirm-cancel',
+    ) as HTMLButtonElement | null;
+    requestAnimationFrame(() => {
+      cancelBtn?.focus();
+    });
+  }
+
+  private closeQuestAbandonConfirm() {
+    this.questAbandonConfirmPendingQuestId = null;
+    this.questAbandonConfirmFocus = 'cancel';
+    const layer = this.unifiedBookUIElement?.querySelector('#quest-abandon-confirm-layer') as HTMLElement | null;
+    if (layer) {
+      layer.style.display = 'none';
+      layer.setAttribute('aria-hidden', 'true');
+    }
+    const cancel = this.unifiedBookUIElement?.querySelector('#quest-abandon-confirm-cancel');
+    const ok = this.unifiedBookUIElement?.querySelector('#quest-abandon-confirm-ok');
+    cancel?.classList.remove('is-nav-selected');
+    ok?.classList.remove('is-nav-selected');
+  }
+
+  private syncQuestAbandonConfirmSelection() {
+    if (!this.unifiedBookUIElement) return;
+    const cancel = this.unifiedBookUIElement.querySelector('#quest-abandon-confirm-cancel');
+    const ok = this.unifiedBookUIElement.querySelector('#quest-abandon-confirm-ok');
+    cancel?.classList.toggle('is-nav-selected', this.questAbandonConfirmFocus === 'cancel');
+    ok?.classList.toggle('is-nav-selected', this.questAbandonConfirmFocus === 'ok');
+  }
+
+  private handleQuestAbandonConfirmNavigation() {
+    if (!this.questAbandonConfirmPendingQuestId || !this.unifiedBookUIElement) return;
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) {
+      this.noteUiMenuKeyboardNavigation();
+      this.questAbandonConfirmFocus = 'cancel';
+      this.syncQuestAbandonConfirmSelection();
+      (this.unifiedBookUIElement.querySelector('#quest-abandon-confirm-cancel') as HTMLButtonElement | null)?.focus();
+      return;
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) {
+      this.noteUiMenuKeyboardNavigation();
+      this.questAbandonConfirmFocus = 'ok';
+      this.syncQuestAbandonConfirmSelection();
+      (this.unifiedBookUIElement.querySelector('#quest-abandon-confirm-ok') as HTMLButtonElement | null)?.focus();
+    }
+  }
+
+  private applyQuestAbandonConfirm() {
+    const questId = this.questAbandonConfirmPendingQuestId;
+    if (!questId) return;
+    this.closeQuestAbandonConfirm();
+    this.abandonQuestFromLog(questId);
+  }
+
+  private syncRightPaneDetailKeyboardSelection() {
+    if (this.unifiedBookTab === 'quest') {
+      this.syncQuestLogDetailKeyboardSelection();
+    } else {
+      this.syncAchievementDetailKeyboardSelection();
+    }
+  }
+
+  private clearRightPaneDetailKeyboardSelection() {
     if (!this.unifiedBookDetailElement) return;
-    const items = this.unifiedBookDetailElement.querySelectorAll(
-      '.achievement-detail-list .achievement-detail-item',
-    );
-    if (items.length === 0) return;
+    this.unifiedBookDetailElement
+      .querySelectorAll(
+        '.achievement-detail-item--kb-selected, .quest-card--kb-selected, .quest-card__abandon.is-nav-selected',
+      )
+      .forEach((el) => {
+        el.classList.remove(
+          'achievement-detail-item--kb-selected',
+          'quest-card--kb-selected',
+          'is-nav-selected',
+        );
+      });
+  }
+
+  /** 右ペイン（実績・クエスト詳細）へ移動。詳細が空なら false */
+  private tryEnterAchievementRightPane(): boolean {
+    if (!this.unifiedBookDetailElement) return false;
+
+    if (this.isQuestLogActiveCategory()) {
+      const firstSlot = this.findFirstQuestAbandonSlotIndex();
+      if (firstSlot === null) return false;
+      this.achievementNavArea = 'right';
+      this.achievementDetailSelectedIndex = firstSlot;
+      this.syncQuestLogDetailKeyboardSelection();
+      this.scrollQuestLogActiveSlotIntoView(firstSlot);
+      return true;
+    }
+
+    const selector =
+      this.unifiedBookTab === 'quest'
+        ? '.quest-log-list.quest-log-list--completed .quest-card'
+        : '.achievement-detail-list .achievement-detail-item';
+    const items = this.unifiedBookDetailElement.querySelectorAll(selector);
+    if (items.length === 0) return false;
     this.achievementNavArea = 'right';
     this.achievementDetailSelectedIndex = 0;
-    this.syncAchievementDetailKeyboardSelection();
+    this.syncRightPaneDetailKeyboardSelection();
     (items[0] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return true;
+  }
+
+  private handleQuestLeftPaneNavigation(
+    dir: 'up' | 'down' | 'left' | 'right',
+    now: number,
+  ) {
+    let currentIndex = this.unifiedBookSelectedIndex ?? 0;
+    const lastIndex = this.unifiedBookListItems.length - 1;
+    if (currentIndex < 0 || currentIndex > lastIndex) currentIndex = 0;
+
+    if (dir === 'up') {
+      this.enterUnifiedBookMainTabsNav();
+      return;
+    }
+
+    if (dir === 'down') {
+      if (this.tryEnterAchievementRightPane()) {
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+      }
+      return;
+    }
+
+    if (dir === 'left') {
+      if (currentIndex > 0) {
+        const item = this.unifiedBookListItems[currentIndex - 1];
+        const category = item?.getAttribute('data-category');
+        if (category) this.selectQuestLogCategory(category, currentIndex - 1);
+        return;
+      }
+      const tabs = this.getVisibleUnifiedBookTabOrder();
+      const ti = tabs.indexOf('quest');
+      if (ti > 0) {
+        this.switchUnifiedBookTab(tabs[ti - 1]);
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+      }
+      return;
+    }
+
+    if (dir === 'right') {
+      if (currentIndex < lastIndex) {
+        const item = this.unifiedBookListItems[currentIndex + 1];
+        const category = item?.getAttribute('data-category');
+        if (category) this.selectQuestLogCategory(category, currentIndex + 1);
+        return;
+      }
+      if (this.tryEnterAchievementRightPane()) {
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+        return;
+      }
+      const tabs = this.getVisibleUnifiedBookTabOrder();
+      const ti = tabs.indexOf('quest');
+      if (ti >= 0 && ti < tabs.length - 1) {
+        this.switchUnifiedBookTab(tabs[ti + 1]);
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+      }
+    }
+  }
+
+  private handleQuestLogActiveAbandonNavigation(
+    dir: 'up' | 'down' | 'left' | 'right',
+    now: number,
+  ) {
+    const gridCols = this.questBoardGridCols;
+    const maxSlot = MAX_ACTIVE_QUESTS - 1;
+    let idx = this.achievementDetailSelectedIndex;
+
+    const selectSlot = (slotIndex: number): boolean => {
+      if (!this.questLogActiveSlotHasAbandon(slotIndex)) return false;
+      this.achievementDetailSelectedIndex = slotIndex;
+      this.syncQuestLogDetailKeyboardSelection();
+      this.scrollQuestLogActiveSlotIntoView(slotIndex);
+      return true;
+    };
+
+    if (dir === 'left') {
+      if (idx % gridCols > 0) {
+        for (let i = idx - 1; i >= Math.floor(idx / gridCols) * gridCols; i--) {
+          if (selectSlot(i)) return;
+        }
+      }
+      this.achievementNavArea = 'left';
+      this.clearRightPaneDetailKeyboardSelection();
+      return;
+    }
+
+    if (dir === 'right') {
+      const rowEnd = Math.min(maxSlot, Math.floor(idx / gridCols) * gridCols + gridCols - 1);
+      for (let i = idx + 1; i <= rowEnd; i++) {
+        if (selectSlot(i)) return;
+      }
+      const tabs = this.getVisibleUnifiedBookTabOrder();
+      const currentTabIdx = tabs.indexOf(this.unifiedBookTab);
+      const nextTabIdx = currentTabIdx + 1;
+      if (nextTabIdx >= 0 && nextTabIdx < tabs.length) {
+        this.switchUnifiedBookTab(tabs[nextTabIdx]);
+        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+      }
+      return;
+    }
+
+    if (dir === 'up') {
+      if (idx >= gridCols) {
+        for (let i = idx - gridCols; i >= 0; i -= gridCols) {
+          if (selectSlot(i)) return;
+        }
+      }
+      this.achievementNavArea = 'left';
+      this.clearRightPaneDetailKeyboardSelection();
+      return;
+    }
+
+    if (dir === 'down') {
+      const maxRows = Math.ceil(MAX_ACTIVE_QUESTS / gridCols);
+      const currentRow = Math.floor(idx / gridCols);
+      if (currentRow < maxRows - 1) {
+        for (let i = idx + gridCols; i <= maxSlot; i += gridCols) {
+          if (selectSlot(i)) return;
+        }
+      }
+      this.nudgeBookScrollOnVerticalEdge('down');
+    }
+  }
+
+  private handleQuestLogRightPaneNavigation(
+    dir: 'up' | 'down' | 'left' | 'right',
+    now: number,
+  ) {
+    if (this.isQuestLogActiveCategory()) {
+      this.handleQuestLogActiveAbandonNavigation(dir, now);
+      return;
+    }
+
+    if (!this.unifiedBookDetailElement) return;
+    const items = Array.from(
+      this.unifiedBookDetailElement.querySelectorAll('.quest-log-list .quest-card'),
+    ) as HTMLElement[];
+    const lastIdx = items.length - 1;
+
+    if (lastIdx < 0) {
+      this.achievementNavArea = 'left';
+      return;
+    }
+
+    if (dir === 'left') {
+      const gridCols = this.questBoardGridCols;
+      if (this.achievementDetailSelectedIndex % gridCols > 0) {
+        this.achievementDetailSelectedIndex--;
+        this.syncQuestLogDetailKeyboardSelection();
+        items[this.achievementDetailSelectedIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+      this.achievementNavArea = 'left';
+      this.clearRightPaneDetailKeyboardSelection();
+      return;
+    }
+
+    const gridCols = this.questBoardGridCols;
+    const maxRows = Math.ceil(items.length / gridCols);
+    let newIndex = this.achievementDetailSelectedIndex;
+
+    if (dir === 'right') {
+      if (this.achievementDetailSelectedIndex % gridCols < gridCols - 1 && newIndex + 1 <= lastIdx) {
+        newIndex++;
+      } else {
+        const tabs = this.getVisibleUnifiedBookTabOrder();
+        const currentTabIdx = tabs.indexOf(this.unifiedBookTab);
+        const nextTabIdx = currentTabIdx + 1;
+        if (nextTabIdx >= 0 && nextTabIdx < tabs.length) {
+          this.switchUnifiedBookTab(tabs[nextTabIdx]);
+          this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+        }
+        return;
+      }
+    } else if (dir === 'up') {
+      if (this.achievementDetailSelectedIndex >= gridCols) {
+        newIndex -= gridCols;
+      } else {
+        this.achievementNavArea = 'left';
+        this.clearRightPaneDetailKeyboardSelection();
+        return;
+      }
+    } else if (dir === 'down') {
+      const currentRow = Math.floor(this.achievementDetailSelectedIndex / gridCols);
+      if (currentRow < maxRows - 1 && newIndex + gridCols <= lastIdx) {
+        newIndex += gridCols;
+      } else {
+        this.nudgeBookScrollOnVerticalEdge('down');
+        return;
+      }
+    }
+
+    if (newIndex === this.achievementDetailSelectedIndex || newIndex < 0 || newIndex > lastIdx) return;
+
+    this.achievementDetailSelectedIndex = newIndex;
+    this.syncQuestLogDetailKeyboardSelection();
+    items[newIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   private handleAchievementRightPaneNavigation(
@@ -8475,7 +9552,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (dir === 'left') {
       this.achievementNavArea = 'left';
-      items.forEach((el) => el.classList.remove('achievement-detail-item--kb-selected'));
+      this.clearRightPaneDetailKeyboardSelection();
       return;
     }
 
@@ -8570,7 +9647,7 @@ export default class GameScene extends Phaser.Scene {
     item.setAttribute('data-index', index.toString());
 
     const categoryData: Record<string, { name: string }> = {
-      active: { name: '受注中' },
+      active: { name: '進行中' },
       completed: { name: '完了' },
     };
     const data = categoryData[category] || { name: category };
@@ -8588,7 +9665,7 @@ export default class GameScene extends Phaser.Scene {
           <span class="quest-log-category__name">${data.name}</span>
           <span class="quest-log-category__count"><b>${count}</b>/${MAX_ACTIVE_QUESTS}</span>
         </div>
-        <div class="quest-log-category__slots" role="img" aria-label="受注中 ${count}/${MAX_ACTIVE_QUESTS}">
+        <div class="quest-log-category__slots" role="img" aria-label="進行中 ${count}/${MAX_ACTIVE_QUESTS}">
           ${segments.join('')}
         </div>
       `;
@@ -8654,6 +9731,12 @@ export default class GameScene extends Phaser.Scene {
     const progressLabel = `${dispCur} / ${dispTgt}${unitPart}`;
     const fillW = isCompleted ? 100 : progressPercent;
     const pctLabel = isCompleted ? 100 : progressPercent;
+    const abandonBtn = isCompleted
+      ? ''
+      : `
+      <button type="button" class="quest-card__abandon nes-btn ui-frame-box" data-quest-id="${quest.id}">
+        <span class="quest-card__abandon-label">破棄する</span>
+      </button>`;
     return `
       <div class="quest-card__ribbon quest-card__ribbon--${group.key}">${group.label}</div>
       <div class="quest-card__icon ui-frame-box">${this.buildQuestCardIcon(quest)}</div>
@@ -8669,7 +9752,8 @@ export default class GameScene extends Phaser.Scene {
           <span class="quest-card__progress-value">${progressLabel}</span>
           <span class="quest-card__progress-value">${pctLabel}<span class="quest-card__progress-unit">%</span></span>
         </div>
-      </div>`;
+      </div>
+      ${abandonBtn}`;
   }
 
   private buildQuestCardHTML(quest: QuestConfig, isCompleted: boolean, hideProgressUnit = false): string {
@@ -8761,26 +9845,22 @@ export default class GameScene extends Phaser.Scene {
           ${slots.join('')}
         </div>
       `;
+      this.bindQuestLogAbandonButtons();
 
-      const n = quests.length;
-      if (n === 0) {
-        this.achievementNavArea = 'left';
-        return;
-      }
       if (this.achievementNavArea === 'right') {
-        this.achievementDetailSelectedIndex = Math.min(
-          Math.max(0, this.achievementDetailSelectedIndex),
-          n - 1,
-        );
+        if (!this.questLogActiveSlotHasAbandon(this.achievementDetailSelectedIndex)) {
+          const firstSlot = this.findFirstQuestAbandonSlotIndex();
+          if (firstSlot === null) {
+            this.achievementNavArea = 'left';
+          } else {
+            this.achievementDetailSelectedIndex = firstSlot;
+          }
+        }
         requestAnimationFrame(() => {
-          this.syncAchievementDetailKeyboardSelection();
-          const list = this.unifiedBookDetailElement?.querySelectorAll(
-            '.achievement-detail-list .achievement-detail-item',
-          );
-          list?.[this.achievementDetailSelectedIndex]?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'nearest',
-          });
+          this.syncQuestLogDetailKeyboardSelection();
+          if (this.achievementNavArea === 'right') {
+            this.scrollQuestLogActiveSlotIntoView(this.achievementDetailSelectedIndex);
+          }
         });
       }
       return;
@@ -8817,10 +9897,8 @@ export default class GameScene extends Phaser.Scene {
         n - 1,
       );
       requestAnimationFrame(() => {
-        this.syncAchievementDetailKeyboardSelection();
-        const list = this.unifiedBookDetailElement?.querySelectorAll(
-          '.achievement-detail-list .achievement-detail-item',
-        );
+        this.syncQuestLogDetailKeyboardSelection();
+        const list = this.unifiedBookDetailElement?.querySelectorAll('.quest-log-list .quest-card');
         list?.[this.achievementDetailSelectedIndex]?.scrollIntoView({
           behavior: 'smooth',
           block: 'nearest',
@@ -9020,14 +10098,44 @@ export default class GameScene extends Phaser.Scene {
     return { key: 'fishing', label: '釣り' };
   }
 
+  /** クエストカード用サムネイルパス（魚/ゴミ/道具） */
+  private resolveQuestCardImagePath(quest: QuestConfig): string | undefined {
+    const fishId = quest.condition.fishId;
+    return quest.thumbnailImage ?? (fishId ? getFishImagePath(fishId) : undefined);
+  }
+
+  /** 道具画像はキャンバス占有率が高いため、表示サイズ用クラスを付与 */
+  private getQuestIconImgClasses(imgPath: string, baseClass: string): string {
+    return imgPath.includes('/images/items/')
+      ? `${baseClass} ${baseClass}--item`
+      : baseClass;
+  }
+
   /** カードのアイコン HTML（魚/ゴミ画像があれば画像、なければ絵文字） */
   private buildQuestCardIcon(quest: QuestConfig): string {
-    const fishId = quest.condition.fishId;
-    const imgPath = quest.thumbnailImage ?? (fishId ? getFishImagePath(fishId) : undefined);
+    const imgPath = this.resolveQuestCardImagePath(quest);
     if (imgPath) {
-      return `<img class="quest-card__icon-img" src="${imgPath}" alt="" draggable="false" />`;
+      const imgClass = this.getQuestIconImgClasses(imgPath, 'quest-card__icon-img');
+      return `<img class="${imgClass}" src="${imgPath}" alt="" draggable="false" />`;
     }
     return `<span class="quest-card__icon-emoji" aria-hidden="true">${quest.emoji}</span>`;
+  }
+
+  /** 掲示板のクエストを全件差し替え（進行中・完了済みは保持） */
+  resetQuestBoard() {
+    resetBoardQuests(this.playerData);
+    savePlayerData(this.playerData);
+    this.questBoardSelectedIndex = 0;
+    if (this.questBoardOpen) {
+      this.updateQuestBoardContent();
+    }
+    if (this.unifiedBookOpen && this.unifiedBookTab === 'quest') {
+      this.updateUnifiedBookList();
+      this.updateUnifiedBookDetail();
+    }
+    this.updateQuestHudUI();
+    const count = getAvailableQuests(this.playerData).length;
+    this.showResult(`掲示板のクエストを再生成しました（${count}件）`, 2000);
   }
 
   updateQuestBoardContent() {
@@ -9037,7 +10145,7 @@ export default class GameScene extends Phaser.Scene {
     if (!summaryEl || !listEl) return;
 
     const activeCount = this.playerData.activeQuests.length;
-    summaryEl.textContent = `受注中 ${activeCount}/${MAX_ACTIVE_QUESTS}`;
+    summaryEl.textContent = `進行中 ${activeCount}/${MAX_ACTIVE_QUESTS}`;
 
     const available = getAvailableQuests(this.playerData);
     listEl.innerHTML = '';
@@ -9172,6 +10280,35 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  private bindQuestLogAbandonButtons() {
+    if (!this.unifiedBookDetailElement) return;
+    this.unifiedBookDetailElement.querySelectorAll('.quest-card__abandon').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const questId = (btn as HTMLElement).dataset.questId;
+        if (questId) this.openQuestAbandonConfirm(questId);
+      });
+    });
+  }
+
+  private abandonQuestFromLog(questId: string) {
+    const quest = resolveQuest(this.playerData, questId);
+    const result = abandonQuest(this.playerData, questId);
+    if (!result.ok) {
+      this.showResult(result.reason ?? '破棄できませんでした', 2000);
+      return;
+    }
+    savePlayerData(this.playerData);
+    this.updateQuestHudUI();
+    if (this.unifiedBookOpen && this.unifiedBookTab === 'quest') {
+      this.updateUnifiedBookList();
+      this.updateUnifiedBookDetail();
+    }
+    if (quest) {
+      this.showResult(`「${quest.name}」を破棄しました`, 2000);
+    }
+  }
+
   openUnifiedBook(tab: UnifiedBookTab = 'inventory') {
     if (this.state !== FishingState.IDLE) return;
 
@@ -9194,6 +10331,7 @@ export default class GameScene extends Phaser.Scene {
 
   closeUnifiedBook() {
     this.closeSkillUnlockConfirm();
+    this.closeQuestAbandonConfirm();
     this.stopAquariumTankLoop();
     this.clearAquariumSatietyInterval();
     this.clearAquariumRemoveConfirm();
@@ -9289,6 +10427,13 @@ export default class GameScene extends Phaser.Scene {
       return ok;
     }
 
+    if (this.questAbandonConfirmPendingQuestId) {
+      const cancel = root.querySelector('#quest-abandon-confirm-cancel.is-nav-selected') as HTMLElement | null;
+      if (cancel) return cancel;
+      const ok = root.querySelector('#quest-abandon-confirm-ok.is-nav-selected') as HTMLElement | null;
+      return ok;
+    }
+
     if (this.unifiedBookMainTabsNavActive) {
       return root.querySelector('.book-tab-button.is-nav-selected') as HTMLElement | null;
     }
@@ -9326,12 +10471,26 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'quest') {
       if (this.achievementNavArea === 'right') {
-        const row = root.querySelector('.achievement-detail-item.achievement-detail-item--kb-selected') as HTMLElement | null;
-        if (row) return row;
+        if (this.unifiedBookTab === 'quest' && this.unifiedBookSelectedId === 'active') {
+          const btn = root.querySelector('.quest-card__abandon.is-nav-selected') as HTMLElement | null;
+          if (btn) return btn;
+        } else if (this.unifiedBookTab === 'quest') {
+          const row = root.querySelector(
+            '.quest-log-list.quest-log-list--completed .quest-card.quest-card--kb-selected',
+          ) as HTMLElement | null;
+          if (row) return row;
+        } else {
+          const row = root.querySelector(
+            '.achievement-detail-item.achievement-detail-item--kb-selected',
+          ) as HTMLElement | null;
+          if (row) return row;
+        }
       }
-      const cat = root.querySelector(
-        '#book-list-scroll .achievement-category-item.is-selected',
-      ) as HTMLElement | null;
+      const catSelector =
+        this.unifiedBookTab === 'quest'
+          ? '#book-list-scroll .quest-log-category.is-selected'
+          : '#book-list-scroll .achievement-category-item.is-selected';
+      const cat = root.querySelector(catSelector) as HTMLElement | null;
       if (cat) return cat;
     }
 
@@ -9366,7 +10525,7 @@ export default class GameScene extends Phaser.Scene {
     document.body.classList.toggle('ui-menu-input-keyboard', suppress);
   }
 
-  /** スキル / 実績 / 図鑑: キー操作中は左リスト・ツリー等のホバー見た目を抑える（#book-ui.is-book-kb-input） */
+  /** スキル / 実績 / クエスト / 図鑑: キー操作中は左リスト・ツリー等のホバー見た目を抑える（#book-ui.is-book-kb-input） */
   private refreshBookTabsKbInputChrome() {
     if (!this.unifiedBookUIElement) return;
     const kb =
@@ -9375,6 +10534,7 @@ export default class GameScene extends Phaser.Scene {
       this.uiMenuNavInputChannel === 'keyboard' &&
       (this.unifiedBookTab === 'skills' ||
         this.unifiedBookTab === 'achievement' ||
+        this.unifiedBookTab === 'quest' ||
         this.unifiedBookTab === 'pedia');
     this.unifiedBookUIElement.classList.toggle('is-book-kb-input', kb);
   }
@@ -9445,6 +10605,10 @@ export default class GameScene extends Phaser.Scene {
     if (!this.unifiedBookOpen) return;
     if (this.skillUnlockConfirmPendingNodeId) {
       this.handleSkillUnlockConfirmNavigation();
+      return;
+    }
+    if (this.questAbandonConfirmPendingQuestId) {
+      this.handleQuestAbandonConfirmNavigation();
       return;
     }
 
@@ -9628,14 +10792,24 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if ((this.unifiedBookTab === 'achievement' || this.unifiedBookTab === 'quest') && this.unifiedBookListItems.length > 0) {
-      if (this.achievementNavArea === 'right') {
-        this.handleAchievementRightPaneNavigation(dir, now);
+      if (this.unifiedBookTab === 'quest' && this.achievementNavArea === 'left') {
+        this.handleQuestLeftPaneNavigation(dir, now);
         return;
       }
-      if (dir === 'right') {
-        this.enterAchievementRightPane();
-        this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+      if (this.achievementNavArea === 'right') {
+        if (this.unifiedBookTab === 'quest') {
+          this.handleQuestLogRightPaneNavigation(dir, now);
+        } else {
+          this.handleAchievementRightPaneNavigation(dir, now);
+        }
         return;
+      }
+      if (dir === 'right' && this.unifiedBookTab === 'achievement') {
+        if (this.tryEnterAchievementRightPane()) {
+          this.unifiedBookNavNextMoveAt = now + this.unifiedBookNavInitialDelayMs;
+          return;
+        }
+        // 詳細が空のときは右端タブ切替など通常ナビへフォールスルー
       }
     }
 
@@ -9703,6 +10877,9 @@ export default class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    // クエストタブは handleQuestLeftPaneNavigation / handleQuestLogRightPaneNavigation で完結
+    if (this.unifiedBookTab === 'quest') return;
 
     // 現在の選択インデックスを取得（インベントリは同じ `fish.id` が複数枚あり得るため index 基準）
     let currentIndex = this.unifiedBookSelectedIndex ?? 0;
@@ -10853,19 +12030,23 @@ export default class GameScene extends Phaser.Scene {
         packQuantity: undefined as number | undefined,
         locked: false,
       }));
-      const toolItems = toolConfigs.map(tool => ({
-        id: tool.id,
-        name: tool.name,
-        icon: tool.icon,
-        price: tool.price,
-        packQuantity: tool.consumable ? tool.quantity : undefined,
-        info: tool.consumable
-          ? `所持: ${this.playerData.aquariumFoodCount}個 [消費]`
-          : tool.description,
-        owned: !tool.consumable && this.playerData.ownedTools.includes(tool.id),
-        equipped: false,
-        locked: !!tool.requiresToolId && !this.playerData.ownedTools.includes(tool.requiresToolId),
-      }));
+      const toolItems = toolConfigs.map(tool => {
+        const foodTier = getAquariumFoodTierByToolId(tool.id);
+        const ownedCount = foodTier ? getAquariumFoodCount(this.playerData, foodTier.tier) : 0;
+        return {
+          id: tool.id,
+          name: tool.name,
+          icon: tool.icon,
+          price: tool.price,
+          packQuantity: tool.consumable ? tool.quantity : undefined,
+          info: tool.consumable
+            ? `所持: ${ownedCount}個 [消費]`
+            : tool.description,
+          owned: !tool.consumable && this.playerData.ownedTools.includes(tool.id),
+          equipped: false,
+          locked: !!tool.requiresToolId && !this.playerData.ownedTools.includes(tool.requiresToolId),
+        };
+      });
       items = [...bagItems, ...toolItems];
     }
 
@@ -10947,10 +12128,17 @@ export default class GameScene extends Phaser.Scene {
           if (tool) {
             noteText = tool.description;
             if (tool.consumable) {
-              statChips.push(
-                { label: '所持', value: `${this.playerData.aquariumFoodCount}個` },
+              const foodTier = getAquariumFoodTierByToolId(tool.id);
+              const ownedCount = foodTier ? getAquariumFoodCount(this.playerData, foodTier.tier) : 0;
+              const chips: { label: string; value: string }[] = [
+                { label: '所持', value: `${ownedCount}個` },
                 { label: '分類', value: '消費' },
-              );
+              ];
+              if (foodTier) {
+                chips.splice(1, 0, { label: '成長', value: `+${foodTier.feedGain}` });
+                chips.splice(2, 0, { label: '満腹', value: `${foodTier.satietyMs / 1000}秒` });
+              }
+              statChips.push(...chips);
             } else {
               statChips.push({ label: '分類', value: 'どうぐ' });
             }
@@ -11388,7 +12576,10 @@ export default class GameScene extends Phaser.Scene {
         this.showResult(`${tool.name}を購入！`, 1500);
       }
     } else {
-      this.playerData.aquariumFoodCount += tool.quantity ?? 0;
+      const foodTier = getAquariumFoodTierByToolId(tool.id);
+      if (foodTier) {
+        addAquariumFoodCount(this.playerData, foodTier.tier, tool.quantity ?? 0);
+      }
       this.showResult(`${tool.name}を${tool.quantity}個購入！`, 1500);
     }
 

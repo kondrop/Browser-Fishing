@@ -201,6 +201,8 @@ export interface FightGaugeRenderInput {
   fishDriftVelocity: number;
   tension: number;
   fishState: FishFightState;
+  /** サングラス効果: レアリティ色（CSS色）。null/未指定で通常表示 */
+  fishRarityTint?: string | null;
 }
 
 export interface FightSkillIconSlot {
@@ -352,7 +354,7 @@ export class FishingGaugeOverlay {
         <p class="balance-fight-preview__title">テストファイト</p>
         <p class="balance-fight-preview__badge">本番同一ロジック・勝敗なし</p>
         ${this.buildFightBlockHtml('preview')}
-        <p class="balance-fight-preview__hint">←→バー ↑↓テンション<br>Z X C スキル（本番同様1回）</p>
+        <p class="balance-fight-preview__hint">←→バー ↑長押しでテンション<br>Z X C スキル（本番同様1回）</p>
       </div>
     `;
     this.previewHost = container;
@@ -541,6 +543,15 @@ export class FishingGaugeOverlay {
     const fishSrc = isTired ? FIGHT_FISH_TIRED_IMAGE : FIGHT_FISH_IMAGE;
     if (this.fishEl.getAttribute('src') !== fishSrc) {
       this.fishEl.setAttribute('src', fishSrc);
+    }
+    const rarityTint = input.fishRarityTint ?? null;
+    this.fishEl.classList.toggle('is-rarity-revealed', !!rarityTint);
+    if (rarityTint) {
+      this.fishEl.style.setProperty('--fish-rarity-tint', rarityTint);
+      this.fishEl.style.filter = `drop-shadow(0 0 2px ${rarityTint}) drop-shadow(0 0 5px ${rarityTint})`;
+    } else {
+      this.fishEl.style.removeProperty('--fish-rarity-tint');
+      this.fishEl.style.filter = '';
     }
     this.updateTiredSweat(isTired, fishCenterX, fishTop, fishWidth);
 

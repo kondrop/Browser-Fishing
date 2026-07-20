@@ -196,6 +196,28 @@ export function acceptQuest(playerData: PlayerData, questId: string): { ok: bool
   return { ok: true };
 }
 
+/** 受注中クエストを破棄し、掲示板へ戻す（報酬なし・進捗リセット） */
+export function abandonQuest(playerData: PlayerData, questId: string): { ok: boolean; reason?: string } {
+  if (!playerData.activeQuests.includes(questId)) {
+    return { ok: false, reason: '進行中のクエストではありません' };
+  }
+  if (playerData.completedQuestIds.has(questId)) {
+    return { ok: false, reason: '完了済みのクエストは破棄できません' };
+  }
+  if (!resolveQuest(playerData, questId)) {
+    return { ok: false, reason: 'クエストが見つかりません' };
+  }
+
+  playerData.activeQuests = playerData.activeQuests.filter((id) => id !== questId);
+  playerData.questProgress.delete(questId);
+
+  if (!playerData.boardQuestIds.includes(questId)) {
+    playerData.boardQuestIds.unshift(questId);
+  }
+  ensureBoardQuests(playerData);
+  return { ok: true };
+}
+
 function incrementQuestProgress(playerData: PlayerData, questId: string, amount: number): void {
   if (amount <= 0) return;
   const current = playerData.questProgress.get(questId) ?? 0;
