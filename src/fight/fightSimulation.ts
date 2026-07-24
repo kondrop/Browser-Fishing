@@ -1,7 +1,7 @@
 import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
 import type { PlayerData } from '../data/inventory';
-import { calculateCatchRateWithSize } from '../data/inventory';
+import { calculateCatchRateWithSize, isBigSizeRatio } from '../data/inventory';
 import { getRodById } from '../data/shopConfig';
 import { getSkillStatBonuses, hasSkillAbility, type SkillStatBonuses } from '../data/skills';
 import { FIGHT_SKILL_DURATIONS } from '../ui/fishingGaugeOverlay';
@@ -461,11 +461,21 @@ export function stepFightSimulation(state: FightSimState, input: FightSimStepInp
 
 export function fishParamsFromConfig(fish: FishConfig, sizeCm?: number): FightSimFishParams {
   const cfg = config.fighting;
+  let catchRate = fish.catchRate ?? 1.0;
+  let escapeRate = fish.escapeRate ?? 1.0;
+  let fishSpeed = fish.fishSpeed ?? 0.3;
+  let fishErratic = fish.fishErratic ?? 0.3;
+  if (sizeCm !== undefined && fish.maxSize > 0 && isBigSizeRatio(sizeCm / fish.maxSize)) {
+    catchRate *= cfg['5-12g_BIG_catchRate倍率'];
+    escapeRate *= cfg['5-12h_BIG_escapeRate倍率'];
+    fishSpeed *= cfg['5-12i_BIG_fishSpeed倍率'];
+    fishErratic *= cfg['5-12j_BIG_fishErratic倍率'];
+  }
   return {
-    catchRate: fish.catchRate ?? 1.0,
-    escapeRate: fish.escapeRate ?? 1.0,
-    fishSpeed: fish.fishSpeed ?? 0.3,
-    fishErratic: fish.fishErratic ?? 0.3,
+    catchRate,
+    escapeRate,
+    fishSpeed,
+    fishErratic,
     moveInterval: fish.moveInterval ?? [cfg['5-13_魚の移動間隔_最短'], cfg['5-14_魚の移動間隔_最長']],
     maxSize: fish.maxSize,
     sizeCm,

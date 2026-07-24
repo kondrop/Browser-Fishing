@@ -8,12 +8,16 @@ import { achievementConfigs } from './achievementConfig';
 import { fishConfigs } from './fishConfig';
 import { getExpMultiplierForFish, getSellPriceMultiplier } from './skills';
 import { config } from '../config';
+import { getGrowthStage } from './aquarium';
 import type { AquariumFishEntry } from './aquarium';
+import { AQUARIUM_LEVEL_SELL_PRICE_BONUS_PER_LEVEL, type AquariumFoodTier } from './aquariumConfig';
 
 /** バッグ内の1匹（入手順で inventory 配列に格納） */
 export interface InventoryEntry {
   fishId: string;
   size?: number; // cm。ゴミは未設定
+  /** 水槽で育てた累計摂食回数。1回以上エサを与えた魚のみ保持 */
+  feedCount?: number;
 }
 
 /** @deprecated InventoryEntry を使用 */
@@ -63,6 +67,8 @@ export interface PlayerData {
   ownedTools: string[];              // 所持どうぐID（'tool_aquarium' 等）
   aquariumFoodCount: number;         // アクアリウムのエサ残数
   aquariumPremiumFoodCount: number;  // 高級なエサ残数
+  /** 水槽で最後に選んだエサ種別（次回も引き継ぐ） */
+  aquariumSelectedFoodTier: AquariumFoodTier;
   aquarium: AquariumFishEntry[];     // 水槽内の魚（最大3）
 }
 
@@ -104,6 +110,7 @@ export function createInitialPlayerData(): PlayerData {
     ownedTools: [],
     aquariumFoodCount: 0,
     aquariumPremiumFoodCount: 0,
+    aquariumSelectedFoodTier: 'normal',
     aquarium: [],
   };
 }
@@ -118,19 +125,31 @@ export function getCastDistanceRatio(distance: number): number {
   return Math.max(0, Math.min(1, (distance - minDist) / span));
 }
 
+/** BIG表示のサイズ比率閾値（size / maxSize） */
+export function getBigSizeRatioThreshold(): number {
+  return config.waiting['3-10_BIGサイズ比率閾値'];
+}
+
+export function isBigSizeRatio(sizeRatio: number): boolean {
+  return sizeRatio >= getBigSizeRatioThreshold();
+}
+
 // ランダムサイズを生成（最大サイズに対する比率で抽選）
 // castDistanceRatio: 投擲距離比率 0〜1。指定時は遠いほど下限が引き上がる（大きい個体になりやすい）
+// 分布は下寄り（pow）。高パワー＋フル投擲で BIG 率がおおよそ30%前後になる想定
 export function generateRandomSize(maxSize: number, castDistanceRatio?: number): number {
   const waitCfg = config.waiting;
   const baseMinRatio = waitCfg['3-7_投擲サイズ_最小比率ベース'];
   const fullCastMinRatio = waitCfg['3-8_投擲サイズ_最小比率_フル投擲'];
+  const biasExponent = Math.max(1, waitCfg['3-9_投擲サイズ_下寄り指数']);
   const t =
     castDistanceRatio !== undefined
       ? Math.max(0, Math.min(1, castDistanceRatio))
       : 0;
   const minRatio = baseMinRatio + (fullCastMinRatio - baseMinRatio) * t;
   const maxRatio = 1.0;
-  const randomSize = maxSize * minRatio + Math.random() * maxSize * (maxRatio - minRatio);
+  const skewed = Math.pow(Math.random(), biasExponent);
+  const randomSize = maxSize * (minRatio + skewed * (maxRatio - minRatio));
   return Math.round(randomSize * 10) / 10; // 小数点第一位まで
 }
 
@@ -143,17 +162,52 @@ export function updateFishSizeRecord(playerData: PlayerData, fishId: string, siz
 }
 
 // サイズによる価格ボーナスを計算（基本価格以上に上乗せ）
-// sizeRatio: サイズ/最大サイズ (0.5〜1.0)
+// sizeRatio: サイズ/最大サイズ（概ね下限〜1.0）
 // bonusCoefficient: ボーナス係数（例：0.5 = 最大50%上乗せ）
+// BIG個体はさらに売価倍率を乗算
 export function calculatePriceWithSizeBonus(basePrice: number, sizeRatio: number, bonusCoefficient: number = 0.5): number {
   // 基本価格 + (サイズ比率 × ボーナス係数 × 基本価格)
   // 例：基本価格80G、サイズ比率0.8、係数0.5 → 80 + (0.8 × 0.5 × 80) = 80 + 32 = 112G
-  const bonus = sizeRatio * bonusCoefficient * basePrice;
-  return Math.round(basePrice + bonus);
+  let price = basePrice + sizeRatio * bonusCoefficient * basePrice;
+  if (isBigSizeRatio(sizeRatio)) {
+    price *= config.fighting['5-12k_BIG売価倍率'];
+  }
+  return Math.round(price);
+}
+
+/** 成長Lvに応じた売価ボーナス（Lv1は変化なし） */
+export function calculatePriceWithGrowthBonus(
+  basePrice: number,
+  growthLevel: number,
+  bonusPerLevel: number = AQUARIUM_LEVEL_SELL_PRICE_BONUS_PER_LEVEL,
+): number {
+  if (growthLevel <= 1) return basePrice;
+  const bonus = (growthLevel - 1) * bonusPerLevel;
+  return Math.round(basePrice * (1 + bonus));
+}
+
+/** バッグ内1匹のスキル倍率適用前売価 */
+export function getInventoryEntryBaseSellPrice(
+  fish: FishConfig,
+  entry: InventoryEntry,
+  sizePriceBonusCoef: number = config.fighting['5-12f_サイズ売価ボーナス係数'],
+): number {
+  const isJunk = entry.fishId.startsWith('junk_');
+  let price = fish.price;
+  if (!isJunk && entry.size !== undefined) {
+    const sizeRatio = entry.size / fish.maxSize;
+    price = calculatePriceWithSizeBonus(fish.price, sizeRatio, sizePriceBonusCoef);
+  }
+  const feedCount = entry.feedCount ?? 0;
+  if (!isJunk && feedCount > 0) {
+    const growthLevel = getGrowthStage(feedCount).level;
+    price = calculatePriceWithGrowthBonus(price, growthLevel);
+  }
+  return price;
 }
 
 // サイズによるcatchRate調整を計算（粘り強さ）
-// sizeRatio: サイズ/最大サイズ (0.5〜1.0)
+// sizeRatio: サイズ/最大サイズ（概ね下限〜1.0）
 // difficultyCoefficient: 難易度係数（例：0.3 = 最大30%減少）
 export function calculateCatchRateWithSize(baseCatchRate: number, sizeRatio: number, difficultyCoefficient: number = 0.3): number {
   // 基本catchRate × (1 - サイズ比率 × 難易度係数)
@@ -162,48 +216,71 @@ export function calculateCatchRateWithSize(baseCatchRate: number, sizeRatio: num
   return Math.max(0.1, adjustedRate); // 最低0.1は保証
 }
 
-// インベントリに魚を追加
-// 戻り値: { leveledUp: boolean, size?: number } - レベルアップしたかどうかと生成されたサイズ
-export function addFishToInventory(playerData: PlayerData, fish: FishConfig, size?: number): { leveledUp: boolean; size?: number } {
-  // 図鑑に登録
+/**
+ * 釣果の報酬（図鑑・カウント・サイズ記録・EXP）を付与する。インベントリには入れない。
+ * バッグ満杯時の放流／入れかえ前に使う。
+ */
+export function applyCatchRewards(
+  playerData: PlayerData,
+  fish: FishConfig,
+  size?: number,
+): { leveledUp: boolean; size?: number } {
   playerData.caughtFishIds.add(fish.id);
   playerData.totalCaught++;
-  
-  // 魚種ごとの釣果数を更新
+
   const currentCount = playerData.fishCaughtCounts.get(fish.id) || 0;
   playerData.fishCaughtCounts.set(fish.id, currentCount + 1);
-  
-  // ゴミの場合はサイズを生成しない
+
   const isJunk = fish.id.startsWith('junk_');
   let fishSize: number | undefined;
-  
-  // ゴミの場合はカウントを更新
+
   if (isJunk) {
     playerData.junkCaughtCount++;
-  }
-  
-  if (!isJunk) {
-    // サイズを生成（指定されていない場合）
+  } else {
     fishSize = size !== undefined ? size : generateRandomSize(fish.maxSize);
-    
-    // サイズ記録を更新
     updateFishSizeRecord(playerData, fish.id, fishSize);
   }
-  
-  // 経験値を追加
+
   const expGainedBase = getExpByRarity(fish.rarity);
   const expMul = getExpMultiplierForFish(playerData, fish.id);
   const expGained = Math.max(1, Math.round(expGainedBase * expMul));
   const leveledUp = addExp(playerData, expGained);
-  
+
+  return { leveledUp, size: fishSize };
+}
+
+// インベントリに魚を追加
+// 戻り値: { leveledUp: boolean, size?: number } - レベルアップしたかどうかと生成されたサイズ
+export function addFishToInventory(playerData: PlayerData, fish: FishConfig, size?: number): { leveledUp: boolean; size?: number } {
+  const { leveledUp, size: fishSize } = applyCatchRewards(playerData, fish, size);
+
   // インベントリに追加（配列末尾＝最新。表示時は先頭が最新）
   playerData.inventory.push({
     fishId: fish.id,
     ...(fishSize !== undefined ? { size: fishSize } : {}),
   });
-  
-  // レベルアップしたかどうかと生成されたサイズを返す
+
   return { leveledUp, size: fishSize };
+}
+
+/**
+ * バッグ満杯時の入れかえ: 指定インデックスの魚を放流し、釣った魚を末尾に追加。
+ * 図鑑・EXP 等の報酬は別途 applyCatchRewards 済みであること。
+ */
+export function swapCaughtFishIntoInventory(
+  playerData: PlayerData,
+  replaceIndex: number,
+  fish: FishConfig,
+  size?: number,
+): boolean {
+  if (replaceIndex < 0 || replaceIndex >= playerData.inventory.length) return false;
+  const isJunk = fish.id.startsWith('junk_');
+  playerData.inventory.splice(replaceIndex, 1);
+  playerData.inventory.push({
+    fishId: fish.id,
+    ...(!isJunk && size !== undefined ? { size } : {}),
+  });
+  return true;
 }
 
 // インベントリから魚を削除（売却時など。同種は入手が古い順に削除）
@@ -234,7 +311,6 @@ export function sellFish(playerData: PlayerData, fishId: string, count: number =
   const owned = playerData.inventory.filter((e) => e.fishId === fishId).length;
   if (owned < count) return 0;
 
-  const isJunk = fishId.startsWith('junk_');
   let totalEarnings = 0;
   const skillSellMul = getSellPriceMultiplier(playerData);
   let sold = 0;
@@ -246,11 +322,7 @@ export function sellFish(playerData: PlayerData, fishId: string, count: number =
       continue;
     }
 
-    let price = fish.price;
-    if (!isJunk && entry.size !== undefined) {
-      const sizeRatio = entry.size / fish.maxSize;
-      price = calculatePriceWithSizeBonus(fish.price, sizeRatio, sizePriceBonusCoef);
-    }
+    let price = getInventoryEntryBaseSellPrice(fish, entry, sizePriceBonusCoef);
     totalEarnings += Math.round(price * skillSellMul);
     playerData.inventory.splice(i, 1);
     sold++;
@@ -275,12 +347,7 @@ export function sellAllFish(playerData: PlayerData): number {
     const fish = getFishById(entry.fishId);
     if (!fish) continue;
 
-    const isJunk = entry.fishId.startsWith('junk_');
-    let price = fish.price;
-    if (!isJunk && entry.size !== undefined) {
-      const sizeRatio = entry.size / fish.maxSize;
-      price = calculatePriceWithSizeBonus(fish.price, sizeRatio, sizePriceBonusCoef);
-    }
+    const price = getInventoryEntryBaseSellPrice(fish, entry, sizePriceBonusCoef);
     totalEarnings += Math.round(price * skillSellMul);
   }
   
@@ -300,12 +367,7 @@ export function calculateInventoryValue(playerData: PlayerData): number {
     const fish = getFishById(entry.fishId);
     if (!fish) continue;
 
-    const isJunk = entry.fishId.startsWith('junk_');
-    let price = fish.price;
-    if (!isJunk && entry.size !== undefined) {
-      const sizeRatio = entry.size / fish.maxSize;
-      price = calculatePriceWithSizeBonus(fish.price, sizeRatio, sizePriceBonusCoef);
-    }
+    const price = getInventoryEntryBaseSellPrice(fish, entry, sizePriceBonusCoef);
     total += Math.round(price * skillSellMul);
   }
   return total;
@@ -345,6 +407,7 @@ function normalizeInventoryFromSave(raw: unknown[]): InventoryEntry[] {
   return (raw as InventoryEntry[]).map((e) => ({
     fishId: e.fishId,
     ...(e.size !== undefined ? { size: e.size } : {}),
+    ...(typeof e.feedCount === 'number' && e.feedCount > 0 ? { feedCount: e.feedCount } : {}),
   }));
 }
 
@@ -417,6 +480,10 @@ export function loadPlayerData(): PlayerData {
         aquariumFoodCount: typeof parsed.aquariumFoodCount === 'number' ? parsed.aquariumFoodCount : 0,
         aquariumPremiumFoodCount:
           typeof parsed.aquariumPremiumFoodCount === 'number' ? parsed.aquariumPremiumFoodCount : 0,
+        aquariumSelectedFoodTier:
+          parsed.aquariumSelectedFoodTier === 'premium' || parsed.aquariumSelectedFoodTier === 'normal'
+            ? parsed.aquariumSelectedFoodTier
+            : 'normal',
         aquarium: Array.isArray(parsed.aquarium)
           ? parsed.aquarium.map((e: any) => ({
               fishId: e.fishId,

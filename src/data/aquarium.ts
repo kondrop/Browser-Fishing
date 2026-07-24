@@ -1,4 +1,5 @@
-import type { PlayerData } from './inventory';
+import { config } from '../config';
+import type { PlayerData, InventoryEntry } from './inventory';
 import { getFishById } from './fish';
 import {
   AQUARIUM_CAPACITY,
@@ -6,6 +7,7 @@ import {
   AQUARIUM_SATIETY_DURATION_MS,
   AQUARIUM_FOOD_TIERS,
   AQUARIUM_RARITY_BONUS_BASE,
+  AQUARIUM_BIG_STAT_BONUS_MUL,
   AQUARIUM_HABITAT_STAT,
   AQUARIUM_STAT_OVERRIDES,
   type AquariumFoodTier,
@@ -57,6 +59,11 @@ export function getNextGrowthStage(feedCount: number): AquariumGrowthStage | nul
   return next ?? null;
 }
 
+/** 成長上限（Lv.5 ヌシ）に達しているか */
+export function isAquariumMaxGrowth(entry: AquariumFishEntry): boolean {
+  return getNextGrowthStage(entry.feedCount) === null;
+}
+
 function getEntrySatietyMs(entry: AquariumFishEntry): number {
   return entry.lastFedSatietyMs ?? AQUARIUM_SATIETY_DURATION_MS;
 }
@@ -85,7 +92,15 @@ export function getAquariumBonusForEntry(entry: AquariumFishEntry): { stat: Aqua
   if (!fish) return { stat, value: 0 };
   const stage = getGrowthStage(entry.feedCount);
   const base = AQUARIUM_RARITY_BONUS_BASE[fish.rarity] ?? 0;
-  return { stat, value: base * stage.level };
+  let value = base * stage.level;
+  if (
+    entry.size !== undefined &&
+    fish.maxSize > 0 &&
+    entry.size / fish.maxSize >= config.waiting['3-10_BIGサイズ比率閾値']
+  ) {
+    value *= AQUARIUM_BIG_STAT_BONUS_MUL;
+  }
+  return { stat, value };
 }
 
 /**
@@ -111,6 +126,27 @@ export function getAquariumStatBonuses(playerData: PlayerData): {
   return result;
 }
 
+function inventoryEntryToAquariumEntry(entry: InventoryEntry): AquariumFishEntry {
+  return {
+    fishId: entry.fishId,
+    ...(entry.size !== undefined ? { size: entry.size } : {}),
+    feedCount: entry.feedCount ?? 0,
+    addedAt: Date.now(),
+    lastFedAt: 0,
+  };
+}
+
+function aquariumEntryToInventoryEntry(entry: AquariumFishEntry): InventoryEntry {
+  const inv: InventoryEntry = {
+    fishId: entry.fishId,
+    ...(entry.size !== undefined ? { size: entry.size } : {}),
+  };
+  if (entry.feedCount > 0) {
+    inv.feedCount = entry.feedCount;
+  }
+  return inv;
+}
+
 export function addFishToAquarium(playerData: PlayerData, inventoryIndex: number): boolean {
   if (!hasAquarium(playerData)) return false;
   if (!playerData.aquarium) playerData.aquarium = [];
@@ -121,13 +157,7 @@ export function addFishToAquarium(playerData: PlayerData, inventoryIndex: number
   if (!entry || entry.fishId.startsWith('junk_')) return false;
 
   playerData.inventory.splice(inventoryIndex, 1);
-  playerData.aquarium.push({
-    fishId: entry.fishId,
-    ...(entry.size !== undefined ? { size: entry.size } : {}),
-    feedCount: 0,
-    addedAt: Date.now(),
-    lastFedAt: 0,
-  });
+  playerData.aquarium.push(inventoryEntryToAquariumEntry(entry));
   return true;
 }
 
@@ -137,15 +167,13 @@ export function removeFishFromAquarium(playerData: PlayerData, aquariumIndex: nu
   if (playerData.inventory.length >= playerData.maxInventorySlots) return false;
 
   const entry = playerData.aquarium[aquariumIndex];
+  if (isSatiated(entry, Date.now())) return false;
   playerData.aquarium.splice(aquariumIndex, 1);
-  playerData.inventory.push({
-    fishId: entry.fishId,
-    ...(entry.size !== undefined ? { size: entry.size } : {}),
-  });
+  playerData.inventory.push(aquariumEntryToInventoryEntry(entry));
   return true;
 }
 
-/** 水槽の魚とバッグの魚を1:1で入れかえる（バッグ満杯でも可。成長はリセット） */
+/** 水槽の魚とバッグの魚を1:1で入れかえる（バッグ満杯でも可。成長値は引き継ぐ） */
 export function swapAquariumFish(
   playerData: PlayerData,
   aquariumIndex: number,
@@ -155,22 +183,15 @@ export function swapAquariumFish(
   if (aquariumIndex < 0 || aquariumIndex >= playerData.aquarium.length) return false;
   if (inventoryIndex < 0 || inventoryIndex >= playerData.inventory.length) return false;
 
+  const aqua = playerData.aquarium[aquariumIndex];
+  if (isSatiated(aqua, Date.now())) return false;
+
   const inv = playerData.inventory[inventoryIndex];
   if (!inv || inv.fishId.startsWith('junk_')) return false;
   if (!getFishById(inv.fishId)) return false;
 
-  const aqua = playerData.aquarium[aquariumIndex];
-  playerData.inventory[inventoryIndex] = {
-    fishId: aqua.fishId,
-    ...(aqua.size !== undefined ? { size: aqua.size } : {}),
-  };
-  playerData.aquarium[aquariumIndex] = {
-    fishId: inv.fishId,
-    ...(inv.size !== undefined ? { size: inv.size } : {}),
-    feedCount: 0,
-    addedAt: Date.now(),
-    lastFedAt: 0,
-  };
+  playerData.inventory[inventoryIndex] = aquariumEntryToInventoryEntry(aqua);
+  playerData.aquarium[aquariumIndex] = inventoryEntryToAquariumEntry(inv);
   return true;
 }
 
@@ -188,7 +209,7 @@ export function feedAquariumFish(
   }
 
   const entry = playerData.aquarium[aquariumIndex];
-  if (isSatiated(entry, now)) {
+  if (isAquariumMaxGrowth(entry) || isSatiated(entry, now)) {
     return { ok: false, leveledUp: false };
   }
 

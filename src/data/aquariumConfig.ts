@@ -19,6 +19,9 @@ export const AQUARIUM_GROWTH_STAGES: AquariumGrowthStage[] = [
   { level: 5, name: 'ヌシ', requiredFeeds: 65, spriteScale: 0.57 },
 ];
 
+/** 成長Lvごとの売価ボーナス（Lv1=0%、Lv2=+50% … Lv5=+200%） */
+export const AQUARIUM_LEVEL_SELL_PRICE_BONUS_PER_LEVEL = 0.5;
+
 /** 通常エサの満腹時間（ms） */
 export const AQUARIUM_SATIETY_DURATION_MS = 90_000;
 
@@ -70,6 +73,9 @@ export const AQUARIUM_RARITY_BONUS_BASE: Record<Rarity, number> = {
   [Rarity.EPIC]: 0.014,
   [Rarity.LEGENDARY]: 0.020,
 };
+
+/** BIG個体（size/maxSize が閾値以上）の水槽ステータス倍率 */
+export const AQUARIUM_BIG_STAT_BONUS_MUL = 1.25;
 
 export type AquariumStatKey = 'power' | 'speed' | 'technique' | 'control';
 
@@ -188,10 +194,10 @@ export function getAquariumSpeciesScale(maxSizeCm: number): number {
 
 /**
  * 個体サイズ比率(size/maxSize)→描画係数。
- * 釣果は概ね 0.5〜1.0。同種でも差が分かるよう 0.82〜1.18 にマップ。
+ * 釣果は概ね 0.25〜1.0。同種でも差が分かるよう 0.82〜1.18 にマップ。
  */
 export function getAquariumIndividualScale(sizeRatio: number): number {
-  const t = Math.min(1, Math.max(0, (sizeRatio - 0.5) / 0.5));
+  const t = Math.min(1, Math.max(0, (sizeRatio - 0.25) / 0.75));
   return 0.82 + t * 0.36;
 }
 
@@ -203,7 +209,7 @@ export const AQUARIUM_PITCH_LERP = 6;
 export const AQUARIUM_SWIM_X_MIN = 50;
 export const AQUARIUM_SWIM_X_MAX = 910;
 export const AQUARIUM_SWIM_Y_MIN = 80;
-export const AQUARIUM_SWIM_Y_MAX = 440;
+export const AQUARIUM_SWIM_Y_MAX = 390;
 
 export const AQUARIUM_HOME_Y_MIN = 120;
 export const AQUARIUM_HOME_Y_RANGE = 280;
