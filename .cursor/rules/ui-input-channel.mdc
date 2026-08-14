@@ -1,0 +1,20 @@
+---
+description: キー↔マウス切替はゲーム全体の基本仕様。キーフォーカスはマウス復帰時に必ず外す。
+alwaysApply: true
+---
+
+# UI 入力チャンネル
+
+- メニューの直近入力は `uiMenuNavInputChannel`（`keyboard` | `mouse`）。切替は必ず `applyUiMenuNavInputChannel` を通す。
+- **マウスに戻したらキーフォーカス見た目を消す。** 指マーカー、`is-nav-selected`、`*-kb-selected`、キー専用の浮き・点滅は残さない。
+- キーフォーカスは `is-nav-selected`（または `*-kb-selected`）。`is-selected` / `state-selected` は「今見ている項目」用で、マウス後も残してよい。
+- キーフォーカス class は `uiMenuNavInputChannel === 'keyboard'` のときだけ付ける。同期関数を増やしたら `syncUiMenuInputChannelChrome` にも足す。
+- キー専用の塗り・点滅・浮きは `body.ui-menu-input-keyboard` 配下か `:hover` に限定する。
+
+```ts
+// ❌ BAD: キー選択を is-selected のまま残す
+item.classList.toggle('is-selected', i === selectedIndex);
+
+// ✅ GOOD
+item.classList.toggle('is-nav-selected', kb && i === selectedIndex);
+```

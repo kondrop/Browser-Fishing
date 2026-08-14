@@ -70,8 +70,8 @@ export const AQUARIUM_RARITY_BONUS_BASE: Record<Rarity, number> = {
   [Rarity.COMMON]: 0.004,
   [Rarity.UNCOMMON]: 0.006,
   [Rarity.RARE]: 0.010,
-  [Rarity.EPIC]: 0.014,
-  [Rarity.LEGENDARY]: 0.020,
+  [Rarity.EPIC]: 0.015,
+  [Rarity.LEGENDARY]: 0.025,
 };
 
 /** BIG個体（size/maxSize が閾値以上）の水槽ステータス倍率 */
@@ -92,6 +92,8 @@ export const AQUARIUM_STAT_OVERRIDES: Record<string, AquariumStatKey> = {
   fish_koi: 'technique',
   fish_jellyfish: 'technique',
   fish_seahorse: 'technique',
+  fish_golden_koi: 'technique',
+  fish_arowana: 'speed',
 };
 
 // --- 水槽描画・遊泳 ---
@@ -100,10 +102,10 @@ export const AQUARIUM_CANVAS_W = 960;
 export const AQUARIUM_CANVAS_H = 540;
 
 /** 背景ゆらぎ：枠を残す内側余白（canvas px） */
-export const AQUARIUM_BG_WARP_INSET_L = 16;
-export const AQUARIUM_BG_WARP_INSET_R = 16;
+export const AQUARIUM_BG_WARP_INSET_L = 18;
+export const AQUARIUM_BG_WARP_INSET_R = 18;
 export const AQUARIUM_BG_WARP_INSET_T = 18;
-export const AQUARIUM_BG_WARP_INSET_B = 32;
+export const AQUARIUM_BG_WARP_INSET_B = 44;
 /** ゆらぎ振幅（px）。inset より十分小さくして枠を巻き込まない */
 export const AQUARIUM_BG_WARP_AMP = 3.0;
 export const AQUARIUM_BG_WARP_SPEED = 1.25;

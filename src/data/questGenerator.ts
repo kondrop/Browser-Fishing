@@ -52,10 +52,18 @@ const QUEST_RARITY = Rarity.UNCOMMON;
 const QUEST_RARITY_MAX = Rarity.EPIC;
 const FIGHT_DURATION_SEC = 12;
 const TENSION_MAX_TARGET = 2;
-const REWARD_MONEY_PER_BASE = 75;
-const REWARD_MONEY_FLAT = 80;
+const REWARD_MONEY_PER_BASE = 150;
+const REWARD_MONEY_FLAT = 160;
 const REWARD_EXP_PER_BASE = 18;
 const REWARD_EXP_FLAT = 25;
+/** 特定魚クエストのみ。コモン=現行水準、レアほど増やす */
+const CATCH_FISH_RARITY_MUL: Record<Rarity, number> = {
+  [Rarity.COMMON]: 1,
+  [Rarity.UNCOMMON]: 1.45,
+  [Rarity.RARE]: 2.1,
+  [Rarity.EPIC]: 3.2,
+  [Rarity.LEGENDARY]: 4.5,
+};
 
 function getRealFish(): FishConfig[] {
   return fishDatabase.filter((f) => !f.id.startsWith('junk_'));
@@ -153,6 +161,7 @@ function resolveQuestThumbnailImage(
 function calcReward(
   templateId: QuestTemplateId,
   target: number,
+  rarity?: Rarity,
 ): { money: number; exp: number } {
   const typeMul: Record<QuestTemplateId, number> = {
     catch_junk: 0.95,
@@ -165,7 +174,9 @@ function calcReward(
     equipment: 1.3,
     environment: 1.15,
   };
-  const base = target * 1.6 * typeMul[templateId];
+  const rarityMul =
+    templateId === 'catch_fish' && rarity ? (CATCH_FISH_RARITY_MUL[rarity] ?? 1) : 1;
+  const base = target * 1.6 * typeMul[templateId] * rarityMul;
   return {
     money: Math.round((base * REWARD_MONEY_PER_BASE + REWARD_MONEY_FLAT) * BOARD_QUEST_REWARD_MULTIPLIER),
     exp: Math.round((base * REWARD_EXP_PER_BASE + REWARD_EXP_FLAT) * BOARD_QUEST_REWARD_MULTIPLIER),
@@ -341,7 +352,11 @@ export function generateDynamicQuest(playerData: PlayerData): QuestConfig {
       condition = { type: 'quest_catch_fish', target: count, fishId: fish.id };
   }
 
-  const reward = calcReward(template.id, target);
+  const reward = calcReward(
+    template.id,
+    target,
+    template.id === 'catch_fish' ? fish.rarity : undefined,
+  );
 
   return {
     id: createQuestId(),

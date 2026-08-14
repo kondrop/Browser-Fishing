@@ -30,12 +30,11 @@ canvas {
 }
 
 .player-world-hint,
-.player-bite-mark,
-.bulletin-board-world-label {
+.player-bite-mark {
   position: fixed;
   transform: translate(-50%, -100%) scale(var(--world-text-scale, 1));
   transform-origin: center bottom;
-  z-index: 180;
+  z-index: 1100;
   user-select: none;
   pointer-events: none;
   white-space: nowrap;
@@ -165,15 +164,6 @@ canvas {
     -4px 4px #ff0000,
     4px -4px #ff0000,
     -4px -4px #ff0000;
-}
-
-.bulletin-board-world-label {
-  color: #ffffff;
-  font-size: 14px;
-  line-height: 1;
-  padding: 4px 8px;
-  background: rgba(0, 0, 0, 0.53);
-  border-radius: 2px;
 }
 
 /* 全ての画像のアンチエイリアスを解除 */
@@ -423,10 +413,11 @@ img {
 
 /* 上部UI: レベル(左) + EXPバー(中央) + ステータス(右) */
 #top-ui {
+  --hud-bar-h: 48px;
   position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 10px;
+  top: 16px;
+  left: 16px;
+  right: 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -434,7 +425,7 @@ img {
 
 #top-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 32px;
 }
@@ -585,9 +576,21 @@ span.level-label-value {
   line-height: 1;
 }
 
-/* EXPバー（右側） */
-#exp-bar-bg {
+/* 右上: 金額（上段）+ 装備/バッグ（下段） */
+#top-right-col {
   flex: 1 1 auto;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* EXPバー（右側）※位置検討のため一時非表示 */
+#exp-bar-bg {
+  display: none;
+  flex: 0 0 auto;
+  width: 100%;
   min-width: 140px;
   height: 36px;
   background: #5a3d2e;
@@ -597,6 +600,141 @@ span.level-label-value {
   border-radius: 0px;
   overflow: hidden;
   position: relative;
+}
+
+/* 下段: 装備 + バッグ横並び */
+.hud-equip-bag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* 装備（背景を2枠） */
+.equip-display-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.equip-display {
+  --equip-img-w: 357;
+  --equip-img-h: 341;
+  position: relative;
+  height: var(--hud-bar-h);
+  width: auto;
+  aspect-ratio: var(--equip-img-w) / var(--equip-img-h);
+  padding: 0;
+  border: none;
+  background: url("/images/ui/装備背景.png") center / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  flex: 0 0 auto;
+  pointer-events: auto;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.equip-display:focus-visible {
+  outline: 2px solid #5f2d1d;
+  outline-offset: 2px;
+}
+
+.equip-display__icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(-50% - 2px));
+  width: calc(68% - 6px);
+  height: calc(68% - 6px);
+  object-fit: contain;
+  object-position: center;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  display: block;
+  pointer-events: none;
+}
+
+.equip-display__count {
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+  z-index: 1;
+  min-width: 1em;
+  padding: 0 1px;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: calc(var(--hud-bar-h, 48px) * 0.42);
+  font-weight: 400;
+  line-height: 1;
+  color: #5f2d1d;
+  text-align: right;
+  text-shadow:
+    -1px 0 #f4e4c4,
+    1px 0 #f4e4c4,
+    0 -1px #f4e4c4,
+    0 1px #f4e4c4;
+  pointer-events: none;
+}
+
+/* 所持金（EXPバー下・金額表示.png の7スロットに桁合わせ）
+   数字・背景の位置は確定済み */
+.money-display {
+  /* 元画像 1572x341 / 桁スロット: x321-1473 y59-248, 各151px + 区切り16px */
+  --money-img-w: 1572;
+  --money-img-h: 341;
+  --money-slot-x: 321;
+  --money-slot-y: 59;
+  --money-slot-w: 1153;
+  --money-slot-h: 190;
+  --money-slot-gap: 16;
+  --money-digit-nudge-x: 2px;
+  --money-digit-nudge-y: -6px;
+  --money-h: var(--hud-bar-h, 40px);
+  position: relative;
+  height: var(--money-h);
+  width: auto;
+  aspect-ratio: var(--money-img-w) / var(--money-img-h);
+  background: url("/images/ui/金額表示.png") center / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  flex: 0 0 auto;
+}
+
+.money-display__digits {
+  position: absolute;
+  left: calc(var(--money-slot-x) / var(--money-img-w) * 100%);
+  top: calc(var(--money-slot-y) / var(--money-img-h) * 100%);
+  width: calc(var(--money-slot-w) / var(--money-img-w) * 100%);
+  height: calc(var(--money-slot-h) / var(--money-img-h) * 100%);
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  column-gap: calc(var(--money-slot-gap) / var(--money-slot-w) * 100%);
+  align-items: center;
+  justify-items: center;
+  pointer-events: none;
+}
+
+.money-display__digit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: calc(var(--money-h) * 0.82 - 2px);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #5f2d1d;
+  text-align: center;
+  position: relative;
+  top: var(--money-digit-nudge-y);
+  left: var(--money-digit-nudge-x);
 }
 
 /* EXPバーの目盛り（実体DOMで均等分布させる） */
@@ -641,14 +779,65 @@ span.level-label-value {
 }
 
 #stats-section {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  align-self: flex-end;
+  display: none;
 }
 
 #stats-section .stat-item {
   margin-bottom: 0;
+}
+
+/* バッグ所持数（所持数背景.png・装備/金額と同系統） */
+.bag-count-display {
+  --bag-img-w: 741;
+  --bag-img-h: 341;
+  position: relative;
+  height: var(--hud-bar-h, 48px);
+  width: auto;
+  aspect-ratio: var(--bag-img-w) / var(--bag-img-h);
+  background: url("/images/ui/所持数背景.png") center / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  flex: 0 0 auto;
+}
+
+.bag-count-display__inner {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 12%;
+  bottom: 18%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.bag-count-display__icon {
+  width: calc(var(--hud-bar-h, 48px) * 0.55);
+  height: calc(var(--hud-bar-h, 48px) * 0.55);
+  object-fit: contain;
+  object-position: center;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  flex: 0 0 auto;
+  display: block;
+  position: relative;
+  top: -2px;
+}
+
+.bag-count-display__count {
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: calc(var(--hud-bar-h, 48px) * 0.72 - 5px);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #5f2d1d;
+  white-space: nowrap;
+  position: relative;
+  top: -1px;
 }
 
 /* 旧: #level-section / #exp-bar-bg / #exp-bar-fill の重複定義は上の統一設定に集約 */
@@ -671,8 +860,8 @@ span.level-label-value {
 /* 右下: 受注中クエストHUD */
 .quest-hud {
   position: absolute;
-  right: 18px;
-  bottom: 18px;
+  right: 16px;
+  bottom: 16px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -924,7 +1113,8 @@ span.level-label-value {
   transition: visibility 0s 0s, opacity 0.3s ease-out, background 0.3s ease-out;
 }
 
-/* Phaser キー操作に切り替え中: モーダル HTML へポインタを届かせない（実カーソル位置の :hover が残らない） */
+/* Phaser キー操作に切り替え中: モーダル HTML へポインタを届かせない（実カーソル位置の :hover が残らない）。
+ * マウスに戻すと body.ui-menu-input-keyboard が外れ、キーフォーカス見た目は同期処理で消える。 */
 body.ui-menu-input-keyboard #book-ui,
 body.ui-menu-input-keyboard #inventory-modal,
 body.ui-menu-input-keyboard #detail-modal,
@@ -933,7 +1123,8 @@ body.ui-menu-input-keyboard #book-detail-modal,
 body.ui-menu-input-keyboard #shop-modal,
 body.ui-menu-input-keyboard #achievement-modal,
 body.ui-menu-input-keyboard #character-modal,
-body.ui-menu-input-keyboard #quest-board-modal {
+body.ui-menu-input-keyboard #quest-board-modal,
+body.ui-menu-input-keyboard #catch-bag-full-ui {
   pointer-events: none !important;
 }
 
@@ -945,7 +1136,8 @@ body.ui-menu-input-keyboard #book-detail-modal *,
 body.ui-menu-input-keyboard #shop-modal *,
 body.ui-menu-input-keyboard #achievement-modal *,
 body.ui-menu-input-keyboard #character-modal *,
-body.ui-menu-input-keyboard #quest-board-modal * {
+body.ui-menu-input-keyboard #quest-board-modal *,
+body.ui-menu-input-keyboard #catch-bag-full-ui * {
   pointer-events: none !important;
 }
 
@@ -1503,6 +1695,19 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  opacity: 1;
+  transition: opacity 0.22s ease-out;
+}
+
+#shop-items-scroll-wrap.is-tab-content-hidden {
+  opacity: 0;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shop-items-scroll-wrap {
+    transition: none;
+  }
 }
 
 .shop-items-scroll-fade {
@@ -1636,6 +1841,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   flex-wrap: nowrap;
   align-items: flex-end;
   gap: 0.35em;
+  transform: translateY(-2px);
 }
 
 /* ショップ商品名の個数（×N）：括弧なし・価格行と揃えた英数字系フォント */
@@ -1646,6 +1852,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: #320e0e;
+  transform: translateY(4px);
 }
 
 .shop-item-action {
@@ -1722,6 +1929,28 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   box-shadow: none !important;
 }
 
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:hover::after,
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:active::after {
+  box-shadow: none !important;
+}
+
+body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-action-button.nes-btn.ui-frame-box:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled),
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:hover:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled) {
+  --frame-fill-color: #c2681f;
+}
+
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:active:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled) {
+  transform: translateY(1px);
+}
+
+body.ui-menu-input-keyboard #shop-modal .shop-item-action-button.nes-btn.ui-frame-box:hover:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled) {
+  --frame-fill-color: #7cb86c;
+}
+
+body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-action-button.nes-btn.ui-frame-box:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled) {
+  --frame-fill-color: #c2681f;
+}
+
 .shop-item-action-button.is-equipped {
   --frame-fill-color: #cbb792;
   color: #320e0e;
@@ -1778,6 +2007,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   color: var(--color-semantic-text-primary);
   font-family: "Jersey 10", "DotGothic16", sans-serif !important;
   font-weight: 400;
+  transform: translateY(0);
 }
 
 .shop-item-stat-chip-value {
@@ -1787,6 +2017,14 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   font-size: 28px;
   color: var(--color-primitive-orange-600);
   font-weight: 400;
+  transform: translateY(-1px);
+}
+
+/* 日本語のみの値（分類:どうぐ など）はラベルと同じサイズ */
+.shop-item-stat-chip-value.is-ja-text {
+  font-family: "DotGothic16", sans-serif !important;
+  font-size: 20px;
+  transform: translateY(2px);
 }
 
 .shop-item-stat-chip-percent {
@@ -1820,6 +2058,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   color: var(--color-semantic-text-detail);
   font-family: "DotGothic16", sans-serif !important;
   font-weight: 400;
+  transform: translateY(-2px);
 }
 
 .shop-money {
@@ -1905,7 +2144,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 /* ショップ: タブ / 商品行の枠を統合BookUIと同じ uiframe（非選択）↔ border（選択・アクティブ） */
 #shop-modal .shop-tab-button.ui-frame-box {
   --frame-scale: 3;
-  --frame-fill-inset: 1px;
+  --frame-fill-inset: 3px;
   --frame-fill-color: #CBB792;
 }
 
@@ -2020,23 +2259,86 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 }
 
 .catch-result-popup {
+  /* 背景は .catch-result-bg の実寸比率に追従（画像差し替えだけで縦横比が変わる） */
+  /* 羊皮紙セーフエリア（%は absolute inset 用。padding%は fixed だとviewport基準になるので使わない） */
+  --catch-result-pad-top: 17%;
+  --catch-result-pad-x: 18.5%;
+  --catch-result-pad-bottom: 17%;
+  /* NEW / BIG タグ位置（ポップアップ左上基準・%は枠に対する比率） */
+  --catch-result-new-left: -2%;
+  --catch-result-new-top: 10%;
+  --catch-result-new-width: 34%;
+  /* 獲得経験値チップ位置（右上基準） */
+  --catch-result-exp-right: 10%;
+  --catch-result-exp-top: 10%;
+  /* 魚グラフィック（表示サイズは正方形。レアリティとの間隔は gap で詰める） */
+  --catch-result-fish-size: 125px;
+  --catch-result-fish-rarity-gap: -20px;
+  --catch-result-fish-nudge-x: 0px;
+  --catch-result-fish-nudge-y: 0px;
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  min-width: 260px;
-  max-width: 320px;
-  padding: 31px 16px 24px;
+  width: fit-content;
+  max-width: min(280px, 52vw);
+  height: fit-content;
+  max-height: 68vh;
+  box-sizing: border-box;
+  /* タグのはみ出しを許可（背景img自体は枠内） */
+  overflow: visible;
+  padding: 0;
   color: #320e0e;
   z-index: 520;
   user-select: none;
   pointer-events: none;
+  background: none !important;
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
+
+/* リザルト表示中の画面暗転（ポップアップと同じ 0.3s でフェード） */
+.catch-result-dimmer {
+  position: fixed;
+  inset: 0;
+  z-index: 519;
+  background: rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
+
+.catch-result-dimmer.is-visible {
+  opacity: 1;
+}
+
+/* 画像の intrinsic 比率で枠サイズを決める（変倍なし） */
+.catch-result-bg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(280px, 52vw);
+  max-height: 68vh;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 中身はポップアップ自身を基準にした inset（viewport基準のpadding%を避ける） */
+.catch-result-content {
+  position: absolute;
+  top: var(--catch-result-pad-top);
+  right: var(--catch-result-pad-x);
+  bottom: var(--catch-result-pad-bottom);
+  left: var(--catch-result-pad-x);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  opacity: 0;
-  transition: opacity 0.3s ease-out;
+  justify-content: center;
+  gap: 10px;
+  box-sizing: border-box;
 }
 
 .catch-result-popup.is-visible {
@@ -2047,18 +2349,11 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   transform: translate(-50%, calc(-50% + 50px));
 }
 
-.catch-result-popup.ui-frame-box {
-  --frame-fill-color: #e8cfa6;
-}
-
-.catch-result-popup.ui-frame-box::after {
-  border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
-}
-
 .catch-result-exp-chip {
   position: absolute;
-  top: 18px;
-  left: 174px;
+  top: var(--catch-result-exp-top);
+  right: var(--catch-result-exp-right);
+  left: auto;
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
@@ -2105,12 +2400,13 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 }
 
 .catch-result-fish-wrap {
-  width: 128px;
-  height: 120px;
+  width: var(--catch-result-fish-size);
+  height: var(--catch-result-fish-size);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: -6px;
+  margin-bottom: var(--catch-result-fish-rarity-gap);
+  transform: translate(var(--catch-result-fish-nudge-x), var(--catch-result-fish-nudge-y));
 }
 
 .catch-result-text-wrap {
@@ -2122,10 +2418,12 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 }
 
 .catch-result-fish-image {
-  width: 114px;
-  height: 114px;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   image-rendering: pixelated;
+  transform-origin: 50% 75%;
+  will-change: transform;
 }
 
 .catch-result-fish-emoji {
@@ -2134,16 +2432,82 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   height: 100%;
   align-items: center;
   justify-content: center;
-  font-size: 68px;
+  font-size: calc(var(--catch-result-fish-size) * 0.68);
   line-height: 1;
+  transform-origin: 50% 75%;
+  will-change: transform;
+}
+
+/* 板の上でピチピチ跳ねる（釣果の魚のみ。notice / ゴミは静止） */
+.catch-result-popup:not(.catch-result-popup--notice):not(.catch-result-popup--junk).is-visible .catch-result-fish-image,
+.catch-result-popup:not(.catch-result-popup--notice):not(.catch-result-popup--junk).is-visible .catch-result-fish-emoji {
+  animation: catch-result-fish-flop 1.85s ease-in-out infinite;
+}
+
+@keyframes catch-result-fish-flop {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(-1.5deg) scale(1, 1);
+  }
+  /* 一発目: 勢いよく跳ねて左右にひっくり返り気味 */
+  6% {
+    transform: translate(1px, -8px) rotate(5deg) scale(1.02, 0.9);
+  }
+  11% {
+    transform: translate(-1px, 1px) rotate(-6deg) scale(0.98, 1.05);
+  }
+  16% {
+    transform: translate(1px, -5px) rotate(4deg) scale(1.015, 0.93);
+  }
+  21% {
+    transform: translate(0, 0) rotate(-2deg) scale(1, 1);
+  }
+  /* 小休止 */
+  34% {
+    transform: translate(0, 0) rotate(-1deg) scale(1, 1);
+  }
+  /* 二発目: 短くピチピチ */
+  39% {
+    transform: translate(-1px, -7px) rotate(-4.5deg) scale(1.02, 0.91);
+  }
+  44% {
+    transform: translate(2px, 0) rotate(5.5deg) scale(0.985, 1.04);
+  }
+  49% {
+    transform: translate(-1px, -4px) rotate(-3.5deg) scale(1.01, 0.95);
+  }
+  54% {
+    transform: translate(0, 0) rotate(1.5deg) scale(1, 1);
+  }
+  /* 長めの休息 → また暴れる */
+  72% {
+    transform: translate(0, 0) rotate(-1deg) scale(1, 1);
+  }
+  78% {
+    transform: translate(1px, -4px) rotate(3deg) scale(1.015, 0.94);
+  }
+  84% {
+    transform: translate(-1px, 0) rotate(-2.5deg) scale(0.99, 1.02);
+  }
+  90% {
+    transform: translate(0, -1px) rotate(1deg) scale(1, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .catch-result-popup:not(.catch-result-popup--notice):not(.catch-result-popup--junk).is-visible .catch-result-fish-image,
+  .catch-result-popup:not(.catch-result-popup--notice):not(.catch-result-popup--junk).is-visible .catch-result-fish-emoji {
+    animation: none;
+  }
 }
 
 .catch-result-main-line {
   font-family: 'DotGothic16', sans-serif;
   font-size: 20px;
-  line-height: 1;
+  line-height: 1.25;
   color: #320e0e;
-  white-space: nowrap;
+  white-space: pre;
+  text-align: center;
 }
 
 .catch-result-rarity-line {
@@ -2152,6 +2516,8 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   line-height: 1;
   color: #4599ff;
   white-space: nowrap;
+  margin-top: 0;
+  margin-bottom: 6px;
 }
 
 .catch-result-meta-row {
@@ -2197,25 +2563,26 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   opacity: 0.5;
 }
 
-.catch-result-popup--notice {
-  min-width: 320px;
-  padding-top: 20px;
-  padding-bottom: 20px;
+.catch-result-popup--notice .catch-result-content {
+  /* 背景比率は維持。中身だけ少し詰める */
+  top: calc(var(--catch-result-pad-top) - 1%);
+  bottom: calc(var(--catch-result-pad-bottom) - 1%);
+}
+
+.catch-result-popup--notice .catch-result-text-wrap {
+  order: 1;
+}
+
+.catch-result-popup--notice .catch-result-rarity-line {
+  order: 2;
+  margin-bottom: 0;
+  margin-top: 6px;
 }
 
 .catch-result-popup--notice .catch-result-fish-wrap {
-  width: 92px;
-  height: 80px;
+  --catch-result-fish-size: 76px;
+  --catch-result-fish-rarity-gap: 0px;
   margin-bottom: 0;
-}
-
-.catch-result-popup--notice .catch-result-fish-image {
-  width: 76px;
-  height: 76px;
-}
-
-.catch-result-popup--notice .catch-result-fish-emoji {
-  font-size: 52px;
 }
 
 .catch-result-popup--notice .catch-result-main-line {
@@ -2229,11 +2596,13 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 
 .catch-result-big-label {
   position: absolute;
-  left: -11px;
-  top: 18px;
-  width: 110px;
+  left: var(--catch-result-new-left);
+  top: var(--catch-result-new-top);
+  width: var(--catch-result-new-width);
+  max-width: 130px;
   height: auto;
   display: none;
+  z-index: 2;
   image-rendering: pixelated;
 }
 
@@ -2483,12 +2852,13 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   background: #d8c7a7;
 }
 
-#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:hover,
-#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:active,
-#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:focus,
-#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:focus-visible {
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:hover:not(.is-nav-selected),
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:active:not(.is-nav-selected),
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:focus:not(.is-nav-selected),
+#book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:focus-visible:not(.is-nav-selected) {
   --frame-fill-color: #7cb86c;
   transform: none;
+  animation: none;
 }
 
 #book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:hover,
@@ -2499,7 +2869,8 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   transform: none;
 }
 
-/* 統合BookUI: 左リスト・スキルノード・上部タブは色・枠・指マーカーで足りるため明滅しない。スキル解放・カテゴリ・確認ダイアログのキー選択のみ明滅。 */
+/* 統合BookUI: 左リスト・スキルノード・上部タブは色・枠・指マーカーで足りるため明滅しない。
+ * スキル解放・ステータス変更・カテゴリ・確認ダイアログは、キー選択とマウスホバーで同じゆっくり明滅。 */
 @keyframes book-ui-selected-opacity-pulse {
   0%,
   100% {
@@ -2513,17 +2884,30 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 #book-ui.is-open[data-tab="skills"]
   #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:not(:disabled),
 #book-ui.is-open[data-tab="skills"]
+  #book-skill-unlock.nes-btn.ui-frame-box:hover:not(:disabled),
+#book-ui.is-open[data-tab="skills"]
   #book-skill-category-tabs.is-nav-selected
   .book-skill-category-tab.is-active
   .book-skill-category-tab-initial,
 #book-ui.is-open[data-tab="skills"]
   #book-skill-category-tabs.is-nav-selected
   .book-skill-category-tab.is-active::after,
+#book-ui.is-open[data-tab="status"] .book-status-change-btn.ui-frame-box.is-nav-selected,
+#book-ui.is-open[data-tab="status"] .book-status-change-btn.ui-frame-box:hover,
 #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
 #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box:hover,
+#book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:hover,
 #book-ui.is-open[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui.is-open[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:hover,
 #book-ui.is-open #quest-abandon-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
-#book-ui.is-open #quest-abandon-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+#book-ui.is-open #quest-abandon-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui.is-open #quest-abandon-confirm-ok.nes-btn.ui-frame-box:hover,
+#book-ui.is-open #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:hover,
+body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-frame-box,
+.quest-card__accept.ui-frame-box:hover,
+body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-action-button.nes-btn.ui-frame-box:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled),
+#shop-modal .shop-item-action-button.nes-btn.ui-frame-box:hover:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled) {
   animation: book-ui-selected-opacity-pulse 1.45s ease-in-out infinite;
 }
 
@@ -2531,17 +2915,30 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   #book-ui.is-open[data-tab="skills"]
     #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:not(:disabled),
   #book-ui.is-open[data-tab="skills"]
+    #book-skill-unlock.nes-btn.ui-frame-box:hover:not(:disabled),
+  #book-ui.is-open[data-tab="skills"]
     #book-skill-category-tabs.is-nav-selected
     .book-skill-category-tab.is-active
     .book-skill-category-tab-initial,
   #book-ui.is-open[data-tab="skills"]
     #book-skill-category-tabs.is-nav-selected
     .book-skill-category-tab.is-active::after,
+  #book-ui.is-open[data-tab="status"] .book-status-change-btn.ui-frame-box.is-nav-selected,
+  #book-ui.is-open[data-tab="status"] .book-status-change-btn.ui-frame-box:hover,
   #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
   #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
+  #book-ui.is-open #skill-unlock-confirm-ok.nes-btn.ui-frame-box:hover,
+  #book-ui.is-open #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:hover,
   #book-ui.is-open[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected,
+  #book-ui.is-open[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:hover,
   #book-ui.is-open #quest-abandon-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
-  #book-ui.is-open #quest-abandon-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+  #book-ui.is-open #quest-abandon-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
+  #book-ui.is-open #quest-abandon-confirm-ok.nes-btn.ui-frame-box:hover,
+  #book-ui.is-open #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:hover,
+  body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-frame-box,
+  .quest-card__accept.ui-frame-box:hover,
+  body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-action-button.nes-btn.ui-frame-box:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled),
+  #shop-modal .shop-item-action-button.nes-btn.ui-frame-box:hover:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled) {
     animation: none;
   }
 }
@@ -2581,9 +2978,16 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.4));
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  transition:
+    left 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ui-kb-selection-pointer {
+    transition: none;
+  }
+
   .modal-choice-actions > :where(button, a, .nes-btn) {
     transition: none;
   }
@@ -2703,15 +3107,20 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   /* 枠は .ui-frame-box 既定の border.png。非選択に uiframe を当てると緑ボタンが濁って見える */
 }
 
-/* キーボード／フォーカスで選択中は塗りだけ変える（枠は常に border.png） */
+/* キーボード／フォーカス／ホバーで選択中は塗りだけ変える（枠は常に border.png） */
 #book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
-#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected {
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:hover,
+#book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:hover {
   --frame-fill-color: #e8cfa6;
 }
 
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
 #book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
-#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected {
+#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected,
+#book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:hover,
+#book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box:hover,
+#book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:hover {
   --frame-fill-color: #c2681f;
   color: #fff;
 }
@@ -2755,6 +3164,27 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   min-height: 0;
   width: 100%;
   gap: var(--space-10);
+  opacity: 1;
+  transition: opacity 0.22s ease-out;
+}
+
+/* タブ切替時: 画面内コンテンツを不透明度だけでフェードイン */
+#book-ui .book-container.is-tab-content-hidden > .book-main-row,
+#book-ui .book-container.is-tab-content-hidden > .book-aquarium-panel {
+  opacity: 0;
+  transition: none;
+}
+
+#book-ui .book-container > .book-aquarium-panel {
+  opacity: 1;
+  transition: opacity 0.22s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .book-main-row,
+  #book-ui .book-container > .book-aquarium-panel {
+    transition: none;
+  }
 }
 
 /* メインコンテナ: 9スライス枠（BOOK_UI_STYLE_GUIDE / .ui-frame-box 既定の border.png + 塗り） */
@@ -3346,9 +3776,11 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   transform: translateY(-4px);
 }
 
+/* ホバーは動かない親 .book-ui-row で受け、子だけ浮かせる（下端での点滅防止） */
 #book-ui:not(.is-book-kb-input)
   #book-list-scroll
-  .book-ui-node.book-list-item.ui-frame-box:not(.empty-slot):hover {
+  .book-ui-row:hover
+  > .book-ui-node.book-list-item.ui-frame-box:not(.empty-slot) {
   transform: translateY(-4px);
 }
 
@@ -5107,13 +5539,16 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 /* nes.css の inset box-shadow / focus リングを外し、枠内塗りをグリーンに統一 */
 #book-ui #book-skill-unlock.nes-btn.ui-frame-box {
   --frame-fill-color: #7cb86c;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   max-width: 100%;
   align-self: stretch;
-  min-height: 33px;
+  height: 64px;
+  min-height: 64px;
   /* 9スライス枠の border 幅（slice×scale）と縦パディングを揃えないと、内側に親のベージュが1px見えることがある */
-  padding: 8px 14px;
+  padding: 6px 14px 10px;
   text-align: center;
   box-sizing: border-box;
   color: #fff;
@@ -5147,6 +5582,8 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   box-shadow: none !important;
 }
 
+/* キー選択中と同じオレンジ塗りを、マウスホバー時にも出す */
+#book-ui #book-skill-unlock.nes-btn.ui-frame-box:hover:not(:disabled),
 #book-ui #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected {
   --frame-fill-color: #c2681f;
 }
@@ -5198,7 +5635,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   display: flex;
   gap: 16px;
   align-items: stretch;
-  padding: 16px 18px 14px;
+  padding: 24px 18px 22px;
   background: rgba(92, 64, 48, 0.08);
   border-radius: 8px;
 }
@@ -5316,6 +5753,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 .book-status-hero-equipment {
   flex: 0 0 auto;
   width: 320px;
+  min-height: 119px;
   display: flex;
   flex-direction: row;
   gap: 8px;
@@ -5329,8 +5767,8 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 5px 12px;
+  gap: 8px;
+  padding: 12px;
   border-radius: 8px;
   background: rgba(112, 74, 43, 0.10);
   border: 0 none rgba(0, 0, 0, 0);
@@ -5392,7 +5830,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   flex: 0 0 auto;
   width: 100%;
   min-height: 32px;
-  padding: 13px 28px 16px;
+  padding: 13px 8px 16px;
   border-image: none;
   border-image-width: 0;
   border-image-outset: 0;
@@ -5417,7 +5855,8 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   outline: none;
 }
 
-.book-status-change-btn.ui-frame-box.is-nav-selected {
+.book-status-change-btn.ui-frame-box.is-nav-selected,
+.book-status-change-btn.ui-frame-box:hover {
   --frame-fill-color: #c2681f;
 }
 
@@ -5435,12 +5874,13 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 }
 
 /* キー操作中はカーソルが載っていてもホバー見た目にしない（矢印選択と併存させない） */
-#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:hover,
-#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:active,
-#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:focus,
-#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:focus-visible {
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:hover:not(.is-nav-selected),
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:active:not(.is-nav-selected),
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:focus:not(.is-nav-selected),
+#book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:focus-visible:not(.is-nav-selected) {
   --frame-fill-color: #7cb86c;
   transform: none;
+  animation: none;
 }
 
 #book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box.is-nav-selected:hover,
@@ -5888,8 +6328,18 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   --frame-fill-color: #f2e2b6;
 }
 
-.book-status-equip-option.is-nav-selected {
+.book-status-equip-option.is-nav-selected,
+.book-status-equip-option:hover {
   --frame-fill-color: #efd28f;
+}
+
+/* キー操作中はホバー塗りを出さず、矢印選択（is-nav-selected）のみを正とする */
+#book-status-panel.is-status-kb-nav-input .book-status-equip-option:hover:not(.is-nav-selected) {
+  --frame-fill-color: #e8cfa6;
+}
+
+#book-status-panel.is-status-kb-nav-input .book-status-equip-option.is-selected:hover:not(.is-nav-selected) {
+  --frame-fill-color: #f2e2b6;
 }
 
 .book-status-equip-option.ui-frame-box::after {
@@ -5982,12 +6432,44 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 1px;
   justify-content: center;
   align-items: center;
-  padding: 8px 4px 4px;
+  padding: 10px 4px 8px;
   background: rgba(112, 74, 43, 0.08);
   border-radius: 8px;
+}
+
+.book-status-rarity-prob-stars {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-height: 12px;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  margin-bottom: -4px;
+}
+
+.book-status-rarity-prob-item[data-rarity="common"] .book-status-rarity-prob-stars {
+  color: var(--color-rarity-common);
+}
+
+.book-status-rarity-prob-item[data-rarity="uncommon"] .book-status-rarity-prob-stars {
+  color: var(--color-rarity-uncommon);
+}
+
+.book-status-rarity-prob-item[data-rarity="rare"] .book-status-rarity-prob-stars {
+  color: var(--color-rarity-rare);
+}
+
+.book-status-rarity-prob-item[data-rarity="epic"] .book-status-rarity-prob-stars {
+  color: var(--color-rarity-epic);
+}
+
+.book-status-rarity-prob-item[data-rarity="legendary"] .book-status-rarity-prob-stars {
+  color: var(--color-rarity-legendary);
 }
 
 .book-status-rarity-prob-label {
@@ -7031,6 +7513,11 @@ body.ui-menu-input-keyboard #quest-board-modal * {
  * クエスト掲示板モーダル（カード型）
  * ============================================ */
 .modal-content.quest-board-modal {
+  /* boardBG.png (1168x442): 角の金具＋木枠＋羊皮紙の内側影が約80px */
+  --frame-slice: 80;
+  --frame-scale: 0.35;
+  --frame-fill-color: #edcc9b;
+  --frame-fill-inset: calc(var(--frame-slice) * var(--frame-scale) * 1px);
   --quest-board-scroll-fade-color: var(--frame-fill-color);
   max-width: 900px;
   width: min(94vw, 900px);
@@ -7038,46 +7525,73 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   display: flex;
   flex-direction: column;
   gap: var(--space-12);
+  padding: calc(var(--frame-slice) * var(--frame-scale) * 1px + var(--space-12));
+  overflow: hidden;
 }
 
-/* ヘッダー：タイトル＋サブタイトル / 受注中バッジ */
+.modal-content.quest-board-modal.ui-frame-box::after {
+  border-image: url(/images/ui/boardBG.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* 掲示板の枠変数がカード等へ継承されないように戻す。
+ * あわせて isolation を付け、負 z-index の 9 スライス枠が背景 fill の裏へ抜けないようにする */
+.modal-content.quest-board-modal .ui-frame-box {
+  --frame-slice: 4;
+  --frame-scale: 4;
+  --frame-fill-inset: 4px;
+  isolation: isolate;
+}
+
+/* ヘッダー：タイトル / 受注中HUD */
 .quest-board-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-12);
+  box-sizing: border-box;
+  min-height: 40px;
+  height: 40px;
+  margin: 0 0 10px;
+  padding: 0 10px 0 16px;
+  background: transparent;
+  overflow: visible;
 }
 
 .quest-board-header__titlewrap {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-12);
+  align-items: center;
   min-width: 0;
   flex: 1;
+  height: 100%;
 }
 
 .quest-board-header__title {
-  font-size: 26px;
+  font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 48px;
+  font-weight: 400;
   line-height: 1;
   color: #5c4030;
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-.quest-board-header__subtitle {
-  font-size: var(--font-size-body-sm);
-  color: var(--color-semantic-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  letter-spacing: 0.02em;
 }
 
 .quest-board-active-summary {
   flex-shrink: 0;
-  padding: var(--space-6) var(--space-12);
-  font-size: var(--font-size-body-sm);
-  color: var(--color-semantic-text-primary);
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.quest-board-active-summary .quest-hud-slot {
+  pointer-events: none;
+}
+
+.quest-board-active-summary .quest-hud-slot.is-complete {
+  transform: none;
 }
 
 .quest-board-cards-scroll-wrap {
@@ -7168,21 +7682,20 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   align-items: center;
   width: 100%;
   gap: var(--space-4);
-  padding: 16px;
-  cursor: pointer;
+  padding: 16px 16px 24px;
   transition: transform 0.12s ease, filter 0.12s ease;
 }
 
 .quest-card.book-ui-node.ui-frame-box {
   width: 100%;
-  padding: 16px;
+  padding: 16px 16px 24px;
 }
 
 .quest-card:hover {
   filter: brightness(0.98);
 }
 
-.quest-card.is-selected {
+body.ui-menu-input-keyboard .quest-card.is-nav-selected {
   --frame-fill-color: #fff6da;
   transform: translateY(-2px);
 }
@@ -7190,18 +7703,18 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 /* リボン（左上のバナー） */
 .quest-card__ribbon {
   position: absolute;
-  top: -11px;
-  left: 18px;
+  top: -9px;
+  left: 16px;
   z-index: 3;
-  width: 64px;
-  height: 72px;
+  width: 52px;
+  height: 58px;
   margin: 0;
-  padding: 0 0 16px;
+  padding: 0 0 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  font-size: 15px;
+  font-size: 12px;
   line-height: 1;
   color: var(--color-primitive-white);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.28);
@@ -7215,7 +7728,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 .quest-card__ribbon-label {
   display: block;
   letter-spacing: 0.02em;
-  transform: translateX(-7px);
+  transform: translateX(-6px);
 }
 
 .quest-card__ribbon--fishing {
@@ -7298,7 +7811,7 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   gap: var(--space-4);
 }
 
-.quest-card.is-selected .quest-card__reward {
+body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__reward {
   background: transparent;
 }
 
@@ -7329,16 +7842,17 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   font-size: calc(var(--font-size-achievement-reward-line) + 8px);
 }
 
-/* 受注ボタン */
-.quest-card__accept {
+/* 受注ボタン（ステータス「変更する」と同じホバー／選択） */
+.quest-card__accept.ui-frame-box {
+  --frame-fill-color: #7cb86c;
   width: 100%;
   height: 48px;
   margin-top: var(--space-4);
   padding: var(--space-6) var(--space-12);
   font-size: var(--font-size-body-sm);
-  color: var(--color-primitive-brown-400) !important;
-  background: var(--color-primitive-green-600) !important;
+  color: #fff !important;
   cursor: pointer;
+  box-shadow: none !important;
 }
 
 .quest-card__accept-label {
@@ -7346,8 +7860,43 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   transform: translateY(-3px);
 }
 
-.quest-card__accept:hover {
-  filter: brightness(1.06);
+.quest-card__accept.ui-frame-box:hover,
+.quest-card__accept.ui-frame-box:focus,
+.quest-card__accept.ui-frame-box:focus-visible,
+.quest-card__accept.ui-frame-box:active {
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+.quest-card__accept.ui-frame-box:focus,
+.quest-card__accept.ui-frame-box:focus-visible {
+  outline: none;
+}
+
+body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-frame-box,
+.quest-card__accept.ui-frame-box:hover {
+  --frame-fill-color: #c2681f;
+}
+
+.quest-card__accept.ui-frame-box::after {
+  box-shadow: none !important;
+}
+
+.quest-card__accept.ui-frame-box:hover::after,
+.quest-card__accept.ui-frame-box:active::after {
+  box-shadow: none !important;
+}
+
+.quest-card__accept.ui-frame-box:active {
+  transform: translateY(1px);
+}
+
+body.ui-menu-input-keyboard .quest-card__accept.ui-frame-box:hover:not(:focus) {
+  --frame-fill-color: #7cb86c;
+}
+
+body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-frame-box {
+  --frame-fill-color: #c2681f;
 }
 
 /* 破棄ボタン（Book UI クエストログ・進行中のみ。#book-skill-unlock と同じ幅制御） */
@@ -7385,6 +7934,13 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 #book-ui[data-tab="quest"] .quest-card__abandon-label {
   display: inline-block;
   transform: translateY(-3px);
+}
+
+#book-ui.is-book-kb-input[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:hover:not(.is-nav-selected),
+#book-ui.is-book-kb-input[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:focus:not(.is-nav-selected),
+#book-ui.is-book-kb-input[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:focus-visible:not(.is-nav-selected) {
+  --frame-fill-color: #7cb86c;
+  animation: none;
 }
 
 #book-ui.is-book-kb-input[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box.is-nav-selected:hover,
@@ -8120,13 +8676,14 @@ body.ui-menu-input-keyboard #quest-board-modal * {
 .aquarium-detail-note-title {
   margin: 0;
   font-family: "DotGothic16", sans-serif;
-  font-size: 20px;
+  font-size: 17px;
   line-height: 1.2;
   color: var(--color-primitive-orange-600, #c2681f);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  transform: translateY(1px);
 }
 
 .aquarium-detail-size-badge {
@@ -8348,8 +8905,16 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   justify-content: center;
   box-sizing: border-box;
   padding: var(--space-16, 16px);
-  background: rgba(35, 28, 20, 0.5);
   pointer-events: auto;
+}
+
+/* 水槽バッグ選択（Book内）は従来どおり茶系。釣果の放流/入れかえは catch-result-dimmer（黒50%）を共有 */
+#book-ui .aquarium-bag-pick-layer {
+  background: rgba(35, 28, 20, 0.5);
+}
+
+#catch-bag-full-ui .aquarium-bag-pick-layer {
+  background: transparent;
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-dialog,
@@ -8435,8 +9000,13 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   overflow-x: hidden;
   min-height: 0;
   flex: 1 1 auto;
-  /* translateY(-4px) の逃げ。padding 内ならスクロール端でも見切れにくい */
-  padding: 6px 2px;
+  /*
+   * 選択カードの translateY(-4px) が overflow で切れないよう余白を確保。
+   * scroll-padding: scrollIntoView で上端揃えされたときも浮き分の逃げを残す。
+   */
+  padding: 10px 2px;
+  scroll-padding-top: 10px;
+  scroll-padding-bottom: 10px;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -8475,6 +9045,9 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   display: flex;
   align-items: stretch;
   justify-content: stretch;
+  /* 浮き上がり分を scrollIntoView の合わせ位置に織り込む */
+  scroll-margin-top: 10px;
+  scroll-margin-bottom: 10px;
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid > .aquarium-bag-pick-card > .book-ui-node.book-list-item {
@@ -8619,14 +9192,31 @@ body.ui-menu-input-keyboard #quest-board-modal * {
   transform: translateY(-4px);
 }
 
-#book-ui:not(.is-book-kb-input) .aquarium-bag-pick-grid .book-list-item.ui-frame-box:not(.is-selected):not(.is-nav-selected):hover,
-#catch-bag-full-ui .aquarium-bag-pick-grid .book-list-item.ui-frame-box:not(.is-selected):not(.is-nav-selected):hover {
+/*
+ * ホバーの点滅対策:
+ * translate する要素自身に :hover を付けると、浮いた瞬間ヒットが外れて点滅する。
+ * 動かない親 .aquarium-bag-pick-card でホバーを受け、子だけ浮かせる。
+ */
+#book-ui:not(.is-book-kb-input)
+  .aquarium-bag-pick-grid
+  .aquarium-bag-pick-card:hover
+  > .book-list-item.ui-frame-box:not(.is-selected):not(.is-nav-selected),
+#catch-bag-full-ui
+  .aquarium-bag-pick-grid
+  .aquarium-bag-pick-card:hover
+  > .book-list-item.ui-frame-box:not(.is-selected):not(.is-nav-selected) {
   --frame-fill-color: #e8cfa6;
   transform: translateY(-4px);
 }
 
-#book-ui:not(.is-book-kb-input) .aquarium-bag-pick-grid .book-list-item.ui-frame-box:not(.is-selected):not(.is-nav-selected):hover::after,
-#catch-bag-full-ui .aquarium-bag-pick-grid .book-list-item.ui-frame-box:not(.is-selected):not(.is-nav-selected):hover::after {
+#book-ui:not(.is-book-kb-input)
+  .aquarium-bag-pick-grid
+  .aquarium-bag-pick-card:hover
+  > .book-list-item.ui-frame-box:not(.is-selected):not(.is-nav-selected)::after,
+#catch-bag-full-ui
+  .aquarium-bag-pick-grid
+  .aquarium-bag-pick-card:hover
+  > .book-list-item.ui-frame-box:not(.is-selected):not(.is-nav-selected)::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
