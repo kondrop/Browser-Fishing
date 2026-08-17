@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
-import { getRandomFish, rarityStars, getRealFishCount, getFishById, fishDatabase, rarityStarCount, rarityWeights, rarityColors, Habitat, Rarity, fishImageFileNames, getFishImagePath } from '../data/fish';
+import { rarityStars, getFishById, fishDatabase, rarityStarCount, rarityWeights, rarityColors, Habitat, Rarity, fishImageFileNames, getFishImagePath, type RarityBonuses } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
 import { loadPlayerData, savePlayerData, addFishToInventory, applyCatchRewards, swapCaughtFishIntoInventory, getInventoryCount, getInventoryDisplayOrder, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, generateRandomSize, getCastDistanceRatio, calculatePriceWithSizeBonus, getInventoryEntryBaseSellPrice, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp, isBigSizeRatio } from '../data/inventory';
 import {
@@ -74,10 +74,6 @@ import {
   AQUARIUM_BG_WARP_INSET_R,
   AQUARIUM_BG_WARP_INSET_T,
   AQUARIUM_BG_WARP_INSET_B,
-  AQUARIUM_BG_WARP_AMP,
-  AQUARIUM_BG_WARP_SPEED,
-  AQUARIUM_BG_WARP_Y_FREQ,
-  AQUARIUM_BG_WARP_STEP,
   AQUARIUM_BUBBLE_SPAWNS,
   AQUARIUM_BUBBLE_SPAWN_PER_SEC,
   AQUARIUM_BUBBLE_MAX,
@@ -239,6 +235,11 @@ import {
   FIGHT_SKILL_DURATIONS,
   FISHING_GAUGE_UI_SCALE,
 } from '../ui/fishingGaugeOverlay';
+import { ExplorationController } from '../fishing/exploration/explorationController';
+import { explorationConfig } from '../fishing/exploration/explorationConfig';
+import { applyHookDepthToFightParams } from '../fishing/exploration/explorationFish';
+import type { ExplorationResult } from '../fishing/exploration/explorationTypes';
+import { drawWaterWarpPostEffect } from '../render/waterWarp';
 
 const FishingState = {
   IDLE: 0,
@@ -248,6 +249,7 @@ const FishingState = {
   FIGHTING: 4,
   SUCCESS: 5,
   FAIL: 6,
+  EXPLORING: 7,
 } as const;
 type FishingStateValue = typeof FishingState[keyof typeof FishingState];
 const CATCH_RESULT_FADE_MS = 300;
@@ -355,6 +357,13 @@ export default class GameScene extends Phaser.Scene {
   private fightSkillZKey!: Phaser.Input.Keyboard.Key;
   private fightSkillXKey!: Phaser.Input.Keyboard.Key;
   private fightSkillCKey!: Phaser.Input.Keyboard.Key;
+
+  private explorationController: ExplorationController | null = null;
+  /** フッキング時の深度比率（0=浅, 1=深）。探索成功時にセット */
+  private hookDepthRatio = 0.5;
+  private pendingExploration: { bonuses: RarityBonuses; junkWeightMultiplier: number } | null = null;
+  private explorationAwaitingSplash = false;
+  private explorationSplashTimer?: Phaser.Time.TimerEvent;
 
   // 現在釣っている魚
   private currentFish: FishConfig | null = null;
@@ -1157,6 +1166,7 @@ export default class GameScene extends Phaser.Scene {
         // Iキーでインベントリ表示（統合BookUI）
         this.input.keyboard.on('keydown-I', () => {
             if (this.catchBagDecisionPending) return;
+            if (this.state === FishingState.EXPLORING) return;
             if (this.unifiedBookOpen) {
                 if (this.unifiedBookTab === 'inventory') {
                     this.closeUnifiedBook();
@@ -1171,6 +1181,7 @@ export default class GameScene extends Phaser.Scene {
         // Aキーで実績表示（統合BookUI）
         this.input.keyboard.on('keydown-A', () => {
             if (this.catchBagDecisionPending) return;
+            if (this.state === FishingState.EXPLORING) return;
             if (this.unifiedBookOpen) {
                 if (this.unifiedBookTab === 'achievement') {
                     this.closeUnifiedBook();
@@ -1184,6 +1195,14 @@ export default class GameScene extends Phaser.Scene {
 
         // ESCキーで閉じる（最上位モーダルのみ）
         this.input.keyboard.on('keydown-ESC', () => {
+            if (this.explorationController?.isActive()) {
+                this.explorationController.cancel();
+                return;
+            }
+            if (this.state === FishingState.EXPLORING) {
+                this.cancelFishing('探索をやめた');
+                return;
+            }
             if (this.catchBagDecisionPhase === 'pick') {
                 this.closeCatchBagPickToChoice();
                 return;
@@ -1331,6 +1350,7 @@ export default class GameScene extends Phaser.Scene {
 
         // Bキーで図鑑表示（統合BookUI）
         this.input.keyboard.on('keydown-B', () => {
+            if (this.state === FishingState.EXPLORING) return;
             if (this.unifiedBookOpen) {
                 if (this.unifiedBookTab === 'pedia') {
                     this.closeUnifiedBook();
@@ -1379,6 +1399,8 @@ export default class GameScene extends Phaser.Scene {
                 }
             } else if (this.state === FishingState.CASTING) {
                 this.finishCasting();
+            } else if (this.state === FishingState.EXPLORING) {
+                this.explorationController?.handleSpace();
             } else if (this.state === FishingState.BITE) {
                 this.startFighting();
             }
@@ -2580,6 +2602,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.updateFishingRig(time, delta);
+    this.tryOpenExplorationAfterSplash();
     this.updateCameraFollow(delta);
     this.drawFishingRig();
     this.updateGameWorldTextPositions();
@@ -2897,9 +2920,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** 待機中に上下へキャストしたとき（左右パターンではなくやや後ろ上に構える） */
+  private isRodWaitingPose(): boolean {
+    return this.state === FishingState.WAITING || this.state === FishingState.EXPLORING;
+  }
+
   private isVerticalRodWaitingPose(): boolean {
     return (
-      this.state === FishingState.WAITING &&
+      this.isRodWaitingPose() &&
       (this.playerFacing === 'up' || this.playerFacing === 'down')
     );
   }
@@ -2922,7 +2949,7 @@ export default class GameScene extends Phaser.Scene {
 
   /** 先端が倒れる方向（正規化） */
   private getRodLeanDirection(fromX: number, fromY: number): { x: number; y: number } {
-    if (this.state === FishingState.WAITING) {
+    if (this.isRodWaitingPose()) {
       return this.getRodWaitingDroopDirection();
     }
     const showLine =
@@ -2955,7 +2982,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.state === FishingState.FIGHTING) {
       return base + 1.5 + bend;
     }
-    if (this.state === FishingState.WAITING) {
+    if (this.isRodWaitingPose()) {
       if (this.isVerticalRodWaitingPose()) {
         return base * GameScene.ROD_VERTICAL_WAIT_CURVE_MUL;
       }
@@ -3008,7 +3035,7 @@ export default class GameScene extends Phaser.Scene {
     const segLen = Math.hypot(segDx, segDy) || 1;
     const perpX = (-segDy / segLen) * bulgeSign;
     const perpY = (segDx / segLen) * bulgeSign;
-    const bulgeMul = this.state === FishingState.WAITING ? 1.0 : 2.5;
+    const bulgeMul = this.isRodWaitingPose() ? 1.0 : 2.5;
     const bulge = this.getRodTipCurveAmount() * this.getFishingRigScale() * bulgeMul;
     const midX = (startX + endX) / 2;
     const midY = (startY + endY) / 2;
@@ -3024,7 +3051,7 @@ export default class GameScene extends Phaser.Scene {
     const faceSign = -backSign;
     let straightX: number;
     let straightY: number;
-    if (this.state === FishingState.WAITING) {
+    if (this.isRodWaitingPose()) {
       if (this.isVerticalRodWaitingPose()) {
         const rodLen = Math.hypot(
           GameScene.ROD_TIP_OFFSET_X,
@@ -3257,7 +3284,7 @@ export default class GameScene extends Phaser.Scene {
     let wobbleX = 0;
     let wobbleY = 0;
 
-    if (this.state === FishingState.WAITING) {
+    if (this.isRodWaitingPose()) {
       const wobbleAmp = 4;
       wobbleX = Math.sin(this.fishingRig.phase * 4) * wobbleAmp;
       this.fishingRig.rodBend = Phaser.Math.Linear(this.fishingRig.rodBend, 0, 0.12);
@@ -3278,7 +3305,7 @@ export default class GameScene extends Phaser.Scene {
 
     const destX = this.fishingRig.targetFloat.x + wobbleX;
     const destY = this.fishingRig.targetFloat.y + wobbleY;
-    const snapT = this.state === FishingState.WAITING ||
+    const snapT = this.isRodWaitingPose() ||
       this.state === FishingState.BITE ||
       this.state === FishingState.FIGHTING
       ? snapEase
@@ -3293,7 +3320,7 @@ export default class GameScene extends Phaser.Scene {
       Phaser.Math.Linear(this.fishingRig.rodTip.y, destY, snapT),
     );
 
-    if (this.state !== FishingState.WAITING) {
+    if (!this.isRodWaitingPose()) {
       this.syncFishingRigRodTipBase();
     }
   }
@@ -3535,7 +3562,7 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.state = FishingState.WAITING;
+    this.state = FishingState.EXPLORING;
     this.fishingGaugeOverlay.setCastVisible(false);
     this.hidePlayerHint();
     if (this.resultTextElement) {
@@ -3558,7 +3585,7 @@ export default class GameScene extends Phaser.Scene {
 
     // 装備ボーナスは加算で合成し、効きは専用関数で調整する
     const rodRarityHitAdd = equippedRod?.rarityHitRateAdd || { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 };
-    const bonuses = {
+    const bonuses: RarityBonuses = {
       commonBonus: this.combineRarityBonus(bait?.commonBonus || 1.0, lure?.commonBonus || 1.0, 1.0 + rodRarityHitAdd.common),
       uncommonBonus: this.combineRarityBonus(bait?.uncommonBonus || 1.0, lure?.uncommonBonus || 1.0, 1.0 + rodRarityHitAdd.uncommon),
       rareBonus: this.combineRarityBonus(bait?.rareBonus || 1.0, lure?.rareBonus || 1.0, 1.0 + rodRarityHitAdd.rare),
@@ -3570,16 +3597,52 @@ export default class GameScene extends Phaser.Scene {
       ),
     };
 
-    // どの魚が釣れるか決定（ボーナス適用）
-    this.currentFish = getRandomFish(bonuses, { junkWeightMultiplier: skillBonuses.junkRateSkillMul });
+    this.pendingExploration = { bonuses, junkWeightMultiplier: skillBonuses.junkRateSkillMul };
+    this.explorationAwaitingSplash = true;
+  }
 
-    // 魚がかかるまでの時間
-    const minWait = waitCfg['3-5_最短待機時間'] * 1000;
-    const maxWait = waitCfg['3-6_最長待機時間'] * 1000;
-    const waitTime = Phaser.Math.Between(minWait, maxWait);
-    this.biteTimer = this.time.delayedCall(waitTime, () => this.triggerBite());
-    
-    this.showPlayerHint({ label: '待機中...' });
+  private tryOpenExplorationAfterSplash(): void {
+    if (!this.explorationAwaitingSplash) return;
+    if (this.state !== FishingState.EXPLORING) return;
+    if (this.fishingRig.castSnapT < 1) return;
+    this.explorationAwaitingSplash = false;
+    if (!this.pendingExploration) return;
+    const delayMs = explorationConfig.modalDelayAfterSplashSec * 1000;
+    this.explorationSplashTimer?.remove(false);
+    this.explorationSplashTimer = this.time.delayedCall(delayMs, () => {
+      this.explorationSplashTimer = undefined;
+      if (this.state !== FishingState.EXPLORING) return;
+      const next = this.pendingExploration;
+      this.pendingExploration = null;
+      if (!next) return;
+      this.startUnderwaterExploration(next.bonuses, next.junkWeightMultiplier);
+    });
+  }
+
+  private startUnderwaterExploration(bonuses: RarityBonuses, junkWeightMultiplier: number): void {
+    if (!this.explorationController) {
+      this.explorationController = new ExplorationController();
+    }
+    this.explorationController.start({
+      rarityBonuses: bonuses,
+      junkWeightMultiplier,
+      castDistanceRatio: this.lastCastDistanceRatio,
+      baitId: this.playerData.equippedBaitId,
+      lureId: this.playerData.equippedLureId,
+      onHookSuccess: (result) => this.onExplorationHookSuccess(result),
+      onCancel: () => this.onExplorationCancel(),
+    });
+  }
+
+  private onExplorationHookSuccess(result: ExplorationResult): void {
+    this.currentFish = result.fish;
+    this.currentFishSize = result.fish.id.startsWith('junk_') ? undefined : result.size;
+    this.hookDepthRatio = result.hookDepthRatio;
+    this.startFighting();
+  }
+
+  private onExplorationCancel(): void {
+    this.cancelFishing('探索をやめた');
   }
 
   triggerBite() {
@@ -3736,16 +3799,14 @@ export default class GameScene extends Phaser.Scene {
       savePlayerData(this.playerData);
     }
     
-    // ファイト開始時にサイズを生成（ゴミの場合は生成しない）
-    if (this.currentFish) {
+    // サイズは探索で決定済み。未設定時のみ従来どおり生成する
+    if (this.currentFish && this.currentFishSize === undefined) {
       const isJunk = this.currentFish.id.startsWith('junk_');
       if (!isJunk) {
         this.currentFishSize = generateRandomSize(
           this.currentFish.maxSize,
           this.lastCastDistanceRatio,
         );
-      } else {
-        this.currentFishSize = undefined;
       }
     }
 
@@ -3825,7 +3886,10 @@ export default class GameScene extends Phaser.Scene {
 
     const fish = this.currentFish;
     const fishParams = fish
-      ? fishParamsFromConfig(fish, this.currentFishSize)
+      ? applyHookDepthToFightParams(
+          fishParamsFromConfig(fish, this.currentFishSize),
+          this.hookDepthRatio,
+        )
       : {
           catchRate: 1.0,
           escapeRate: 1.0,
@@ -3978,6 +4042,7 @@ export default class GameScene extends Phaser.Scene {
             });
             this.currentFish = null;
             this.currentFishSize = undefined;
+            this.hookDepthRatio = 0.5;
             return;
         }
 
@@ -4065,6 +4130,7 @@ export default class GameScene extends Phaser.Scene {
     
     this.currentFish = null;
     this.currentFishSize = undefined;
+    this.hookDepthRatio = 0.5;
   }
 
   cancelFishing(reason: string) {
@@ -4074,6 +4140,7 @@ export default class GameScene extends Phaser.Scene {
     this.cleanupFishingTools();
     this.currentFish = null;
     this.currentFishSize = undefined;
+    this.hookDepthRatio = 0.5;
     
     // 連続成功をリセット
     resetConsecutiveSuccess(this.playerData);
@@ -4085,6 +4152,13 @@ export default class GameScene extends Phaser.Scene {
   cleanupFishingTools() {
     if (this.biteTimer) this.biteTimer.remove();
     if (this.biteTimeout) this.biteTimeout.remove();
+    if (this.explorationSplashTimer) {
+      this.explorationSplashTimer.remove(false);
+      this.explorationSplashTimer = undefined;
+    }
+    this.explorationAwaitingSplash = false;
+    this.pendingExploration = null;
+    this.explorationController?.stop();
     this.resetFishingLineState();
     this.hideBiteMark();
     this.fishingGaugeOverlay.setCastVisible(false);
@@ -7302,42 +7376,14 @@ export default class GameScene extends Phaser.Scene {
     cache: HTMLCanvasElement,
     timeSec: number,
   ) {
-    ctx.drawImage(cache, 0, 0);
-    const insetL = AQUARIUM_BG_WARP_INSET_L;
-    const insetR = AQUARIUM_BG_WARP_INSET_R;
-    const insetT = AQUARIUM_BG_WARP_INSET_T;
-    const insetB = AQUARIUM_BG_WARP_INSET_B;
-    const amp = AQUARIUM_BG_WARP_AMP;
-    const step = AQUARIUM_BG_WARP_STEP;
-    const innerW = AQUARIUM_CANVAS_W - insetL - insetR;
-    const yEnd = AQUARIUM_CANVAS_H - insetB;
-    if (innerW <= 0 || yEnd <= insetT) return;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(insetL, insetT, innerW, yEnd - insetT);
-    ctx.clip();
-    for (let y = insetT; y < yEnd; y += step) {
-      const ox = Math.sin(timeSec * AQUARIUM_BG_WARP_SPEED + y * AQUARIUM_BG_WARP_Y_FREQ) * amp;
-      const oy =
-        Math.sin(timeSec * AQUARIUM_BG_WARP_SPEED * 0.65 + y * AQUARIUM_BG_WARP_Y_FREQ * 0.55) *
-        amp *
-        0.35;
-      const srcY = Math.max(insetT, Math.min(yEnd - step, y + oy));
-      const sliceH = Math.min(step, yEnd - y);
-      ctx.drawImage(
-        cache,
-        insetL - amp,
-        srcY,
-        innerW + amp * 2,
-        sliceH,
-        insetL - amp + ox,
-        y,
-        innerW + amp * 2,
-        sliceH,
-      );
-    }
-    ctx.restore();
+    drawWaterWarpPostEffect(ctx, cache, timeSec, {
+      width: AQUARIUM_CANVAS_W,
+      height: AQUARIUM_CANVAS_H,
+      insetL: AQUARIUM_BG_WARP_INSET_L,
+      insetR: AQUARIUM_BG_WARP_INSET_R,
+      insetT: AQUARIUM_BG_WARP_INSET_T,
+      insetB: AQUARIUM_BG_WARP_INSET_B,
+    });
   }
 
   private drawAquariumBackground(ctx: CanvasRenderingContext2D, timeSec: number) {
