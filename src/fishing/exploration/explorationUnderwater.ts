@@ -30,6 +30,7 @@ import {
   getExplorationWorldSize,
   type ExplorationCamera,
 } from './explorationConfig';
+import { sampleFishSpreadX, sampleFishSpreadY } from './explorationSwim';
 
 export type ExplorationBubble = {
   baseX: number;
@@ -188,8 +189,8 @@ function createDecoFish(layer: DecoFishLayer): ExplorationDecoFish {
   const pad = cfg.yPadding;
   return {
     layer,
-    x: Math.random() * worldW,
-    y: pad + Math.random() * Math.max(8, worldH - pad * 2),
+    x: sampleFishSpreadX() * worldW,
+    y: pad + sampleFishSpreadY() * Math.max(8, worldH - pad * 2),
     vx: dir * speed,
     tier: DECO_SHADOW_TIERS[Math.floor(Math.random() * DECO_SHADOW_TIERS.length)] ?? 'sm',
     scale: lerp(scaleMin, scaleMax, Math.random()),

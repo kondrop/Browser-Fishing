@@ -15,22 +15,36 @@ export const explorationConfig = {
   /** 針出現アニメ開始までの待ち秒（フェードと少し重ねる） */
   hookIntroDelaySec: 0.12,
   /** 針が上部から着位置へ降りる秒 */
-  hookIntroDurationSec: 0.72,
+  hookIntroDurationSec: 1.65,
   /** 出現開始時のワールド Y（画面上端のすぐ外） */
   hookIntroStartY: -12,
   /** 降下中に針から出す泡の秒あたり個数 */
-  hookIntroBubblePerSec: 18,
+  hookIntroBubblePerSec: 14,
   /** 降下開始時にまとめて出す泡 */
   hookIntroBurstCount: 6,
   /** 入水後の初期深度（遊泳上端からのオフセット） */
-  hookStartOffsetY: 140,
+  hookStartOffsetY: 250,
+
+  /** 合わせ成功 → ファイト開始までの導入演出（秒）。ここを一括で調整する */
+  hookToFightIntro: {
+    /** スタンプ表示（震え込み含む） */
+    stampHoldSec: 0.65,
+    /** スタンプの震えアニメ */
+    stampShakeSec: 0.5,
+    /** 水中画面を閉じるフェード */
+    overlayFadeSec: 0.3,
+    /** ファイトバーの上昇フェードイン */
+    barInSec: 0.3,
+    /** 魚アイコンのジャンプフェードイン */
+    fishInSec: 0.4,
+  },
 
   /** 淡水レイヤー。parallaxX: 0=画面固定 1=ワールド固定。riseY: 水面まで上がったときの上方向ずれ（px）。底では0 */
   freshLayerDir: '/images/ui/fresh',
   freshLayers: {
-    bg: { file: '背景.png', parallaxX: 0.12, riseY: 340 },
-    far: { file: '遠景.png', parallaxX: 0.32, riseY: 280 },
-    mid: { file: '中景.png', parallaxX: 0.58, riseY: 140 },
+    bg: { file: '背景.png', parallaxX: 0.12, riseY: 380 },
+    far: { file: '遠景.png', parallaxX: 0.32, riseY: 330 },
+    mid: { file: '中景.png', parallaxX: 0.58, riseY: 250 },
     fg: { file: '前景.png', parallaxX: 1.18, riseY: 0 },
   },
 
@@ -52,6 +66,20 @@ export const explorationConfig = {
   // 魚
   minFishCount: 3,
   initialFishCount: 8,
+  /**
+   * 出現・遊泳目標のばらけ方。
+   * 初期の針は中央・浅めなので、魚は左右と深部へ寄せる。
+   */
+  fishSpread: {
+    /** 横。0=均一、1=左右端へ強く寄せる */
+    edgeBias: 0.78,
+    /** 中央を空ける幅（ワールド横幅に対する割合） */
+    centerGap: 0.24,
+    /** 縦。0=均一、1=深部へ寄せる */
+    deepBias: 0.9,
+    /** 初期配置で他の魚と離す目安（px） */
+    minSeparation: 170,
+  },
   /** 水中では種別を隠す魚影。キャンバスはどれも 128px、絵の大きさで差をつける */
   fishShadowNativeSize: 128,
   fishShadowPaths: {
@@ -99,6 +127,15 @@ export const explorationConfig = {
   lineCurveFollow: 9,
   /** カメラが針へ寄る速さ。大きいほどキビキビ、小さいほど余韻 */
   cameraFollow: 5.5,
+  /** この速さ以上の横移動で向きを変える */
+  hookFaceVxThreshold: 22,
+  /** 横移動による最大の傾き（ラジアン） */
+  hookPitchFromX: 0.52,
+  /** 縦移動による傾き */
+  hookPitchFromY: 0.32,
+  hookPitchMax: 0.62,
+  /** 傾きの追従。大きいほどキビキビ */
+  hookPitchFollow: 10,
 
   // アピール
   baseAppealPerSecond: 10,

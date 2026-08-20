@@ -15,8 +15,10 @@ import {
   createInitialFish,
   evaluateHookInput,
   getHookDepthRatio,
+  getHookDrawPos,
   isHookIntroDropping,
   isHookIntroPlaying,
+  endHookIntro,
 } from './explorationFish';
 import type {
   ExplorationFish,
@@ -55,8 +57,14 @@ export class ExplorationController {
   private lureImage: HTMLImageElement | null = null;
   private onKeyDown = (e: KeyboardEvent) => this.handleKeyDown(e);
   private onKeyUp = (e: KeyboardEvent) => this.handleKeyUp(e);
+  private onPointerMove = (e: PointerEvent) => this.handlePointerMove(e);
+  private onPointerDown = () => this.setKeyboardCursorHidden(false);
 
   private lastSpaceAt = 0;
+  private successHold = false;
+  private pendingResult: ExplorationResult | null = null;
+  private successTimer = 0;
+  private hitStampEl: HTMLElement | null = null;
 
   isActive(): boolean {
     return this.active;
@@ -66,6 +74,8 @@ export class ExplorationController {
     this.stop();
     this.options = options;
     this.closed = false;
+    this.successHold = false;
+    this.pendingResult = null;
     this.active = true;
     this.lastFrameAt = 0;
     this.keys = { left: false, right: false, up: false, down: false };
@@ -85,17 +95,28 @@ export class ExplorationController {
     this.mount();
     window.addEventListener('keydown', this.onKeyDown, true);
     window.addEventListener('keyup', this.onKeyUp, true);
+    document.addEventListener('pointermove', this.onPointerMove, true);
+    document.addEventListener('pointerdown', this.onPointerDown, true);
     this.rafId = requestAnimationFrame((t) => this.loop(t));
   }
 
   stop(): void {
     this.active = false;
+    this.successHold = false;
+    this.pendingResult = null;
+    if (this.successTimer) {
+      window.clearTimeout(this.successTimer);
+      this.successTimer = 0;
+    }
     if (this.rafId) {
       cancelAnimationFrame(this.rafId);
       this.rafId = 0;
     }
     window.removeEventListener('keydown', this.onKeyDown, true);
     window.removeEventListener('keyup', this.onKeyUp, true);
+    document.removeEventListener('pointermove', this.onPointerMove, true);
+    document.removeEventListener('pointerdown', this.onPointerDown, true);
+    this.setKeyboardCursorHidden(false);
     this.unmount();
     this.fishes = [];
     this.options = null;
@@ -111,7 +132,7 @@ export class ExplorationController {
 
   handleSpace(): void {
     if (!this.active || this.closed) return;
-    if (isHookIntroPlaying(this.hook)) return;
+    if (isHookIntroPlaying(this.hook)) endHookIntro(this.hook);
     const now = performance.now();
     if (now - this.lastSpaceAt < 40) return;
     this.lastSpaceAt = now;
@@ -134,16 +155,51 @@ export class ExplorationController {
   private completeHook(fish: ExplorationFish): void {
     if (this.closed) return;
     this.closed = true;
+    this.successHold = true;
     succeedHook(fish, this.hook);
-    const onSuccess = this.options?.onHookSuccess;
-    const result: ExplorationResult = {
+    this.pendingResult = {
       fish: fish.fish,
       size: fish.size,
       hookDepth: this.hook.y,
       hookDepthRatio: getHookDepthRatio(this.hook.y),
     };
+    this.showHitStamp();
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const stampMs = reduced ? 180 : explorationConfig.hookToFightIntro.stampHoldSec * 1000;
+    this.successTimer = window.setTimeout(() => this.beginSuccessLeave(), stampMs);
+  }
+
+  private showHitStamp(): void {
+    if (!this.hitStampEl) return;
+    this.layoutHitStamp();
+    this.hitStampEl.hidden = false;
+    this.hitStampEl.classList.remove('is-in');
+    void this.hitStampEl.offsetWidth;
+    this.hitStampEl.classList.add('is-in');
+  }
+
+  private layoutHitStamp(): void {
+    if (!this.hitStampEl) return;
+    const pos = getHookDrawPos(this.hook);
+    const { canvasW, canvasH } = explorationConfig;
+    const sx = ((pos.x - this.camera.x) / canvasW) * 100;
+    const sy = ((pos.y - this.camera.y) / canvasH) * 100;
+    this.hitStampEl.style.left = `${sx}%`;
+    this.hitStampEl.style.top = `${sy}%`;
+  }
+
+  private beginSuccessLeave(): void {
+    this.root?.classList.add('is-leaving');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const fadeMs = reduced ? 0 : explorationConfig.hookToFightIntro.overlayFadeSec * 1000;
+    this.successTimer = window.setTimeout(() => this.finishSuccess(), fadeMs);
+  }
+
+  private finishSuccess(): void {
+    const onSuccess = this.options?.onHookSuccess;
+    const result = this.pendingResult;
     this.stop();
-    onSuccess?.(result);
+    if (result) onSuccess?.(result);
   }
 
   private mount(): void {
@@ -154,6 +210,9 @@ export class ExplorationController {
       <div class="exploration-modal ui-frame-box">
         <div class="exploration-canvas-wrap">
           <canvas id="exploration-canvas" width="${explorationConfig.canvasW}" height="${explorationConfig.canvasH}"></canvas>
+          <div class="exploration-hit-stamp" hidden>
+            <img src="/images/ui/hit.png" alt="" decoding="async" />
+          </div>
         </div>
         <div class="exploration-hint">
           <span>←↑↓→ 針を動かす</span>
@@ -163,15 +222,19 @@ export class ExplorationController {
       </div>
     `;
     root.style.setProperty('--exploration-fade-sec', `${explorationConfig.modalFadeInSec}s`);
+    root.style.setProperty('--exploration-leave-sec', `${explorationConfig.hookToFightIntro.overlayFadeSec}s`);
+    root.style.setProperty('--exploration-hit-shake-sec', `${explorationConfig.hookToFightIntro.stampShakeSec}s`);
     document.body.appendChild(root);
     this.root = root;
     this.canvas = root.querySelector('#exploration-canvas');
+    this.hitStampEl = root.querySelector('.exploration-hit-stamp');
   }
 
   private unmount(): void {
     this.root?.remove();
     this.root = null;
     this.canvas = null;
+    this.hitStampEl = null;
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
@@ -187,6 +250,7 @@ export class ExplorationController {
       e.code === 'Space'
     ) {
       e.preventDefault();
+      this.setKeyboardCursorHidden(true);
     }
     if (key === 'Escape') {
       e.preventDefault();
@@ -201,6 +265,15 @@ export class ExplorationController {
     if (key === ' ' || key === 'Spacebar' || e.code === 'Space') {
       if (!e.repeat) this.handleSpace();
     }
+  }
+
+  private handlePointerMove(e: PointerEvent): void {
+    if (e.movementX === 0 && e.movementY === 0) return;
+    this.setKeyboardCursorHidden(false);
+  }
+
+  private setKeyboardCursorHidden(hidden: boolean): void {
+    document.body.classList.toggle('ui-exploration-cursor-hide', hidden);
   }
 
   private handleKeyUp(e: KeyboardEvent): void {
@@ -218,28 +291,32 @@ export class ExplorationController {
     const options = this.options;
     if (!options) return;
 
-    moveHook(this.hook, this.keys, dt);
-    tickHookIntro(this.hook, dt);
+    if (!this.successHold) {
+      moveHook(this.hook, this.keys, dt);
+      tickHookIntro(this.hook, dt);
+      const cameraFocusY = isHookIntroPlaying(this.hook) ? this.hook.restY : this.hook.y;
+      stepExplorationCamera(this.camera, this.hook.x, cameraFocusY, dt);
+      spawnHookIntroBubbles(
+        this.underwater,
+        this.hook.x,
+        Math.max(this.hook.y, this.camera.y + 20),
+        dt,
+        timeSec,
+        isHookIntroDropping(this.hook),
+      );
+      stepExplorationWorld({
+        fishes: this.fishes,
+        hook: this.hook,
+        dt,
+        timeSec,
+        options,
+      });
+    } else {
+      this.layoutHitStamp();
+    }
     tickHookFx(this.hook, dt);
-    const cameraFocusY = isHookIntroPlaying(this.hook) ? this.hook.restY : this.hook.y;
-    stepExplorationCamera(this.camera, this.hook.x, cameraFocusY, dt);
     const camera = this.camera;
     tickUnderwater(this.underwater, dt, timeSec, camera);
-    spawnHookIntroBubbles(
-      this.underwater,
-      this.hook.x,
-      Math.max(this.hook.y, camera.y + 20),
-      dt,
-      timeSec,
-      isHookIntroDropping(this.hook),
-    );
-    stepExplorationWorld({
-      fishes: this.fishes,
-      hook: this.hook,
-      dt,
-      timeSec,
-      options,
-    });
 
     const ctx = this.canvas?.getContext('2d');
     if (ctx) {

@@ -76,6 +76,9 @@ export type ExplorationHook = {
   /** 出現アニメの経過秒。delay+duration 以上で完了 */
   introElapsed: number;
   restY: number;
+  facing: 'left' | 'right';
+  /** 進行方向へ傾く角（ラジアン）。フリップ後のローカル回転 */
+  pitch: number;
 };
 
 export type ExplorationResult = {

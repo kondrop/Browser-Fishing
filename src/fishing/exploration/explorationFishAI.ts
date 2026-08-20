@@ -9,6 +9,8 @@ import {
   getHookShakeOffset,
   isHookInSenseRange,
   isHookIntroPlaying,
+  endHookIntro,
+  updateHookVisualPose,
   randomBiteDelay,
 } from './explorationFish';
 import { applyPitch, getSwimBounds, steerToward, stepSwimmingFish } from './explorationSwim';
@@ -245,6 +247,7 @@ function refillFish(
         castDistanceRatio: options.castDistanceRatio,
         spawn,
         timeSec,
+        avoid: fishes,
       }),
     );
   }
@@ -357,6 +360,10 @@ function easeOutCubic(t: number): number {
   return 1 - (1 - t) ** 3;
 }
 
+function easeOutQuint(t: number): number {
+  return 1 - (1 - t) ** 5;
+}
+
 function approach(current: number, target: number, maxDelta: number): number {
   if (current < target) return Math.min(target, current + maxDelta);
   return Math.max(target, current - maxDelta);
@@ -396,13 +403,16 @@ export function tickHookIntro(hook: ExplorationHook, dt: number): void {
   const duration = explorationConfig.hookIntroDurationSec;
   if (hook.introElapsed <= delay) {
     hook.y = explorationConfig.hookIntroStartY;
+    updateHookVisualPose(hook, dt, 0, 0);
     syncLineToHook(hook);
     return;
   }
   const t = Math.min(1, (hook.introElapsed - delay) / Math.max(0.001, duration));
+  const prevY = hook.y;
   hook.y =
     explorationConfig.hookIntroStartY +
-    (hook.restY - explorationConfig.hookIntroStartY) * easeOutCubic(t);
+    (hook.restY - explorationConfig.hookIntroStartY) * easeOutQuint(t);
+  updateHookVisualPose(hook, dt, 0, (hook.y - prevY) / Math.max(dt, 0.001));
   syncLineToHook(hook);
 }
 
@@ -411,7 +421,11 @@ export function moveHook(
   input: { left: boolean; right: boolean; up: boolean; down: boolean },
   dt: number,
 ): void {
-  if (isHookIntroPlaying(hook)) return;
+  const hasSteer = input.left || input.right || input.up || input.down;
+  if (isHookIntroPlaying(hook)) {
+    if (!hasSteer) return;
+    endHookIntro(hook);
+  }
 
   let ix = 0;
   let iy = 0;
@@ -458,6 +472,7 @@ export function moveHook(
   const midX = lerp(hook.leadX, hook.x, 0.52);
   const curveFollow = 1 - Math.exp(-explorationConfig.lineCurveFollow * dt);
   hook.lineCurveX += (midX - hook.lineCurveX) * curveFollow;
+  updateHookVisualPose(hook, dt);
 }
 
 export function tickHookFx(hook: ExplorationHook, dt: number): void {

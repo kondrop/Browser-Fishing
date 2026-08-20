@@ -17,7 +17,9 @@ body * {
 
 /* キー選択の指マーカー表示中は、実マウスカーソル（NES.css の指カーソル含む）を隠す */
 body.ui-kb-selection-cursor-hide,
-body.ui-kb-selection-cursor-hide * {
+body.ui-kb-selection-cursor-hide *,
+body.ui-exploration-cursor-hide,
+body.ui-exploration-cursor-hide * {
   cursor: none !important;
 }
 
@@ -703,6 +705,7 @@ span.level-label-value {
   image-rendering: crisp-edges;
   -ms-interpolation-mode: nearest-neighbor;
   flex: 0 0 auto;
+  transform-origin: 50% 50%;
 }
 
 .money-display__digits {
@@ -735,6 +738,41 @@ span.level-label-value {
   position: relative;
   top: var(--money-digit-nudge-y);
   left: var(--money-digit-nudge-x);
+}
+
+.money-display.is-counting,
+.shop-money.is-counting {
+  animation: money-display-rattle 0.075s linear infinite;
+}
+
+@keyframes money-display-rattle {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  16% {
+    transform: translate3d(calc(var(--money-shake-px, 1px) * -1), var(--money-shake-px, 1px), 0)
+      rotate(calc(var(--money-shake-rot, 0.5deg) * -1));
+  }
+  38% {
+    transform: translate3d(var(--money-shake-px, 1px), calc(var(--money-shake-px, 1px) * -1), 0)
+      rotate(var(--money-shake-rot, 0.5deg));
+  }
+  58% {
+    transform: translate3d(calc(var(--money-shake-px, 1px) * -1), 0, 0)
+      rotate(calc(var(--money-shake-rot, 0.5deg) * 0.7));
+  }
+  79% {
+    transform: translate3d(var(--money-shake-px, 1px), var(--money-shake-px, 1px), 0)
+      rotate(calc(var(--money-shake-rot, 0.5deg) * -0.8));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .money-display.is-counting,
+  .shop-money.is-counting {
+    animation: none;
+  }
 }
 
 /* EXPバーの目盛り（実体DOMで均等分布させる） */
@@ -1576,47 +1614,64 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   min-width: 0;
   flex-shrink: 1;
   height: 100%;
-  padding: 20px 28px;
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
-  --frame-fill-color: var(--color-semantic-bg-book-container);
   overflow: hidden;
+  /* boardBG.png: 掲示板と同じ木枠＋羊皮紙 */
+  --frame-slice: 80;
+  --frame-scale: 0.35;
+  --frame-fill-color: #edcc9b;
+  --frame-fill-inset: calc(var(--frame-slice) * var(--frame-scale) * 1px);
+  padding: calc(var(--frame-slice) * var(--frame-scale) * 1px + var(--space-12));
+}
+
+.modal-content.shop-modal.ui-frame-box::after {
+  border-image: url(/images/ui/boardBG.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* 掲示板と同様、外枠の変数がタブ・商品カードへ継承されないように戻す */
+.modal-content.shop-modal .ui-frame-box {
+  --frame-slice: 4;
+  --frame-scale: 4;
+  --frame-fill-inset: 4px;
+  isolation: isolate;
 }
 
 .shop-modal-header-row {
-  padding: var(--space-4) var(--space-16);
   margin: 0;
-  min-height: 32px;
 }
 
 .modal-content.shop-modal .modal-header h2 {
   margin: 0;
-  color: var(--color-semantic-text-muted);
-  font-size: 24px;
+  color: #5c4030;
+  font-size: 48px;
   line-height: 1;
   font-family: "Jersey 10", "DotGothic16", sans-serif !important;
   font-weight: 400;
 }
 
 #shop-modal .shop-modal-header-row.book-list-header {
-  padding: 4px 16px;
-  min-height: 34px;
-  margin: 0 4px 4px 4px;
-  border: none;
-  border-radius: 8px;
-  background: #e6d5ac;
-  font-size: 24px;
-  line-height: 1;
-  color: #5c4030 !important;
-  text-align: left;
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  box-sizing: border-box;
+  min-height: 40px;
+  height: 40px;
+  margin: 0 0 10px;
+  padding: 0 10px 0 16px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   font-family: "Jersey 10", "DotGothic16", sans-serif !important;
+  font-size: 48px;
   font-weight: 400;
-  letter-spacing: 0.01em;
+  line-height: 1;
+  color: #5c4030 !important;
+  letter-spacing: 0.02em;
+  text-align: left;
   box-shadow: none;
+  overflow: visible;
 }
 
 .shop-controls-row {
@@ -1724,8 +1779,8 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   bottom: 0;
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--color-semantic-bg-book-container) 94%, transparent) 0%,
-    color-mix(in srgb, var(--color-semantic-bg-book-container) 52%, transparent) 42%,
+    color-mix(in srgb, var(--frame-fill-color, #edcc9b) 94%, transparent) 0%,
+    color-mix(in srgb, var(--frame-fill-color, #edcc9b) 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -1734,8 +1789,8 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   top: 0;
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--color-semantic-bg-book-container) 94%, transparent) 0%,
-    color-mix(in srgb, var(--color-semantic-bg-book-container) 52%, transparent) 42%,
+    color-mix(in srgb, var(--frame-fill-color, #edcc9b) 94%, transparent) 0%,
+    color-mix(in srgb, var(--frame-fill-color, #edcc9b) 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -2072,6 +2127,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   justify-content: center;
   gap: 4px;
   color: #320e0e;
+  transform-origin: 50% 50%;
 }
 
 #shop-money.shop-money {
@@ -2109,6 +2165,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   color: #000;
   line-height: 1;
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .shop-money-unit {
@@ -6910,6 +6967,65 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   filter: brightness(1);
 }
 
+.fishing-fight-gauge.is-intro-bar .fishing-fight-gauge__skills,
+.fishing-fight-gauge.is-intro-bar .fishing-fight-gauge__fight-bar {
+  animation: fight-hud-rise-in var(--fight-intro-bar-sec, 0.48s) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fishing-fight-gauge.is-intro-bar .fishing-fight-gauge__fish {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.fishing-fight-gauge.is-intro-fish .fishing-fight-gauge__fight-bar {
+  overflow: visible;
+}
+
+.fishing-fight-gauge.is-intro-fish .fishing-fight-gauge__fish {
+  animation: fight-fish-bounce-in var(--fight-intro-fish-sec, 0.56s) cubic-bezier(0.22, 1.15, 0.36, 1) both;
+}
+
+@keyframes fight-hud-rise-in {
+  from {
+    opacity: 0;
+    translate: 0 28px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes fight-fish-bounce-in {
+  0% {
+    opacity: 0;
+    translate: 0 16px;
+    scale: 0.55;
+  }
+  48% {
+    opacity: 1;
+    translate: 0 -12px;
+    scale: 1.16;
+  }
+  72% {
+    translate: 0 5px;
+    scale: 0.94;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fishing-fight-gauge.is-intro-bar .fishing-fight-gauge__skills,
+  .fishing-fight-gauge.is-intro-bar .fishing-fight-gauge__fight-bar,
+  .fishing-fight-gauge.is-intro-fish .fishing-fight-gauge__fish {
+    animation: none;
+  }
+}
+
 .fishing-fight-gauge--game {
   position: absolute;
   transform: translate(-50%, -100%) scale(var(--fishing-ui-scale, 0.75));
@@ -9487,6 +9603,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 6px;
   background: rgba(12, 22, 36, 0.55);
   pointer-events: auto;
   animation: exploration-overlay-fade-in var(--exploration-fade-sec, 0.35s) ease-out both;
@@ -9501,6 +9618,19 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   }
 }
 
+.exploration-overlay.is-leaving {
+  animation: exploration-overlay-fade-out var(--exploration-leave-sec, 0.28s) ease-in forwards;
+}
+
+@keyframes exploration-overlay-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .exploration-overlay {
     animation: none;
@@ -9508,25 +9638,45 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 .exploration-modal.ui-frame-box {
-  --frame-scale: 3;
-  --frame-fill-inset: 3px;
-  --frame-fill-color: #f2e2b6;
-  padding: 12px 14px 10px;
+  --frame-slice: 80;
+  --frame-scale: 0.24;
+  --frame-fill-color: #edcc9b;
+  --frame-fill-inset: calc(var(--frame-slice) * var(--frame-scale) * 1px);
+  --exploration-frame-pad: calc(var(--frame-slice) * var(--frame-scale) * 1px + 4px);
+  --exploration-hint-h: 40px;
+  padding: var(--exploration-frame-pad);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-width: min(960px, 94vw);
-  width: min(960px, 94vw);
+  gap: 6px;
   box-sizing: border-box;
+  width: min(
+    calc(100vw - 12px),
+    calc((100vh - 12px - var(--exploration-hint-h)) * 3 / 2)
+  );
+  max-width: calc(100vw - 12px);
+  max-height: calc(100vh - 12px);
+}
+
+.exploration-modal.ui-frame-box::after {
+  border-image: url(/images/ui/boardBG.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 .exploration-canvas-wrap {
+  position: relative;
   width: 100%;
   aspect-ratio: 3 / 2;
+  max-height: calc(100vh - 12px - var(--exploration-frame-pad) * 2 - var(--exploration-hint-h));
   overflow: hidden;
-  border: 2px solid rgba(112, 74, 43, 0.45);
-  border-radius: 4px;
   background: #061422;
+  -webkit-mask-image: url(/images/ui/watermask.png);
+  -webkit-mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-image: url(/images/ui/watermask.png);
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-mode: alpha;
 }
 
 .exploration-canvas-wrap canvas {
@@ -9537,13 +9687,82 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   image-rendering: crisp-edges;
 }
 
+.exploration-hit-stamp {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.exploration-hit-stamp[hidden] {
+  display: none !important;
+}
+
+.exploration-hit-stamp img {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  width: min(80px, 11vw);
+  height: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  transform-origin: 12% 88%;
+}
+
+.exploration-hit-stamp.is-in img {
+  animation: exploration-hit-shake var(--exploration-hit-shake-sec, 0.62s) cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+@keyframes exploration-hit-shake {
+  0% {
+    opacity: 0;
+    transform: scale(0.42) rotate(-12deg);
+  }
+  14% {
+    opacity: 1;
+    transform: scale(1.2) rotate(9deg);
+  }
+  26% {
+    transform: scale(1.04) rotate(-8deg);
+  }
+  38% {
+    transform: scale(1.12) rotate(6deg);
+  }
+  50% {
+    transform: scale(1.02) rotate(-5deg);
+  }
+  62% {
+    transform: scale(1.08) rotate(3deg);
+  }
+  74% {
+    transform: scale(1.0) rotate(-2deg);
+  }
+  86% {
+    transform: scale(1.03) rotate(1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exploration-hit-stamp.is-in img {
+    animation: none;
+  }
+}
+
 .exploration-hint {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 6px 12px;
   justify-content: center;
+  flex: 0 0 auto;
   font-family: 'DotGothic16', sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--color-semantic-text-secondary, #5c4030);
 }
 

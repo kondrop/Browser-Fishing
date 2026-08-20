@@ -235,6 +235,8 @@ import {
   FIGHT_SKILL_DURATIONS,
   FISHING_GAUGE_UI_SCALE,
 } from '../ui/fishingGaugeOverlay';
+import { PLAYER_HINTS, type PlayerHintContent } from '../ui/playerHintTexts';
+import { HudMoneyDisplay, TextMoneyDisplay } from '../ui/moneyDisplayCounter';
 import { ExplorationController } from '../fishing/exploration/explorationController';
 import { explorationConfig } from '../fishing/exploration/explorationConfig';
 import { applyHookDepthToFightParams } from '../fishing/exploration/explorationFish';
@@ -335,6 +337,8 @@ export default class GameScene extends Phaser.Scene {
   /** 直近キャストの投擲距離比率（0〜1）。サイズ抽選に使用 */
   private lastCastDistanceRatio = 0;
   private fishingGaugeOverlay!: FishingGaugeOverlay;
+  /** 合わせ成功〜ファイトHUD導入中はシミュレーションを止める */
+  private fightIntroPlaying = false;
   private spaceKey!: Phaser.Input.Keyboard.Key;
 
   // ファイトミニゲーム用
@@ -390,6 +394,8 @@ export default class GameScene extends Phaser.Scene {
 
   // ステータスUI（HTML/CSS）
   private statusUIElement!: HTMLElement;
+  private readonly hudMoneyDisplay = new HudMoneyDisplay();
+  private readonly shopMoneyDisplay = new TextMoneyDisplay();
 
   // インベントリUI（HTML/CSS）
   private inventoryUIElement!: HTMLElement;
@@ -1366,6 +1372,7 @@ export default class GameScene extends Phaser.Scene {
         this.input.keyboard.on('keydown-S', () => {
             if (this.state === FishingState.IDLE) {
                 this.toggleShop();
+                if (this.shopOpen) this.noteUiMenuKeyboardNavigation();
             }
         });
 
@@ -1774,6 +1781,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.renderStatusCharacterIcon(characterId, this.getSelectedColor());
     this.bindHudEquipmentShortcuts();
+    this.hudMoneyDisplay.attach(this.statusUIElement);
     this.updateStatusUI();
     this.updateQuestHudUI();
   }
@@ -1834,12 +1842,12 @@ export default class GameScene extends Phaser.Scene {
 
   private showHudEquipHoverHint() {
     if (this.hudEquipHoverType === 'rod') {
-      this.showPlayerHint({ label: '竿を変更' });
+      this.showPlayerHint(PLAYER_HINTS.changeRod);
       this.positionPlayerHintAtPointer();
       return;
     }
     if (this.hudEquipHoverType === 'lure') {
-      this.showPlayerHint({ label: 'エサ・ルアーを変更' });
+      this.showPlayerHint(PLAYER_HINTS.changeBaitOrLure);
       this.positionPlayerHintAtPointer();
     }
   }
@@ -1901,22 +1909,10 @@ export default class GameScene extends Phaser.Scene {
       this.lastHudBaitCount = equippedBaitCount;
     }
     
-    // 所持金（変更時のみ更新・未到達桁は空欄）
+    // 所持金（変更時のみ・桁リールでカウント）
     const money = this.playerData.money;
     if (money !== this.lastMoney) {
-      const moneyDisplay = this.statusUIElement.querySelector('#money-display') as HTMLElement | null;
-      const digitEls = this.statusUIElement.querySelectorAll('#money-digits .money-display__digit');
-      if (digitEls.length === 7) {
-        const clamped = Math.max(0, Math.min(9_999_999, Math.floor(money)));
-        const padded = String(clamped).padStart(7, ' ');
-        digitEls.forEach((el, i) => {
-          const ch = padded[i] ?? ' ';
-          el.textContent = ch === ' ' ? '' : ch;
-        });
-        if (moneyDisplay) {
-          moneyDisplay.setAttribute('aria-label', `所持金 ${clamped.toLocaleString('ja-JP')} G`);
-        }
-      }
+      this.hudMoneyDisplay.setMoney(money, this.lastMoney < 0);
       this.lastMoney = money;
     }
     
@@ -2287,7 +2283,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private showPlayerHint(
-    content: { key?: string; label: string },
+    content: PlayerHintContent,
     tone: 'normal' | 'urgent' = 'normal',
   ): void {
     if (!this.playerHintElement) return;
@@ -2314,7 +2310,7 @@ export default class GameScene extends Phaser.Scene {
     el.classList.add('is-visible');
   }
 
-  private buildPlayerHintHtml(content: { key?: string; label: string }): string {
+  private buildPlayerHintHtml(content: PlayerHintContent): string {
     const labelHtml = `<span class="player-world-hint__text">${this.escapeHtml(content.label)}</span>`;
     if (!content.key) {
       return `<span class="player-world-hint__row">${labelHtml}</span>`;
@@ -3500,7 +3496,7 @@ export default class GameScene extends Phaser.Scene {
     this.prepareCastingRig();
     this.fishingGaugeOverlay.setCastVisible(true);
     this.layoutFishingGaugeOverlay();
-    this.showPlayerHint({ key: 'space', label: 'でもう一度押して投げる！' });
+    this.showPlayerHint(PLAYER_HINTS.recast);
   }
 
   updateCasting(delta: number) {
@@ -3653,7 +3649,7 @@ export default class GameScene extends Phaser.Scene {
     this.showBiteMark();
     
     // ヒント表示
-    this.showPlayerHint({ key: 'space', label: 'を押せ！' }, 'urgent');
+    this.showPlayerHint(PLAYER_HINTS.bite, 'urgent');
 
     // 反応時間
     const reactionTime = config.bite['4-3_反応時間'] * 1000;
@@ -3783,6 +3779,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private hideAndResetFightOverlay(): void {
+    this.fightIntroPlaying = false;
     this.fishingGaugeOverlay.setFightVisible(false);
     this.resetFightState();
     this.renderFightOverlay();
@@ -3814,7 +3811,10 @@ export default class GameScene extends Phaser.Scene {
     this.renderFightOverlay();
     this.state = FishingState.FIGHTING;
     this.layoutFishingGaugeOverlay();
-    this.fishingGaugeOverlay.setFightVisible(true);
+    this.fightIntroPlaying = true;
+    this.fishingGaugeOverlay.playFightStartIntro(() => {
+      this.fightIntroPlaying = false;
+    });
   }
 
   /** Z : ロックオン（control_n03） */
@@ -3845,6 +3845,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   updateFighting(_time: number, delta: number) {
+    if (this.fightIntroPlaying) {
+      this.renderFightOverlay();
+      return;
+    }
+
     const dt = delta / 1000;
     this.fightElapsedSec += dt;
     const cfg = config.fighting;
@@ -11763,9 +11768,9 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
     if (this.isNearBulletinBoard()) {
-      this.showPlayerHint({ key: 'F', label: '掲示板を見る' });
+      this.showPlayerHint(PLAYER_HINTS.bulletinBoard);
     } else if (this.isNearWater() && this.canCastTowardWater()) {
-      this.showPlayerHint({ key: 'space', label: 'でキャスト' });
+      this.showPlayerHint(PLAYER_HINTS.cast);
     } else {
       this.hidePlayerHint();
     }
@@ -13938,8 +13943,8 @@ export default class GameScene extends Phaser.Scene {
     this.shopOpen = true;
     this.shopSelectedIndex = -1;
     this.shopTab = 'rod';
-    this.shopNavArea = 'items';
-    this.updateShopContent();
+    this.shopNavArea = 'tabs';
+    this.updateShopContent({ snapMoney: true });
     this.updateShopTabs();
     if (this.shopUIElement) {
       this.openModal(this.MODAL_IDS.SHOP);
@@ -13998,7 +14003,7 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  updateShopContent() {
+  updateShopContent(opts?: { snapMoney?: boolean }) {
     if (!this.shopUIElement || !this.shopItemsListElement) return;
     
     // 既存のアイテム要素を削除（innerHTMLを使わずに）
@@ -14354,18 +14359,23 @@ export default class GameScene extends Phaser.Scene {
       }
     });
 
-    // 所持金を更新
+    // 所持金を更新（構造は維持し、金額だけカウンター再生）
     if (this.shopMoneyElement) {
-      this.shopMoneyElement.innerHTML = `
+      const hadValue = Boolean(this.shopMoneyElement.querySelector('.shop-money-value'));
+      if (!hadValue) {
+        this.shopMoneyElement.innerHTML = `
         <span class="shop-money-label">所持金</span>
         <div class="shop-money-balance">
           <img src="/images/ui/ゴールド.png" alt="" aria-hidden="true" class="shop-money-icon-image" />
           <div class="shop-money-amount">
-            <span class="shop-money-value">${this.playerData.money.toLocaleString()}</span>
+            <span class="shop-money-value">0</span>
             <span class="shop-money-unit">G</span>
           </div>
         </div>
       `;
+      }
+      this.shopMoneyDisplay.attach(this.shopMoneyElement, '.shop-money-value');
+      this.shopMoneyDisplay.setMoney(this.playerData.money, !hadValue || !!opts?.snapMoney);
     }
 
     this.updateShopSelection();

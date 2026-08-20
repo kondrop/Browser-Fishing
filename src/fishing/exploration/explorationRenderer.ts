@@ -80,7 +80,7 @@ function drawFishSprite(
   const biteStretchY = chewing ? 1.04 - chew * 0.03 : 1;
   const stretchX = (1 + breath * 0.045) * peckStretchX * biteStretchX;
   const stretchY = (1 - breath * 0.055) * peckStretchY * biteStretchY;
-  const size = explorationConfig.fishShadowNativeSize * getFishShadowScale(fish.size);
+  const size = explorationConfig.fishShadowNativeSize * getFishShadowScale(fish.size, fish.fish.id);
 
   ctx.save();
   ctx.globalAlpha = fish.alpha;
@@ -169,6 +169,50 @@ function drawSenseAndAppealDebug(
   ctx.restore();
 }
 
+function drawBareBobber(ctx: CanvasRenderingContext2D, r: number): void {
+  const rx = r * 0.98;
+  const ry = r * 1.02;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI);
+  ctx.fillStyle = '#f2c41a';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, Math.PI, Math.PI * 2);
+  ctx.fillStyle = '#e12b22';
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255, 248, 220, 0.7)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-rx + 0.5, 0);
+  ctx.lineTo(rx - 0.5, 0);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.38)';
+  ctx.beginPath();
+  ctx.ellipse(-rx * 0.28, -ry * 0.32, rx * 0.22, ry * 0.16, -0.45, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(70, 22, 16, 0.5)';
+  ctx.lineWidth = 1.15;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#d4d4d4';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(5, ry + 3.5, 5.5, -0.4, Math.PI * 0.9);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 function drawLineAndHook(
   ctx: CanvasRenderingContext2D,
   hook: ExplorationHook,
@@ -220,20 +264,19 @@ function drawLineAndHook(
 
   if (gearImg) {
     const s = 28;
-    ctx.drawImage(gearImg, pos.x - s / 2, pos.y - s / 2, s, s);
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.scale(hook.facing === 'right' ? -1 : 1, 1);
+    ctx.rotate(-hook.pitch);
+    ctx.drawImage(gearImg, -s / 2, -s / 2, s, s);
+    ctx.restore();
   } else {
-    ctx.fillStyle = '#d7b15a';
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, explorationConfig.hookRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.strokeStyle = '#c9c9c9';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(pos.x + 5, pos.y + 6, 6, -0.4, Math.PI * 0.9);
-    ctx.stroke();
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.scale(hook.facing === 'right' ? -1 : 1, 1);
+    ctx.rotate(-hook.pitch);
+    drawBareBobber(ctx, explorationConfig.hookRadius);
+    ctx.restore();
   }
   ctx.restore();
 }
@@ -277,7 +320,7 @@ export function drawExplorationFrame(args: {
 
   const sorted = [...fishes].sort((a, b) => a.y - b.y);
   for (const fish of sorted) {
-    drawFishSprite(scene, fish, gear.shadowImages[getFishShadowTier(fish.size)], timeSec);
+    drawFishSprite(scene, fish, gear.shadowImages[getFishShadowTier(fish.size, fish.fish.id)], timeSec);
   }
 
   drawLineAndHook(scene, hook, gear, camera);

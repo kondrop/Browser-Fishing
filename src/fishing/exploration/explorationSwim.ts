@@ -36,11 +36,75 @@ export function getSwimBounds() {
   };
 }
 
+function clamp01(t: number): number {
+  return Math.min(1, Math.max(0, t));
+}
+
+/** 中央を避け、左右端へ寄せた 0〜1 */
+export function sampleFishSpreadX(): number {
+  const { edgeBias, centerGap } = explorationConfig.fishSpread;
+  let t = Math.random();
+  if (edgeBias > 0) {
+    const signed = (t - 0.5) * 2;
+    const mag = Math.pow(Math.abs(signed), Math.max(0.18, 1 - edgeBias * 0.7));
+    const dir = signed === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(signed);
+    t = 0.5 + 0.5 * dir * mag;
+  }
+  const gap = clamp01(centerGap);
+  if (gap > 0) {
+    const lo = 0.5 - gap / 2;
+    const hi = 0.5 + gap / 2;
+    if (t > lo && t < hi) {
+      t = Math.random() < 0.5 ? Math.random() * lo : hi + Math.random() * (1 - hi);
+    }
+  }
+  return clamp01(t);
+}
+
+/** 深部寄りの 0〜1（1 が深い） */
+export function sampleFishSpreadY(): number {
+  const { deepBias } = explorationConfig.fishSpread;
+  if (deepBias <= 0) return Math.random();
+  return 1 - Math.pow(Math.random(), 1 + deepBias);
+}
+
+export function pickFishSpreadPoint(
+  insetX = 0,
+  avoid: Array<{ x: number; y: number }> = [],
+): { x: number; y: number } {
+  const bounds = getSwimBounds();
+  const xMin = bounds.xMin + insetX;
+  const xMax = bounds.xMax - insetX;
+  const minSep = explorationConfig.fishSpread.minSeparation;
+  const sample = () => ({
+    x: xMin + sampleFishSpreadX() * Math.max(8, xMax - xMin),
+    y: bounds.yMin + sampleFishSpreadY() * (bounds.yMax - bounds.yMin),
+  });
+  if (avoid.length === 0) return sample();
+
+  let best = sample();
+  let bestDist = -1;
+  for (let i = 0; i < 10; i++) {
+    const p = sample();
+    let nearest = Infinity;
+    for (const other of avoid) {
+      nearest = Math.min(nearest, Math.hypot(p.x - other.x, p.y - other.y));
+    }
+    if (nearest > bestDist) {
+      best = p;
+      bestDist = nearest;
+    }
+    if (nearest >= minSep) return p;
+  }
+  return best;
+}
+
 function pickCruiseTarget(fish: ExplorationFish): void {
   const bounds = getSwimBounds();
-  const randY = bounds.yMin + Math.random() * (bounds.yMax - bounds.yMin);
-  fish.targetX = bounds.xMin + Math.random() * (bounds.xMax - bounds.xMin);
-  fish.targetY = (randY + fish.homeY) / 2;
+  const spread = pickFishSpreadPoint();
+  fish.targetX = spread.x;
+  fish.targetY = fish.homeY * 0.64 + spread.y * 0.36;
+  fish.targetY = Math.max(bounds.yMin, Math.min(bounds.yMax, fish.targetY));
 }
 
 function pickDashTarget(fish: ExplorationFish): void {

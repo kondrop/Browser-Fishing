@@ -1,5 +1,6 @@
 import { config } from '../config';
 import type { FishFightState } from '../fight/fightSimulation';
+import { explorationConfig } from '../fishing/exploration/explorationConfig';
 
 /** 本番ファイトUIと同じスケール（キャストゲージ等） */
 export const FISHING_GAUGE_UI_SCALE = 1.25;
@@ -330,6 +331,9 @@ export class FishingGaugeOverlay {
   /** tired 中の汗エフェクトのクールタイム管理（見た目専用） */
   private lastSweatAt = 0;
 
+  private fightIntroTimers: number[] = [];
+  private fightIntroOnComplete: (() => void) | null = null;
+
   /** 本番: body 直下に固定配置 */
   mountGame(): HTMLElement {
     this.mode = 'game';
@@ -375,6 +379,7 @@ export class FishingGaugeOverlay {
     this.castEl = null;
     this.castStepsEl = null;
     this.castStepEls = [];
+    this.cancelFightStartIntro();
     this.fightEl = null;
     this.fightBarEl = null;
     this.floatLayerEl = null;
@@ -434,30 +439,9 @@ export class FishingGaugeOverlay {
 
   setFightVisible(visible: boolean): void {
     if (!this.fightEl) return;
+    this.cancelFightStartIntro();
     if (visible) {
-      this.lastFishBarPosition = null;
-      this.fishFacing = 'right';
-      this.lastCatchProgress = null;
-      this.lastCatchPct = null;
-      this.lastSweepAt = 0;
-      this.lastPopAt = 0;
-      this.sweepAnim?.cancel();
-      this.barPopAnim?.cancel();
-      this.floatLayerEl?.replaceChildren();
-      this.sweatEl?.replaceChildren();
-      this.lastSweatAt = 0;
-      this.lastSkillSweepAt = { z: 0, x: 0, c: 0 };
-      this.resetSkillUiRuntime();
-      [this.skillEffectEls.z, this.skillEffectEls.x, this.cEffectEls.left, this.cEffectEls.right].forEach(
-        (fx) => {
-          if (fx) {
-            fx.hidden = true;
-            fx.style.opacity = '0';
-          }
-        },
-      );
-      this.fishEl?.classList.remove('is-facing-left', 'is-tired');
-      this.fishEl?.setAttribute('src', FIGHT_FISH_IMAGE);
+      this.prepareFightShow();
       this.fightEl.classList.add('is-fight-instant');
       this.fightEl.hidden = false;
       requestAnimationFrame(() => {
@@ -467,8 +451,107 @@ export class FishingGaugeOverlay {
       });
       return;
     }
+    this.clearFightIntroClasses();
     this.fightEl.classList.add('is-fight-instant');
     this.fightEl.hidden = true;
+  }
+
+  /**
+   * ファイトバー上昇フェードイン → 魚アイコン跳躍フェードイン。
+   * 完了後にファイト操作を開始する。
+   */
+  playFightStartIntro(onComplete: () => void): void {
+    if (!this.fightEl || this.mode !== 'game') {
+      this.setFightVisible(true);
+      onComplete();
+      return;
+    }
+
+    this.cancelFightStartIntro();
+    this.prepareFightShow();
+    this.fightIntroOnComplete = onComplete;
+    this.fightEl.classList.remove('is-fight-instant');
+    this.clearFightIntroClasses();
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      this.fightEl.classList.add('is-fight-instant');
+      this.fightEl.hidden = false;
+      requestAnimationFrame(() => this.fightEl?.classList.remove('is-fight-instant'));
+      this.finishFightStartIntro();
+      return;
+    }
+
+    this.fightEl.hidden = true;
+    this.beginFightBarIntro();
+  }
+
+  cancelFightStartIntro(): void {
+    this.fightIntroTimers.forEach((id) => window.clearTimeout(id));
+    this.fightIntroTimers = [];
+    this.fightIntroOnComplete = null;
+  }
+
+  private prepareFightShow(): void {
+    this.lastFishBarPosition = null;
+    this.fishFacing = 'right';
+    this.lastCatchProgress = null;
+    this.lastCatchPct = null;
+    this.lastSweepAt = 0;
+    this.lastPopAt = 0;
+    this.sweepAnim?.cancel();
+    this.barPopAnim?.cancel();
+    this.floatLayerEl?.replaceChildren();
+    this.sweatEl?.replaceChildren();
+    this.lastSweatAt = 0;
+    this.lastSkillSweepAt = { z: 0, x: 0, c: 0 };
+    this.resetSkillUiRuntime();
+    [this.skillEffectEls.z, this.skillEffectEls.x, this.cEffectEls.left, this.cEffectEls.right].forEach(
+      (fx) => {
+        if (fx) {
+          fx.hidden = true;
+          fx.style.opacity = '0';
+        }
+      },
+    );
+    this.fishEl?.classList.remove('is-facing-left', 'is-tired');
+    this.fishEl?.setAttribute('src', FIGHT_FISH_IMAGE);
+  }
+
+  private beginFightBarIntro(): void {
+    if (!this.fightEl) return;
+    this.fightEl.classList.add('is-intro-bar');
+    this.fightEl.hidden = false;
+    this.fightIntroTimers.push(
+      window.setTimeout(
+        () => this.beginFightFishIntro(),
+        explorationConfig.hookToFightIntro.barInSec * 1000,
+      ),
+    );
+  }
+
+  private beginFightFishIntro(): void {
+    if (!this.fightEl) return;
+    this.fightEl.classList.remove('is-intro-bar');
+    this.fightEl.classList.add('is-intro-fish');
+    this.fightIntroTimers.push(
+      window.setTimeout(
+        () => this.finishFightStartIntro(),
+        explorationConfig.hookToFightIntro.fishInSec * 1000,
+      ),
+    );
+  }
+
+  private finishFightStartIntro(): void {
+    this.clearFightIntroClasses();
+    const done = this.fightIntroOnComplete;
+    this.fightIntroOnComplete = null;
+    this.fightIntroTimers.forEach((id) => window.clearTimeout(id));
+    this.fightIntroTimers = [];
+    done?.();
+  }
+
+  private clearFightIntroClasses(): void {
+    this.fightEl?.classList.remove('is-intro-bar', 'is-intro-fish');
   }
 
   private updateFishFacing(position: number, driftVelocity: number): void {
@@ -1186,6 +1269,9 @@ export class FishingGaugeOverlay {
     (scope as HTMLElement).style.setProperty('--fishing-fish-width', `${d.fishWidth}px`);
     (scope as HTMLElement).style.setProperty('--fishing-fish-height', `${d.fishHeight}px`);
     (scope as HTMLElement).style.setProperty('--fishing-ui-scale', String(FIGHT_UI_DISPLAY_SCALE));
+    const intro = explorationConfig.hookToFightIntro;
+    (scope as HTMLElement).style.setProperty('--fight-intro-bar-sec', `${intro.barInSec}s`);
+    (scope as HTMLElement).style.setProperty('--fight-intro-fish-sec', `${intro.fishInSec}s`);
     const skillIconHeight = 46;
     const skillSlotHeight = skillIconHeight * FIGHT_SKILL_ACTIVE_SCALE - FIGHT_SKILL_SLOT_TIGHTEN;
     const skillSlotWidth =

@@ -6,7 +6,7 @@ import {
 } from '../../data/aquariumConfig';
 import type { FightSimFishParams } from '../../fight/fightSimulation';
 import { explorationConfig } from './explorationConfig';
-import { beginSwimMode, getSwimBounds } from './explorationSwim';
+import { beginSwimMode, getSwimBounds, pickFishSpreadPoint } from './explorationSwim';
 import type {
   BiteKind,
   ExplorationFish,
@@ -20,19 +20,28 @@ function nextId(): string {
 
 export type FishShadowTier = 'sm' | 'md' | 'lg';
 
+const JUNK_SHADOW_TIER: Record<string, FishShadowTier> = {
+  junk_can: 'sm',
+  junk_boot: 'md',
+  junk_tire: 'lg',
+};
+
 function clamp01(t: number): number {
   return Math.min(1, Math.max(0, t));
 }
 
-export function getFishShadowTier(sizeCm: number): FishShadowTier {
+export function getFishShadowTier(sizeCm: number, fishId?: string): FishShadowTier {
+  const junkTier = fishId ? JUNK_SHADOW_TIER[fishId] : undefined;
+  if (junkTier) return junkTier;
   if (sizeCm < explorationConfig.fishShadowSmMaxCm) return 'sm';
   if (sizeCm < explorationConfig.fishShadowMdMaxCm) return 'md';
   return 'lg';
 }
 
-export function getFishShadowScale(sizeCm: number): number {
-  const tier = getFishShadowTier(sizeCm);
+export function getFishShadowScale(sizeCm: number, fishId?: string): number {
+  const tier = getFishShadowTier(sizeCm, fishId);
   const [min, max] = explorationConfig.fishShadowScale[tier];
+  if (fishId && JUNK_SHADOW_TIER[fishId]) return (min + max) / 2;
   const { fishShadowSmMaxCm: smMax, fishShadowMdMaxCm: mdMax, fishShadowLgRefCm: lgRef } =
     explorationConfig;
   let t = 0;
@@ -42,9 +51,9 @@ export function getFishShadowScale(sizeCm: number): number {
   return min + (max - min) * t;
 }
 
-export function getExplorationSpriteSize(_maxSize: number, sizeCm: number): number {
-  const tier = getFishShadowTier(sizeCm);
-  return explorationConfig.fishShadowBodyW[tier] * getFishShadowScale(sizeCm);
+export function getExplorationSpriteSize(_maxSize: number, sizeCm: number, fishId?: string): number {
+  const tier = getFishShadowTier(sizeCm, fishId);
+  return explorationConfig.fishShadowBodyW[tier] * getFishShadowScale(sizeCm, fishId);
 }
 
 export function createExplorationFish(options: {
@@ -53,18 +62,20 @@ export function createExplorationFish(options: {
   castDistanceRatio: number;
   spawn: 'inside' | 'left' | 'right';
   timeSec: number;
+  avoid?: Array<{ x: number; y: number }>;
 }): ExplorationFish {
   const fish = getRandomFish(options.rarityBonuses, {
     junkWeightMultiplier: options.junkWeightMultiplier,
   });
   const size = generateRandomSize(fish.maxSize, options.castDistanceRatio);
   const bounds = getSwimBounds();
-  const homeY = bounds.yMin + Math.random() * (bounds.yMax - bounds.yMin);
+  const spread = pickFishSpreadPoint(40, options.avoid);
+  const homeY = spread.y;
   const entering = options.spawn !== 'inside';
-  let x = bounds.xMin + 40 + Math.random() * (bounds.xMax - bounds.xMin - 80);
+  let x = spread.x;
   if (options.spawn === 'left') x = bounds.xMin - explorationConfig.respawnMargin * 0.6;
   if (options.spawn === 'right') x = bounds.xMax + explorationConfig.respawnMargin * 0.6;
-  const y = bounds.yMin + Math.random() * (bounds.yMax - bounds.yMin);
+  const y = spread.y;
   const runtime: ExplorationFish = {
     id: nextId(),
     fish,
@@ -95,12 +106,12 @@ export function createExplorationFish(options: {
     biteAnchorX: x,
     biteAnchorY: y,
     alpha: 1,
-    spriteSize: getExplorationSpriteSize(fish.maxSize, size),
+    spriteSize: getExplorationSpriteSize(fish.maxSize, size, fish.id),
     entering,
   };
   beginSwimMode(runtime, 'cruise', options.timeSec);
   if (entering) {
-    runtime.targetX = bounds.xMin + 80 + Math.random() * (bounds.xMax - bounds.xMin - 160);
+    runtime.targetX = pickFishSpreadPoint(80).x;
     runtime.targetY = y;
   }
   return runtime;
@@ -118,6 +129,7 @@ export function createInitialFish(options: {
       createExplorationFish({
         ...options,
         spawn: 'inside',
+        avoid: list,
       }),
     );
   }
@@ -140,6 +152,21 @@ export function isHookIntroDropping(hook: ExplorationHook): boolean {
   return (
     hook.introElapsed > explorationConfig.hookIntroDelaySec && isHookIntroPlaying(hook)
   );
+}
+
+export function endHookIntro(hook: ExplorationHook): void {
+  if (!isHookIntroPlaying(hook)) return;
+  hook.introElapsed = getHookIntroDuration();
+  const bounds = getSwimBounds();
+  hook.y = Math.max(bounds.yMin, Math.min(bounds.yMax, hook.y));
+  hook.x = Math.max(bounds.xMin, Math.min(bounds.xMax, hook.x));
+  hook.leadX = hook.x;
+  hook.leadY = hook.y;
+  hook.leadVx = 0;
+  hook.leadVy = 0;
+  hook.vx = 0;
+  hook.vy = 0;
+  hook.lineCurveX = hook.x;
 }
 
 export function createHook(): ExplorationHook {
@@ -172,7 +199,33 @@ export function createHook(): ExplorationHook {
     tautT: 0,
     introElapsed: skipIntro ? getHookIntroDuration() : 0,
     restY,
+    facing: 'right',
+    pitch: 0,
   };
+}
+
+export function updateHookVisualPose(
+  hook: ExplorationHook,
+  dt: number,
+  vx = hook.leadVx,
+  vy = hook.leadVy,
+): void {
+  const thresh = explorationConfig.hookFaceVxThreshold;
+  if (vx > thresh) hook.facing = 'right';
+  else if (vx < -thresh) hook.facing = 'left';
+
+  const maxSpd = Math.max(1, explorationConfig.hookMaxSpeed);
+  const face = hook.facing === 'right' ? 1 : -1;
+  const target = Math.max(
+    -explorationConfig.hookPitchMax,
+    Math.min(
+      explorationConfig.hookPitchMax,
+      (vx / maxSpd) * face * explorationConfig.hookPitchFromX +
+        (vy / maxSpd) * explorationConfig.hookPitchFromY,
+    ),
+  );
+  const t = 1 - Math.exp(-explorationConfig.hookPitchFollow * dt);
+  hook.pitch += (target - hook.pitch) * t;
 }
 
 export function getHookDrawPos(hook: ExplorationHook): { x: number; y: number } {
