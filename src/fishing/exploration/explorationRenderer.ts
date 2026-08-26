@@ -1,4 +1,5 @@
 import { getItemImagePath } from '../../data/shopConfig';
+import { getFishSwimBoyon } from '../../render/fishSwimStretch';
 import { drawWaterWarpPostEffect } from '../../render/waterWarp';
 import { explorationConfig, type ExplorationCamera } from './explorationConfig';
 import {
@@ -61,9 +62,8 @@ function drawFishSprite(
     Math.sin(timeSec * 1.7 + fish.phase) * 2.5 +
     Math.sin(timeSec * 0.9 + fish.phase * 1.3) * 1.5;
   const flip = fish.facing === 'right';
-  const breath =
-    Math.sin(timeSec * 1.05 + fish.phase) * 0.7 +
-    Math.sin(timeSec * 0.48 + fish.phase * 1.6) * 0.3;
+  const speed = Math.hypot(fish.vx, fish.vy);
+  const boyon = getFishSwimBoyon(timeSec, fish.phase, speed);
   const pecking =
     fish.state === 'bite' &&
     fish.biteKind === 'feint' &&
@@ -78,8 +78,8 @@ function drawFishSprite(
   const chew = chewing ? Math.sin(timeSec * 36 + fish.phase) : 0;
   const biteStretchX = chewing ? 1.05 + chew * 0.035 : 1;
   const biteStretchY = chewing ? 1.04 - chew * 0.03 : 1;
-  const stretchX = (1 + breath * 0.045) * peckStretchX * biteStretchX;
-  const stretchY = (1 - breath * 0.055) * peckStretchY * biteStretchY;
+  const stretchX = boyon.stretchX * peckStretchX * biteStretchX;
+  const stretchY = boyon.stretchY * peckStretchY * biteStretchY;
   const size = explorationConfig.fishShadowNativeSize * getFishShadowScale(fish.size, fish.fish.id);
 
   ctx.save();

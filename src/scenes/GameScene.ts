@@ -154,6 +154,7 @@ import {
   type AquariumFoodTier,
   type AquariumStatKey,
 } from '../data/aquariumConfig';
+import { getFishSwimBoyon } from '../render/fishSwimStretch';
 
 type UnifiedBookTab = 'inventory' | 'pedia' | 'skills' | 'achievement' | 'quest' | 'status' | 'aquarium';
 
@@ -1073,6 +1074,7 @@ export default class GameScene extends Phaser.Scene {
         <div class="catch-result-content">
           <div class="catch-result-main-block">
             <div class="catch-result-fish-wrap">
+              <img class="catch-result-kouka" src="/images/Fishing Result UI/kouka.svg" alt="" aria-hidden="true" draggable="false" />
               <img class="catch-result-fish-image" alt="fish" />
               <div class="catch-result-fish-emoji"></div>
             </div>
@@ -7975,12 +7977,8 @@ export default class GameScene extends Phaser.Scene {
 
       const baseFacesLeft = !AQUARIUM_RIGHT_FACING_FISH.has(entry.fishId);
       const flip = baseFacesLeft ? runtime.facing === 1 : runtime.facing === -1;
-      // ゆっくりした縦横の伸び縮み（呼吸／体幹のたわみ）。回転・移動は加えない
-      const breath =
-        Math.sin(timeSec * 1.05 + runtime.phase) * 0.7 +
-        Math.sin(timeSec * 0.48 + runtime.phase * 1.6) * 0.3;
-      const stretchX = 1 + breath * 0.045;
-      const stretchY = 1 - breath * 0.055;
+      const speed = Math.hypot(runtime.vx, runtime.vy);
+      const { stretchX, stretchY } = getFishSwimBoyon(timeSec, runtime.phase, speed);
 
       ctx.save();
       ctx.translate(runtime.x, runtime.y + swayY);
