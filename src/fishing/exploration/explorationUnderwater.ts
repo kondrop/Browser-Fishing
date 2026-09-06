@@ -55,6 +55,9 @@ export type ExplorationGodRay = {
 
 type DecoFishLayer = 'bg' | 'far';
 type DecoShadowTier = 'sm' | 'md' | 'lg';
+type DustLayerId = 'far' | 'mid' | 'fg';
+type FreshLayerId = keyof typeof explorationConfig.freshLayers;
+type FreshLayerDef = (typeof explorationConfig.freshLayers)[FreshLayerId];
 
 export type ExplorationDecoFish = {
   layer: DecoFishLayer;
@@ -66,10 +69,24 @@ export type ExplorationDecoFish = {
   phase: number;
 };
 
+export type ExplorationDust = {
+  layer: DustLayerId;
+  x: number;
+  y: number;
+  r: number;
+  alpha: number;
+  phase: number;
+  driftAmpX: number;
+  driftAmpY: number;
+  driftFreq: number;
+  warm: number;
+};
+
 export type ExplorationUnderwaterState = {
   bubbles: ExplorationBubble[];
   godRays: ExplorationGodRay[];
   decoFishes: ExplorationDecoFish[];
+  dust: ExplorationDust[];
   hookBubbleAcc: number;
   hookIntroBurstDone: boolean;
 };
@@ -79,6 +96,7 @@ export function createUnderwaterState(): ExplorationUnderwaterState {
     bubbles: [],
     godRays: [],
     decoFishes: [],
+    dust: [],
     hookBubbleAcc: 0,
     hookIntroBurstDone: false,
   };
@@ -179,6 +197,32 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+function getLayerDestW(layer: FreshLayerDef): number {
+  const { canvasW } = explorationConfig;
+  const { worldW } = getExplorationWorldSize();
+  const maxCamX = worldW - canvasW;
+  return Math.max(worldW, canvasW + maxCamX * layer.parallaxX);
+}
+
+function createDust(layer: DustLayerId): ExplorationDust {
+  const cfg = explorationConfig.dust[layer];
+  const destW = getLayerDestW(explorationConfig.freshLayers[layer]);
+  const { worldH } = getExplorationWorldSize();
+  const driftAmp = lerp(cfg.driftAmp[0], cfg.driftAmp[1], Math.random());
+  return {
+    layer,
+    x: Math.random() * destW,
+    y: Math.random() * worldH,
+    r: lerp(cfg.radius[0], cfg.radius[1], Math.random()),
+    alpha: lerp(cfg.alpha[0], cfg.alpha[1], Math.random()),
+    phase: Math.random() * Math.PI * 2,
+    driftAmpX: driftAmp,
+    driftAmpY: driftAmp * (0.5 + Math.random() * 0.55),
+    driftFreq: lerp(cfg.driftFreq[0], cfg.driftFreq[1], Math.random()),
+    warm: Math.random(),
+  };
+}
+
 function createDecoFish(layer: DecoFishLayer): ExplorationDecoFish {
   const { worldW, worldH } = getExplorationWorldSize();
   const cfg = explorationConfig.decoFish;
@@ -206,6 +250,7 @@ export function seedUnderwater(
   state.bubbles = [];
   state.godRays = [];
   state.decoFishes = [];
+  state.dust = [];
   state.hookBubbleAcc = 0;
   state.hookIntroBurstDone = false;
   const { canvasH } = explorationConfig;
@@ -224,6 +269,11 @@ export function seedUnderwater(
   const { bgCount, farCount } = explorationConfig.decoFish;
   for (let i = 0; i < bgCount; i++) state.decoFishes.push(createDecoFish('bg'));
   for (let i = 0; i < farCount; i++) state.decoFishes.push(createDecoFish('far'));
+  const dustLayers: DustLayerId[] = ['far', 'mid', 'fg'];
+  for (const layer of dustLayers) {
+    const count = explorationConfig.dust[layer].count;
+    for (let i = 0; i < count; i++) state.dust.push(createDust(layer));
+  }
 }
 
 export function tickUnderwater(
@@ -348,9 +398,6 @@ function drawGodRays(
   ctx.restore();
 }
 
-type FreshLayerId = keyof typeof explorationConfig.freshLayers;
-type FreshLayerDef = (typeof explorationConfig.freshLayers)[FreshLayerId];
-
 function freshLayerSrc(file: string): string {
   return `${explorationConfig.freshLayerDir}/${encodeURIComponent(file)}`;
 }
@@ -396,10 +443,8 @@ function drawParallaxLayer(
   layer: FreshLayerDef,
 ): void {
   if (!isImageReady(img)) return;
-  const { canvasW } = explorationConfig;
-  const { worldW, worldH } = getExplorationWorldSize();
-  const maxCamX = worldW - canvasW;
-  const destW = Math.max(worldW, canvasW + maxCamX * layer.parallaxX);
+  const { worldH } = getExplorationWorldSize();
+  const destW = getLayerDestW(layer);
   const destH = destW * (img.naturalHeight / img.naturalWidth);
   const shift = getLayerShift(camera, layer);
   const y = worldH - destH + shift.oy;
@@ -407,6 +452,45 @@ function drawParallaxLayer(
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(img, shift.ox, y, destW, destH);
   ctx.imageSmoothingEnabled = prevSmooth;
+}
+
+function drawDustLayer(
+  ctx: CanvasRenderingContext2D,
+  motes: ExplorationDust[],
+  camera: ExplorationCamera,
+  layerId: DustLayerId,
+  timeSec: number,
+): void {
+  const layer = explorationConfig.freshLayers[layerId];
+  const shift = getLayerShift(camera, layer);
+  const { canvasW, canvasH } = explorationConfig;
+  const viewL = camera.x - 6;
+  const viewR = camera.x + canvasW + 6;
+  const viewT = camera.y - 6;
+  const viewB = camera.y + canvasH + 6;
+  ctx.save();
+  for (const mote of motes) {
+    if (mote.layer !== layerId) continue;
+    const x =
+      mote.x + Math.sin(timeSec * mote.driftFreq + mote.phase) * mote.driftAmpX + shift.ox;
+    const y =
+      mote.y +
+      Math.cos(timeSec * mote.driftFreq * 0.73 + mote.phase) * mote.driftAmpY +
+      shift.oy;
+    if (x + mote.r < viewL || x - mote.r > viewR || y + mote.r < viewT || y - mote.r > viewB) {
+      continue;
+    }
+    const twinkle = 0.92 + 0.08 * Math.sin(timeSec * 0.7 + mote.phase * 1.7);
+    const a = mote.alpha * twinkle;
+    const wr = mote.warm;
+    const cr = Math.round(208 + wr * 28);
+    const cg = Math.round(228 - wr * 10);
+    const cb = Math.round(246 - wr * 42);
+    ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${a})`;
+    const d = mote.r < 0.85 ? 1 : mote.r < 1.5 ? 2 : Math.min(4, Math.round(mote.r * 2));
+    ctx.fillRect(Math.round(x) - Math.floor(d / 2), Math.round(y) - Math.floor(d / 2), d, d);
+  }
+  ctx.restore();
 }
 
 function drawDecoFishes(
@@ -465,7 +549,9 @@ export function drawUnderwaterBackground(
   drawDecoFishes(ctx, state.decoFishes, camera, 'bg', timeSec);
   drawParallaxLayer(ctx, freshLayerImages.far, camera, explorationConfig.freshLayers.far);
   drawDecoFishes(ctx, state.decoFishes, camera, 'far', timeSec);
+  drawDustLayer(ctx, state.dust, camera, 'far', timeSec);
   drawParallaxLayer(ctx, freshLayerImages.mid, camera, explorationConfig.freshLayers.mid);
+  drawDustLayer(ctx, state.dust, camera, 'mid', timeSec);
   drawGodRays(ctx, state.godRays, camera);
 }
 
@@ -474,6 +560,16 @@ export function drawUnderwaterParallaxForeground(
   camera: ExplorationCamera,
 ): void {
   drawParallaxLayer(ctx, freshLayerImages.fg, camera, explorationConfig.freshLayers.fg);
+}
+
+/** 前景の塵。魚シンボルより手前に重ねる */
+export function drawUnderwaterFrontDust(
+  ctx: CanvasRenderingContext2D,
+  state: ExplorationUnderwaterState,
+  camera: ExplorationCamera,
+  timeSec: number,
+): void {
+  drawDustLayer(ctx, state.dust, camera, 'fg', timeSec);
 }
 
 export function drawUnderwaterForeground(

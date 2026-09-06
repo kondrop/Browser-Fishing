@@ -1,3 +1,5 @@
+import { placeKiraInRect, startKiraField, type KiraFieldHandle } from './kiraSparks';
+
 /** HUD 所持金の桁数（金額表示.png の7スロット） */
 export const HUD_MONEY_DIGIT_COUNT = 7;
 export const HUD_MONEY_MAX = 9_999_999;
@@ -140,18 +142,25 @@ function renderHudDigits(digitEls: HTMLElement[], value: number): void {
 export class HudMoneyDisplay {
   private displayEl: HTMLElement | null = null;
   private digitEls: HTMLElement[] = [];
+  private kiraHost: HTMLElement | null = null;
+  private kiraHandle: KiraFieldHandle | null = null;
+  private kiraStopTimer = 0;
   private readonly animator: MoneyCountAnimator;
 
   constructor() {
     this.animator = new MoneyCountAnimator({
       onUpdate: (value) => this.render(value),
-      onCountingChange: (counting, delta) => applyCountingShake(this.displayEl, counting, delta),
+      onCountingChange: (counting, delta) => {
+        applyCountingShake(this.displayEl, counting, delta);
+        this.syncMoneyKira(counting && delta > 0);
+      },
     });
   }
 
   attach(root: HTMLElement): void {
     this.displayEl = root.querySelector('#money-display');
     this.digitEls = Array.from(root.querySelectorAll('#money-digits .money-display__digit'));
+    this.kiraHost = root.querySelector('.hud-money-kira');
   }
 
   setMoney(money: number, immediate = false): void {
@@ -162,8 +171,57 @@ export class HudMoneyDisplay {
     this.animator.go(clamped, immediate);
   }
 
+  /** 実際の所持金は変えず、増加カウント＋キラだけ再生する。戻り値はカウント時間(ms) */
+  previewGain(gain: number): number {
+    const mag = Math.max(0, Math.floor(gain));
+    if (mag <= 0) return 0;
+    const base = this.animator.target;
+    const next = clampHudMoney(base + mag);
+    const delta = next - base;
+    if (delta <= 0) return 0;
+    this.animator.go(next);
+    return moneyCountDurationMs(delta);
+  }
+
   destroy(): void {
+    this.clearKiraStopTimer();
+    this.kiraHandle?.destroy();
+    this.kiraHandle = null;
+    this.kiraHost?.classList.remove('is-playing');
     this.animator.destroy();
+  }
+
+  private syncMoneyKira(play: boolean): void {
+    this.clearKiraStopTimer();
+    if (!play) {
+      this.kiraHandle?.stop();
+      this.kiraStopTimer = window.setTimeout(() => {
+        this.kiraHandle?.destroy();
+        this.kiraHandle = null;
+        this.kiraHost?.classList.remove('is-playing');
+        this.kiraStopTimer = 0;
+      }, 700);
+      return;
+    }
+    if (!this.kiraHost || prefersReducedMotion()) return;
+    this.kiraHandle?.destroy();
+    this.kiraHost.classList.add('is-playing');
+    this.kiraHandle = startKiraField(this.kiraHost, {
+      count: 8 + Math.floor(Math.random() * 4),
+      sizes: [9, 9, 11],
+      durationMs: [480, 760],
+      startDelayMs: [0, 900],
+      loopDelayMs: [40, 180],
+      loop: true,
+      place: placeKiraInRect,
+    });
+  }
+
+  private clearKiraStopTimer(): void {
+    if (this.kiraStopTimer !== 0) {
+      window.clearTimeout(this.kiraStopTimer);
+      this.kiraStopTimer = 0;
+    }
   }
 
   private render(value: number): void {

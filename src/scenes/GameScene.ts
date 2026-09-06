@@ -3,7 +3,19 @@ import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
 import { rarityStars, getFishById, fishDatabase, rarityStarCount, rarityWeights, rarityColors, Habitat, Rarity, fishImageFileNames, getFishImagePath, type RarityBonuses } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
-import { loadPlayerData, savePlayerData, addFishToInventory, applyCatchRewards, swapCaughtFishIntoInventory, getInventoryCount, getInventoryDisplayOrder, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, generateRandomSize, getCastDistanceRatio, calculatePriceWithSizeBonus, getInventoryEntryBaseSellPrice, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp, isBigSizeRatio } from '../data/inventory';
+import { loadPlayerData, savePlayerData, addFishToInventory, applyCatchRewards, swapCaughtFishIntoInventory, getInventoryCount, getInventoryDisplayOrder, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, generateRandomSize, getCastDistanceRatio, calculatePriceWithSizeBonus, getInventoryEntryBaseSellPrice, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp, calculateLevel, isBigSizeRatio } from '../data/inventory';
+import {
+  clearHudExpOrbs,
+  expDisplayForTotal,
+  getElementCenter,
+  playExpBarCountUp,
+  playExpOrbFlight,
+  setExpBarCounting,
+  setExpBarLabel,
+  type HudExpAbsorbHandle,
+  type HudExpHold,
+  type Point,
+} from '../ui/hudExpAbsorb';
 import {
   SKILL_TREE_IDS,
   SKILL_TREE_LABELS,
@@ -26,6 +38,7 @@ import {
 } from '../data/achievementConfig';
 import {
   MAX_ACTIVE_QUESTS,
+  questConfigs,
   type QuestConfig,
 } from '../data/questConfig';
 import {
@@ -238,6 +251,7 @@ import {
 } from '../ui/fishingGaugeOverlay';
 import { PLAYER_HINTS, type PlayerHintContent } from '../ui/playerHintTexts';
 import { HudMoneyDisplay, TextMoneyDisplay } from '../ui/moneyDisplayCounter';
+import { placeKiraInRect, placeKiraOnEllipse, startKiraField, type KiraFieldHandle } from '../ui/kiraSparks';
 import { ExplorationController } from '../fishing/exploration/explorationController';
 import { explorationConfig } from '../fishing/exploration/explorationConfig';
 import { applyHookDepthToFightParams } from '../fishing/exploration/explorationFish';
@@ -256,8 +270,15 @@ const FishingState = {
 } as const;
 type FishingStateValue = typeof FishingState[keyof typeof FishingState];
 const CATCH_RESULT_FADE_MS = 300;
-/** リザルトUI調整用: true で開始時にサンプルを出しっぱなし。終わったら false */
-const DEBUG_CATCH_RESULT_PINNED = false;
+const CATCH_RESULT_LEAVE_MS = 450;
+const HUD_TOAST_HOLD_MS = 3000;
+type HudToast =
+  | { kind: 'quest'; quest: QuestConfig; moneyGain: number; expGain: number; rewardsReleased: boolean }
+  | { kind: 'achievement'; achievement: AchievementConfig };
+type HudExpPulse = { gain: number; origin?: Element | null };
+/** ポップアップ編集モード: true でリザルト/レベルアップ/クエスト達成を切り替え表示。終わったら false */
+const DEBUG_POPUP_EDIT_MODE = true;
+type DebugPopupEditKind = 'catch' | 'level' | 'quest';
 
 export default class GameScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -298,8 +319,31 @@ export default class GameScene extends Phaser.Scene {
   private resultTextTimer?: Phaser.Time.TimerEvent;
   private catchResultElement!: HTMLElement;
   private catchResultDimmerElement!: HTMLElement;
+  private levelUpPopupElement!: HTMLElement;
+  private levelUpKiraHandle: KiraFieldHandle | null = null;
   private catchResultTimer?: Phaser.Time.TimerEvent;
   private catchResultHideTimer?: Phaser.Time.TimerEvent;
+  /** リザルト閉鎖まで HUD の経験値表示を止め、スフィア吸収後にアニメする */
+  private hudExpHold: HudExpHold | null = null;
+  private hudExpAbsorbActive = false;
+  private hudExpAbsorbHandle: HudExpAbsorbHandle | null = null;
+  private catchResultExpOrigin: Point | null = null;
+  private debugCatchResultReplayBusy = false;
+  private debugReplayMoneyBusy = false;
+  private debugPopupEditKind: DebugPopupEditKind = 'catch';
+  private achievementNotificationHideTimer: number | null = null;
+  private hudToastQueue: HudToast[] = [];
+  private hudToastPlaying = false;
+  private hudToastCurrent: HudToast | null = null;
+  /** クエスト報酬のうち、HUD にまだ乗せていない所持金 */
+  private hudMoneyPending = 0;
+  /** クエスト報酬のうち、HUD にまだ乗せていない EXP */
+  private hudExpPending = 0;
+  /** いま HUD に表示している EXP 総量 */
+  private hudExpShown = 0;
+  /** 釣果リザルト閉じ待ちの EXP（クエスト分を除く） */
+  private pendingCatchExpGain = 0;
+  private hudExpPulseQueue: HudExpPulse[] = [];
   /** バッグ満杯時: 放流／入れかえ待ちの釣果情報 */
   private catchBagDecisionPending: {
     fish: FishConfig;
@@ -904,6 +948,7 @@ export default class GameScene extends Phaser.Scene {
     if (checkAchievements(this.playerData).length > 0) {
       savePlayerData(this.playerData);
     }
+    this.hudExpShown = this.playerData.exp;
 
     const mainCfg = config.main;
 
@@ -1077,6 +1122,7 @@ export default class GameScene extends Phaser.Scene {
               <img class="catch-result-kouka" src="/images/Fishing Result UI/kouka.svg" alt="" aria-hidden="true" draggable="false" />
               <img class="catch-result-fish-image" alt="fish" />
               <div class="catch-result-fish-emoji"></div>
+              <div class="catch-result-kira" aria-hidden="true"></div>
             </div>
             <div class="catch-result-rarity-line"></div>
             <div class="catch-result-text-wrap">
@@ -1097,15 +1143,50 @@ export default class GameScene extends Phaser.Scene {
           </div>
         </div>
       </div>
+      <div id="level-up-popup" class="level-up-popup" style="display: none;" aria-hidden="true">
+        <img class="level-up-popup__kouka" src="/images/Fishing Result UI/kouka.svg" alt="" aria-hidden="true" draggable="false" />
+        <div class="level-up-popup__banner-wrap">
+          <img class="level-up-popup__banner" src="/images/lvup/lvup.png" alt="" draggable="false" />
+          <div class="level-up-popup__title" aria-label="LEVEL UP!">
+            <span class="level-up-popup__letter" style="--i: 0"><img src="/images/lvup/L.png" alt="" draggable="false" /></span>
+            <span class="level-up-popup__letter" style="--i: 1"><img src="/images/lvup/E.png" alt="" draggable="false" /></span>
+            <span class="level-up-popup__letter" style="--i: 2"><img src="/images/lvup/V.png" alt="" draggable="false" /></span>
+            <span class="level-up-popup__letter" style="--i: 3"><img src="/images/lvup/E.png" alt="" draggable="false" /></span>
+            <span class="level-up-popup__letter" style="--i: 4"><img src="/images/lvup/L.png" alt="" draggable="false" /></span>
+            <span class="level-up-popup__space" aria-hidden="true"></span>
+            <span class="level-up-popup__letter" style="--i: 5"><img src="/images/lvup/U.png" alt="" draggable="false" /></span>
+            <span class="level-up-popup__letter" style="--i: 6"><img src="/images/lvup/P.png" alt="" draggable="false" /></span>
+            <span class="level-up-popup__letter" style="--i: 7"><img src="/images/lvup/!.png" alt="" draggable="false" /></span>
+          </div>
+        </div>
+        <div class="level-up-popup__plate">
+          <img class="level-up-popup__plate-bg" src="/images/lvup/lvbg.png" alt="" draggable="false" />
+          <svg class="level-up-popup__stroke-filter" aria-hidden="true" focusable="false">
+            <filter id="level-up-glyph-stroke" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+              <feMorphology in="SourceAlpha" operator="dilate" radius="2" result="dilated" />
+              <feFlood flood-color="#2A0F00" result="color" />
+              <feComposite in="color" in2="dilated" operator="in" result="outline" />
+              <feMerge>
+                <feMergeNode in="outline" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </svg>
+          <div class="level-up-popup__levels"></div>
+        </div>
+        <div class="level-up-popup__kira" aria-hidden="true"></div>
+      </div>
     `;
     const tempDivResult = document.createElement('div');
     tempDivResult.innerHTML = catchResultHTML;
     this.catchResultDimmerElement = tempDivResult.children[0] as HTMLElement;
     this.catchResultElement = tempDivResult.children[1] as HTMLElement;
+    this.levelUpPopupElement = tempDivResult.children[2] as HTMLElement;
     document.body.appendChild(this.catchResultDimmerElement);
     document.body.appendChild(this.catchResultElement);
-    if (DEBUG_CATCH_RESULT_PINNED) {
-      this.debugPinCatchResultPopup();
+    document.body.appendChild(this.levelUpPopupElement);
+    if (DEBUG_POPUP_EDIT_MODE) {
+      this.debugApplyPopupEditKind('catch');
     }
 
     this.createCatchBagFullUI();
@@ -1668,45 +1749,49 @@ export default class GameScene extends Phaser.Scene {
           <div id="top-row">
             <div id="level-section">
               <div id="level-text" class="level-label-box">
-                <div class="level-character-icon" aria-hidden="true">
-                  <div class="level-character-icon__inner">
-                    <canvas id="status-character-icon-canvas" width="56" height="56" class="level-character-icon__canvas"></canvas>
-                  </div>
-                </div>
                 <div class="level-info">
-                  <div id="player-name" class="player-name">${playerName}</div>
-                  <div class="level-row" aria-label="level">
-                    <span class="level-label-prefix">Lv.</span>
-                    <span class="level-label-value">1</span>
+                  <div class="level-info-top">
+                    <div id="player-name" class="player-name">${playerName}</div>
+                    <div class="level-row" aria-label="level">
+                      <span class="level-label-prefix">LV.</span>
+                      <span class="level-label-value">1</span>
+                    </div>
+                  </div>
+                  <div class="level-info-exp">
+                    <span class="level-exp-label">EXP</span>
+                    <div id="exp-bar-bg" aria-label="exp">
+                      <div id="exp-bar-ticks" aria-hidden="true">
+                        <div class="exp-tick exp-tick--thick"></div>
+                        <div class="exp-tick exp-tick--thin"></div>
+                        <div class="exp-tick exp-tick--thick"></div>
+                        <div class="exp-tick exp-tick--thin"></div>
+                        <div class="exp-tick exp-tick--thick"></div>
+                        <div class="exp-tick exp-tick--thin"></div>
+                        <div class="exp-tick exp-tick--thick"></div>
+                        <div class="exp-tick exp-tick--thin"></div>
+                        <div class="exp-tick exp-tick--thick"></div>
+                        <div class="exp-tick exp-tick--thin"></div>
+                        <div class="exp-tick exp-tick--thick"></div>
+                        <div class="exp-tick exp-tick--thin"></div>
+                        <div class="exp-tick exp-tick--thick"></div>
+                        <div class="exp-tick exp-tick--thin"></div>
+                        <div class="exp-tick exp-tick--thick"></div>
+                        <div class="exp-tick exp-tick--thin"></div>
+                      </div>
+                      <div id="exp-bar-fill"></div>
+                      <div id="exp-bar-text">
+                        <span class="exp-bar-current">0</span>
+                        <span class="exp-bar-sep"> / </span>
+                        <span class="exp-bar-needed">1</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-
             <div id="top-right-col">
-              <div id="exp-bar-bg" aria-label="exp">
-                <div id="exp-bar-ticks" aria-hidden="true">
-                  <div class="exp-tick exp-tick--thick"></div>
-                  <div class="exp-tick exp-tick--thin"></div>
-                  <div class="exp-tick exp-tick--thick"></div>
-                  <div class="exp-tick exp-tick--thin"></div>
-                  <div class="exp-tick exp-tick--thick"></div>
-                  <div class="exp-tick exp-tick--thin"></div>
-                  <div class="exp-tick exp-tick--thick"></div>
-                  <div class="exp-tick exp-tick--thin"></div>
-                  <div class="exp-tick exp-tick--thick"></div>
-                  <div class="exp-tick exp-tick--thin"></div>
-                  <div class="exp-tick exp-tick--thick"></div>
-                  <div class="exp-tick exp-tick--thin"></div>
-                  <div class="exp-tick exp-tick--thick"></div>
-                  <div class="exp-tick exp-tick--thin"></div>
-                  <div class="exp-tick exp-tick--thick"></div>
-                  <div class="exp-tick exp-tick--thin"></div>
-                </div>
-                <div id="exp-bar-fill"></div>
-                <div id="exp-bar-text"></div>
-              </div>
               <div id="money-display" class="money-display" aria-label="所持金">
+                <div class="hud-money-kira" aria-hidden="true"></div>
                 <div id="money-digits" class="money-display__digits" aria-hidden="true">
                   <span class="money-display__digit"></span>
                   <span class="money-display__digit"></span>
@@ -1739,9 +1824,18 @@ export default class GameScene extends Phaser.Scene {
         </div>
         
         <!-- 左下: デバッグ用ボタン -->
-        <div id="debug-settings-btn-wrap" style="position: absolute; bottom: 16px; left: 16px; pointer-events: auto; display: flex; flex-direction: column; gap: 8px;">
+        <div id="debug-settings-btn-wrap" style="position: absolute; bottom: 52px; left: 16px; pointer-events: auto; display: flex; flex-direction: column; gap: 8px;">
           <button type="button" id="character-settings-btn" class="nes-btn is-small">キャラ設定</button>
           <button type="button" id="balance-debug-btn" class="nes-btn is-small">バランス</button>
+          ${DEBUG_POPUP_EDIT_MODE ? `
+          <div id="debug-popup-edit-tabs" style="display: flex; flex-direction: column; gap: 6px;">
+            <button type="button" class="nes-btn is-small" data-popup-edit="catch">リザルト</button>
+            <button type="button" class="nes-btn is-small" data-popup-edit="level">レベルアップ</button>
+            <button type="button" class="nes-btn is-small" data-popup-edit="quest">クエスト達成</button>
+          </div>
+          <button type="button" id="catch-result-replay-btn" class="nes-btn is-small">経験値演出</button>
+          <button type="button" id="catch-result-money-replay-btn" class="nes-btn is-small">所持金演出</button>
+          ` : ''}
         </div>
 
         <div id="quest-hud" class="quest-hud" aria-label="進行中クエスト">
@@ -1779,6 +1873,25 @@ export default class GameScene extends Phaser.Scene {
         }
         this.openBalanceDebug();
       });
+    }
+    const catchResultReplayBtn = document.getElementById('catch-result-replay-btn');
+    if (catchResultReplayBtn) {
+      catchResultReplayBtn.addEventListener('click', () => this.debugReplayCatchResultAnimation());
+    }
+    const catchResultMoneyReplayBtn = document.getElementById('catch-result-money-replay-btn');
+    if (catchResultMoneyReplayBtn) {
+      catchResultMoneyReplayBtn.addEventListener('click', () => this.debugReplayMoneyAnimation());
+    }
+    if (DEBUG_POPUP_EDIT_MODE) {
+      this.statusUIElement?.querySelectorAll<HTMLButtonElement>('[data-popup-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const kind = btn.getAttribute('data-popup-edit');
+          if (kind === 'catch' || kind === 'level' || kind === 'quest') {
+            this.debugApplyPopupEditKind(kind);
+          }
+        });
+      });
+      this.debugSyncPopupEditTabs();
     }
 
     this.renderStatusCharacterIcon(characterId, this.getSelectedColor());
@@ -1911,8 +2024,8 @@ export default class GameScene extends Phaser.Scene {
       this.lastHudBaitCount = equippedBaitCount;
     }
     
-    // 所持金（変更時のみ・桁リールでカウント）
-    const money = this.playerData.money;
+    // 所持金（変更時のみ・桁リールでカウント）。クエスト報酬は結果表示の閉じ際まで据え置き
+    const money = Math.max(0, this.playerData.money - this.hudMoneyPending);
     if (money !== this.lastMoney) {
       this.hudMoneyDisplay.setMoney(money, this.lastMoney < 0);
       this.lastMoney = money;
@@ -1948,18 +2061,20 @@ export default class GameScene extends Phaser.Scene {
       this.lastMaxInventorySlots = maxSlots;
     }
     
-    // レベル（変更時のみ更新）
-    const level = this.playerData.level;
-    if (level !== this.lastLevel) {
-      const levelContainer = this.statusUIElement.querySelector('#level-text');
-      const levelValueEl = this.statusUIElement.querySelector('#level-text .level-label-value');
-      if (levelValueEl) {
-        levelValueEl.textContent = String(level);
-      } else if (levelContainer) {
-        // フォールバック（古いマークアップ向け）
-        (levelContainer as HTMLElement).textContent = `Lv. ${level}`;
+    // レベル（変更時のみ更新）。リザルト閉鎖アニメ待ちの間は据え置き
+    if (!this.isHudExpFrozen()) {
+      const level = this.playerData.level;
+      if (level !== this.lastLevel) {
+        const levelContainer = this.statusUIElement.querySelector('#level-text');
+        const levelValueEl = this.statusUIElement.querySelector('#level-text .level-label-value');
+        if (levelValueEl) {
+          levelValueEl.textContent = String(level);
+        } else if (levelContainer) {
+          // フォールバック（古いマークアップ向け）
+          (levelContainer as HTMLElement).textContent = `Lv. ${level}`;
+        }
+        this.lastLevel = level;
       }
-      this.lastLevel = level;
     }
 
     // プレイヤー名（変更時のみ更新）
@@ -1970,24 +2085,25 @@ export default class GameScene extends Phaser.Scene {
       this.lastPlayerName = playerName;
     }
     
-    // 経験値バー（変更時のみ更新）
-    const expProgress = getExpProgress(this.playerData);
-    if (Math.abs(expProgress - this.lastExpProgress) > 0.001) {
-      const expBarFill = this.statusUIElement.querySelector('#exp-bar-fill') as HTMLElement;
-      if (expBarFill) expBarFill.style.width = `${expProgress * 100}%`;
-      this.lastExpProgress = expProgress;
-    }
+    // 経験値バー（変更時のみ更新）。リザルト閉鎖アニメ待ちの間は据え置き
+    if (!this.isHudExpFrozen()) {
+      this.hudExpShown = this.playerData.exp;
+      const expProgress = getExpProgress(this.playerData);
+      if (Math.abs(expProgress - this.lastExpProgress) > 0.001) {
+        const expBarFill = this.statusUIElement.querySelector('#exp-bar-fill') as HTMLElement;
+        if (expBarFill) expBarFill.style.width = `${expProgress * 100}%`;
+        this.lastExpProgress = expProgress;
+      }
 
-    // 経験値テキスト（常に最新を表示）
-    const expBarText = this.statusUIElement.querySelector('#exp-bar-text') as HTMLElement | null;
-    if (expBarText) {
-      const currentLevelExp = getRequiredExp(this.playerData.level);
-      const nextLevelExp = getRequiredExp(this.playerData.level + 1);
-      const expInCurrentLevel = Math.max(0, this.playerData.exp - currentLevelExp);
-      const expNeededForNextLevel = Math.max(1, nextLevelExp - currentLevelExp);
-      const currentDisplay = Math.floor(expInCurrentLevel);
-      const nextDisplay = Math.floor(expNeededForNextLevel);
-      expBarText.textContent = `${currentDisplay} / ${nextDisplay}`;
+      // 経験値テキスト（常に最新を表示）
+      const expBarText = this.statusUIElement.querySelector('#exp-bar-text') as HTMLElement | null;
+      if (expBarText) {
+        const currentLevelExp = getRequiredExp(this.playerData.level);
+        const nextLevelExp = getRequiredExp(this.playerData.level + 1);
+        const expInCurrentLevel = Math.max(0, this.playerData.exp - currentLevelExp);
+        const expNeededForNextLevel = Math.max(1, nextLevelExp - currentLevelExp);
+        setExpBarLabel(this.statusUIElement, Math.floor(expInCurrentLevel), Math.floor(expNeededForNextLevel));
+      }
     }
 
     if (this.unifiedBookOpen && this.unifiedBookTab === 'status' && this.unifiedBookUIElement) {
@@ -2471,6 +2587,7 @@ export default class GameScene extends Phaser.Scene {
     
     const earnings = sellAllFish(this.playerData);
 
+    const fromExp = this.playerData.exp;
     const completedQuests = onQuestFishSold(this.playerData, count, earnings);
     completedQuests.forEach((quest) => this.showQuestNotification(quest));
     if (completedQuests.length > 0 && this.unifiedBookOpen && this.unifiedBookTab === 'quest') {
@@ -2485,7 +2602,7 @@ export default class GameScene extends Phaser.Scene {
     });
     
     savePlayerData(this.playerData);
-    this.updateStatusUI();
+    this.commitHudExpReward(fromExp);
     this.updateQuestHudUI();
     
     // 統合BookUIが開いている場合はリストを更新
@@ -3973,6 +4090,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.currentFish) {
         const isNewSpecies = !this.playerData.caughtFishIds.has(this.currentFish.id);
+        const expBeforeCatch = this.playerData.exp;
         // インベントリの空きをチェック
         const currentCount = getInventoryCount(this.playerData);
         if (currentCount >= this.playerData.maxInventorySlots) {
@@ -4022,6 +4140,7 @@ export default class GameScene extends Phaser.Scene {
             }
 
             savePlayerData(this.playerData);
+            this.holdHudExpUntilResultClose(expBeforeCatch);
             this.updateStatusUI();
             this.updateQuestHudUI();
 
@@ -4113,6 +4232,7 @@ export default class GameScene extends Phaser.Scene {
         }
         
         savePlayerData(this.playerData);
+        this.holdHudExpUntilResultClose(expBeforeCatch);
         this.updateStatusUI();
         this.updateQuestHudUI();
 
@@ -4266,12 +4386,34 @@ export default class GameScene extends Phaser.Scene {
     showAt(0);
   }
 
-  /** リザルトUI調整用: 開始時にサンプルを出しっぱなしにする */
-  private debugPinCatchResultPopup() {
+  /** ポップアップ編集モード: リザルト / レベルアップ / クエスト達成を切り替え */
+  private debugApplyPopupEditKind(kind: DebugPopupEditKind) {
+    this.debugPopupEditKind = kind;
+    this.debugSyncPopupEditTabs();
+    if (kind === 'quest') {
+      this.debugPinQuestPopup();
+      return;
+    }
+    this.hideAchievementNotification({ immediate: true });
+    if (kind === 'level') {
+      this.debugPinLevelPopup();
+      return;
+    }
+    this.debugPinCatchResultPopup();
+  }
+
+  private debugSyncPopupEditTabs() {
+    this.statusUIElement?.querySelectorAll<HTMLButtonElement>('[data-popup-edit]').forEach((btn) => {
+      const on = btn.getAttribute('data-popup-edit') === this.debugPopupEditKind;
+      btn.classList.toggle('is-primary', on);
+    });
+  }
+
+  private debugSampleCatchParams() {
     const fish = getFishById('fish_black_bass') ?? fishDatabase.find((f) => !f.id.startsWith('junk_')) ?? fishDatabase[0];
-    if (!fish) return;
+    if (!fish) return null;
     const size = Math.round(fish.maxSize * 0.85 * 10) / 10;
-    this.renderCatchResultPopup('catch', {
+    return {
       fish,
       fishSize: size,
       stars: rarityStars[fish.rarity],
@@ -4280,6 +4422,103 @@ export default class GameScene extends Phaser.Scene {
       sizeRatio: size / fish.maxSize,
       isNewSpecies: true,
       level: this.playerData?.level ?? 1,
+    };
+  }
+
+  /** リザルトUI調整用: 開始時にサンプルを出しっぱなしにする */
+  private debugPinCatchResultPopup() {
+    const params = this.debugSampleCatchParams();
+    if (!params) return;
+    this.renderCatchResultPopup('catch', params);
+    this.catchResultElement?.querySelectorAll('.hud-exp-orb').forEach((el) => el.remove());
+  }
+
+  private debugPinLevelPopup() {
+    const params = this.debugSampleCatchParams();
+    if (!params) return;
+    this.renderCatchResultPopup('level', {
+      ...params,
+      level: (this.playerData?.level ?? 1) + 1,
+    });
+  }
+
+  private debugPinQuestPopup() {
+    this.hideCatchResultPopup({ force: true, immediate: true, skipExpAbsorb: true });
+    const withThumb = [
+      ...getAvailableQuests(this.playerData),
+      ...getActiveQuests(this.playerData),
+    ].find((q) => this.resolveQuestCardImagePath(q));
+    const fallbackFish = getFishById('fish_black_bass') ?? fishDatabase.find((f) => !f.id.startsWith('junk_'));
+    const quest = withThumb ?? (fallbackFish
+      ? {
+          ...(questConfigs.find((q) => q.reward?.exp && q.reward?.money) ?? questConfigs[0]),
+          thumbnailImage: getFishImagePath(fallbackFish.id),
+        }
+      : questConfigs.find((q) => q.reward?.exp && q.reward?.money) ?? questConfigs[0]);
+    if (!quest) return;
+    this.showQuestNotification(quest, { persist: true });
+  }
+
+  /** リザルトUI調整用: 閉じる→スフィア→バー増加を通しで再生する */
+  private debugReplayCatchResultAnimation() {
+    if (!DEBUG_POPUP_EDIT_MODE || this.debugCatchResultReplayBusy) return;
+    this.debugCatchResultReplayBusy = true;
+    const replayBtn = document.getElementById('catch-result-replay-btn') as HTMLButtonElement | null;
+    if (replayBtn) replayBtn.disabled = true;
+
+    const playEnter = () => {
+      this.debugApplyPopupEditKind(this.debugPopupEditKind);
+      this.debugCatchResultReplayBusy = false;
+      if (replayBtn) replayBtn.disabled = false;
+    };
+
+    const waitThenPin = () => {
+      if (this.hudExpHold || this.hudExpAbsorbActive) {
+        this.time.delayedCall(80, waitThenPin);
+        return;
+      }
+      this.time.delayedCall(180, playEnter);
+    };
+
+    const previewGain = Math.max(1, getExpByRarity(
+      (getFishById('fish_black_bass') ?? fishDatabase.find((f) => !f.id.startsWith('junk_')) ?? fishDatabase[0])?.rarity ?? 1,
+    ));
+    this.cancelHudExpAbsorb();
+    this.hudExpHold = {
+      fromExp: this.playerData.exp,
+      toExp: this.playerData.exp + previewGain,
+    };
+    this.hudExpAbsorbActive = false;
+
+    const isHidden = this.isCatchOrLevelPopupHidden();
+    if (isHidden) {
+      this.beginHudExpAbsorbFromResult({ immediate: true });
+      waitThenPin();
+      return;
+    }
+
+    this.hideCatchResultPopup({
+      force: true,
+      onHidden: waitThenPin,
+    });
+  }
+
+  /** リザルトUI調整用: 所持金カウント＋キラを再生し、金額は元に戻す */
+  private debugReplayMoneyAnimation() {
+    if (!DEBUG_POPUP_EDIT_MODE || this.debugReplayMoneyBusy) return;
+    const actual = this.playerData.money;
+    const previewGain = 2000;
+    const duration = this.hudMoneyDisplay.previewGain(previewGain);
+    if (duration <= 0) return;
+
+    this.debugReplayMoneyBusy = true;
+    const replayBtn = document.getElementById('catch-result-money-replay-btn') as HTMLButtonElement | null;
+    if (replayBtn) replayBtn.disabled = true;
+
+    this.time.delayedCall(duration + 800, () => {
+      this.hudMoneyDisplay.setMoney(actual, true);
+      this.debugReplayMoneyBusy = false;
+      if (replayBtn) replayBtn.disabled = false;
     });
   }
 
@@ -4297,6 +4536,11 @@ export default class GameScene extends Phaser.Scene {
     }
   ) {
     if (!this.catchResultElement) return;
+    if (kind === 'level') {
+      this.showLevelUpPopup(params.level);
+      return;
+    }
+    this.hideLevelUpPopupImmediate();
 
     const mainLine = this.catchResultElement.querySelector('.catch-result-main-line') as HTMLElement | null;
     const rarityLine = this.catchResultElement.querySelector('.catch-result-rarity-line') as HTMLElement | null;
@@ -4355,6 +4599,7 @@ export default class GameScene extends Phaser.Scene {
       'catch-result-popup--junk',
       kind === 'catch' && params.fish.id.startsWith('junk_'),
     );
+    this.syncCatchResultKira(kind, params.fish.id.startsWith('junk_'));
     expValue.textContent = `+${params.exp.toLocaleString()}`;
     expChip.style.display = kind === 'catch' ? 'inline-flex' : 'none';
 
@@ -4368,20 +4613,133 @@ export default class GameScene extends Phaser.Scene {
       rarityLine.textContent = `自動売却 +${params.price.toLocaleString()} G`;
       rarityLine.style.color = '';
       metaRow.style.display = 'none';
-    } else {
-      mainLine.textContent = 'レベルアップ！';
-      rarityLine.textContent = `Lv.${params.level} になった`;
-      rarityLine.style.color = '';
-      metaRow.style.display = 'none';
     }
 
     this.catchResultElement.classList.remove('is-visible');
+    this.catchResultElement.classList.remove('is-leaving');
     this.catchResultElement.classList.add('is-entering');
     this.catchResultElement.style.display = 'flex';
     this.showCatchResultDimmer();
     void this.catchResultElement.offsetWidth;
     this.catchResultElement.classList.remove('is-entering');
     this.catchResultElement.classList.add('is-visible');
+    if (kind === 'catch') {
+      requestAnimationFrame(() => {
+        this.catchResultExpOrigin = getElementCenter(
+          this.catchResultElement?.querySelector('.catch-result-exp-chip'),
+        );
+      });
+    }
+  }
+
+  private showLevelUpPopup(newLevel: number) {
+    if (!this.levelUpPopupElement) return;
+    if (this.catchResultHideTimer) {
+      this.catchResultHideTimer.remove(false);
+      this.catchResultHideTimer = undefined;
+    }
+    this.catchResultElement.classList.remove('is-entering', 'is-visible', 'is-leaving');
+    this.catchResultElement.style.display = 'none';
+
+    const fromLevel = Math.max(1, newLevel - 1);
+    this.fillLevelUpLevelGlyphs(fromLevel, newLevel);
+
+    this.levelUpPopupElement.classList.remove('is-visible');
+    this.levelUpPopupElement.classList.remove('is-leaving');
+    this.levelUpPopupElement.classList.add('is-entering');
+    this.levelUpPopupElement.style.display = 'flex';
+    this.levelUpPopupElement.setAttribute('aria-hidden', 'false');
+    this.showCatchResultDimmer();
+    void this.levelUpPopupElement.offsetWidth;
+    this.levelUpPopupElement.classList.remove('is-entering');
+    this.levelUpPopupElement.classList.add('is-visible');
+    this.startLevelUpKira();
+  }
+
+  private fillLevelUpLevelGlyphs(fromLevel: number, toLevel: number) {
+    const host = this.levelUpPopupElement?.querySelector('.level-up-popup__levels');
+    if (!host) return;
+
+    const glyphs: { src: string; kind: 'lv' | 'digit' | 'arrow'; alt: string }[] = [];
+    const pushLevel = (value: number) => {
+      glyphs.push({ src: '/images/lvup/lv.png', kind: 'lv', alt: 'Lv.' });
+      for (const ch of String(value)) {
+        glyphs.push({ src: `/images/lvup/0${ch}.png`, kind: 'digit', alt: ch });
+      }
+    };
+    pushLevel(fromLevel);
+    glyphs.push({ src: '/images/lvup/arrow.png', kind: 'arrow', alt: '->' });
+    pushLevel(toLevel);
+
+    host.replaceChildren();
+    host.setAttribute('aria-label', `Lv.${fromLevel} -> Lv.${toLevel}`);
+    glyphs.forEach((glyph, i) => {
+      const span = document.createElement('span');
+      span.className = 'level-up-popup__letter';
+      if (glyph.kind !== 'digit') {
+        span.classList.add(`level-up-popup__letter--${glyph.kind}`);
+      }
+      span.style.setProperty('--i', String(i));
+      const img = document.createElement('img');
+      img.src = glyph.src;
+      img.alt = glyph.alt;
+      img.draggable = false;
+      span.appendChild(img);
+      host.appendChild(span);
+    });
+  }
+
+  private startLevelUpKira() {
+    const host = this.levelUpPopupElement?.querySelector('.level-up-popup__kira');
+    if (!host) return;
+    this.levelUpKiraHandle?.destroy();
+    this.levelUpKiraHandle = startKiraField(host, {
+      count: 26 + Math.floor(Math.random() * 6),
+      sizes: [11, 13, 15, 18],
+      durationMs: [720, 1200],
+      startDelayMs: [0, 480],
+      loopDelayMs: [30, 180],
+      loop: true,
+      place: placeKiraInRect,
+    });
+  }
+
+  private stopLevelUpKira() {
+    this.levelUpKiraHandle?.destroy();
+    this.levelUpKiraHandle = null;
+  }
+
+  private hideLevelUpPopupImmediate() {
+    if (!this.levelUpPopupElement) return;
+    this.stopLevelUpKira();
+    this.levelUpPopupElement.classList.remove('is-entering', 'is-visible', 'is-leaving');
+    this.levelUpPopupElement.style.display = 'none';
+    this.levelUpPopupElement.setAttribute('aria-hidden', 'true');
+  }
+
+  private isCatchOrLevelPopupHidden(): boolean {
+    const catchHidden = !this.catchResultElement || this.catchResultElement.style.display === 'none';
+    const levelHidden = !this.levelUpPopupElement || this.levelUpPopupElement.style.display === 'none';
+    return catchHidden && levelHidden;
+  }
+
+  private syncCatchResultKira(kind: 'catch' | 'bag' | 'level', isJunk: boolean) {
+    const host = this.catchResultElement?.querySelector('.catch-result-kira');
+    if (!host) return;
+    if (kind !== 'catch' || isJunk) {
+      host.replaceChildren();
+      return;
+    }
+
+    startKiraField(host, {
+      count: 7 + Math.floor(Math.random() * 3),
+      sizes: [9, 9, 11],
+      durationMs: [700, 1100],
+      startDelayMs: [0, 1600],
+      loopDelayMs: [60, 280],
+      loop: true,
+      place: (spark) => placeKiraOnEllipse(spark, 44, 24),
+    });
   }
 
   private showCatchResultDimmer() {
@@ -4397,9 +4755,11 @@ export default class GameScene extends Phaser.Scene {
   private hideCatchResultPopup(options?: {
     immediate?: boolean;
     keepDimmer?: boolean;
+    force?: boolean;
+    skipExpAbsorb?: boolean;
     onHidden?: () => void;
   }) {
-    if (DEBUG_CATCH_RESULT_PINNED) return;
+    if (DEBUG_POPUP_EDIT_MODE && !options?.force) return;
     if (!this.catchResultElement) return;
     if (this.catchResultTimer) {
       this.catchResultTimer.remove(false);
@@ -4411,11 +4771,18 @@ export default class GameScene extends Phaser.Scene {
     }
 
     const keepDimmer = !!options?.keepDimmer;
-    const isAlreadyHidden = this.catchResultElement.style.display === 'none';
+    const isAlreadyHidden = this.isCatchOrLevelPopupHidden();
+    if (options?.skipExpAbsorb) {
+      this.commitPendingCatchExpToHud(true);
+    } else {
+      this.beginHudExpAbsorbFromResult({ immediate: !!options?.immediate || isAlreadyHidden });
+    }
     const finalizeHide = () => {
       this.catchResultElement.classList.remove('is-entering');
       this.catchResultElement.classList.remove('is-visible');
+      this.catchResultElement.classList.remove('is-leaving');
       this.catchResultElement.style.display = 'none';
+      this.hideLevelUpPopupImmediate();
       if (!keepDimmer) {
         this.finalizeCatchResultDimmerHide();
       }
@@ -4429,10 +4796,15 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.catchResultElement.classList.remove('is-visible');
+    this.catchResultElement.classList.add('is-leaving');
+    if (this.levelUpPopupElement && this.levelUpPopupElement.style.display !== 'none') {
+      this.levelUpPopupElement.classList.remove('is-visible');
+      this.levelUpPopupElement.classList.add('is-leaving');
+    }
     if (!keepDimmer) {
       this.catchResultDimmerElement?.classList.remove('is-visible');
     }
-    this.catchResultHideTimer = this.time.delayedCall(CATCH_RESULT_FADE_MS, finalizeHide);
+    this.catchResultHideTimer = this.time.delayedCall(CATCH_RESULT_LEAVE_MS, finalizeHide);
   }
 
   private hideCatchResultDimmer(immediate = false) {
@@ -4461,8 +4833,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private dismissCatchResultPopupByUser(): boolean {
-    if (DEBUG_CATCH_RESULT_PINNED) return false;
-    if (!this.catchResultElement || this.catchResultElement.style.display === 'none') {
+    if (DEBUG_POPUP_EDIT_MODE) {
+      if (this.debugPopupEditKind === 'catch') {
+        this.debugReplayCatchResultAnimation();
+      }
+      return true;
+    }
+    if (this.isCatchOrLevelPopupHidden()) {
       return false;
     }
     const pendingDecision = !!this.catchBagDecisionPending && this.catchBagDecisionPhase === null;
@@ -4479,6 +4856,184 @@ export default class GameScene extends Phaser.Scene {
       },
     });
     return true;
+  }
+
+  private isHudExpFrozen(): boolean {
+    return (
+      !!this.hudExpHold
+      || this.hudExpAbsorbActive
+      || this.hudExpPending > 0
+      || this.pendingCatchExpGain > 0
+      || this.hudExpPulseQueue.length > 0
+    );
+  }
+
+  private holdHudExpUntilResultClose(expBeforeCatch: number): void {
+    this.cancelHudExpAbsorb();
+    this.hudExpPulseQueue = [];
+    this.hudExpHold = null;
+    this.hudExpShown = expBeforeCatch;
+    this.applyHudExpDisplay(expBeforeCatch, false);
+    this.pendingCatchExpGain = Math.max(0, this.playerData.exp - this.hudExpPending - expBeforeCatch);
+    this.hudExpAbsorbActive = false;
+  }
+
+  /** クエスト/実績報酬など、釣果リザルト以外のEXP増加をHUD演出する */
+  private commitHudExpReward(_fromExp: number): void {
+    const toExp = this.playerData.exp - this.hudExpPending;
+    const gain = Math.max(0, toExp - this.hudExpShown);
+    this.updateStatusUI();
+    if (gain <= 0) return;
+    if (this.pendingCatchExpGain > 0) {
+      this.pendingCatchExpGain += gain;
+      return;
+    }
+    this.enqueueHudExpPulse(gain, this.statusUIElement?.querySelector('#quest-hud'));
+  }
+
+  private beginHudExpAbsorbFromResult(options?: { immediate?: boolean }): void {
+    const gain = this.pendingCatchExpGain;
+    this.pendingCatchExpGain = 0;
+    if (options?.immediate) {
+      this.commitPendingCatchExpToHud(true, gain);
+      return;
+    }
+    this.enqueueHudExpPulse(gain, this.catchResultElement?.querySelector('.catch-result-exp-chip'));
+  }
+
+  private commitPendingCatchExpToHud(immediate: boolean, gain = this.pendingCatchExpGain): void {
+    if (gain === this.pendingCatchExpGain) this.pendingCatchExpGain = 0;
+    if (gain <= 0) return;
+    this.hudExpShown += gain;
+    this.applyHudExpDisplay(this.hudExpShown, !immediate);
+    if (immediate) this.finishHudExpHold();
+  }
+
+  private enqueueHudExpPulse(gain: number, origin?: Element | null): void {
+    const mag = Math.max(0, Math.floor(gain));
+    if (mag <= 0) return;
+    this.hudExpPulseQueue.push({ gain: mag, origin });
+    this.pumpHudExpPulses();
+  }
+
+  private pumpHudExpPulses(): void {
+    if (this.hudExpAbsorbActive) return;
+    const next = this.hudExpPulseQueue.shift();
+    if (!next) return;
+    this.hudExpHold = { fromExp: this.hudExpShown, toExp: this.hudExpShown + next.gain };
+    this.beginHudExpAbsorb({ origin: next.origin });
+  }
+
+  private beginHudExpAbsorb(options?: { immediate?: boolean; origin?: Element | null }): void {
+    const hold = this.hudExpHold;
+    if (!hold || this.hudExpAbsorbActive) return;
+    this.hudExpAbsorbActive = true;
+
+    if (options?.immediate) {
+      this.applyHudExpDisplay(hold.toExp, false);
+      this.finishHudExpHold();
+      return;
+    }
+
+    const origin =
+      getElementCenter(options?.origin)
+      ?? this.catchResultExpOrigin
+      ?? getElementCenter(this.achievementNotificationElement)
+      ?? getElementCenter(this.statusUIElement?.querySelector('#quest-hud'));
+    const target = getElementCenter(this.statusUIElement?.querySelector('#exp-bar-bg'));
+    if (!origin || !target) {
+      this.applyHudExpDisplay(hold.toExp, false);
+      this.finishHudExpHold();
+      return;
+    }
+
+    const bar = this.statusUIElement?.querySelector('#exp-bar-bg') as HTMLElement | null;
+    bar?.classList.remove('is-exp-absorbing');
+
+    this.hudExpAbsorbHandle = playExpOrbFlight({
+      origin,
+      target,
+      gain: hold.toExp - hold.fromExp,
+      onAbsorbed: () => {
+        bar?.classList.add('is-exp-absorbing');
+        this.playHudExpBarCountUp(hold);
+      },
+    });
+  }
+
+  private playHudExpBarCountUp(hold: HudExpHold): void {
+    const fill = this.statusUIElement?.querySelector('#exp-bar-fill') as HTMLElement | null;
+    fill?.classList.add('is-hud-exp-animating');
+    this.hudExpAbsorbHandle = playExpBarCountUp({
+      fromExp: hold.fromExp,
+      toExp: hold.toExp,
+      getRequiredExp,
+      calculateLevel,
+      setLevel: (level) => {
+        const levelValueEl = this.statusUIElement?.querySelector('#level-text .level-label-value');
+        if (levelValueEl) levelValueEl.textContent = String(level);
+        this.lastLevel = level;
+      },
+      setFill: (progress01) => {
+        if (fill) fill.style.width = `${progress01 * 100}%`;
+        this.lastExpProgress = progress01;
+      },
+      setText: (current, needed) => {
+        setExpBarLabel(this.statusUIElement, current, needed);
+      },
+      setCounting: (counting) => {
+        setExpBarCounting(this.statusUIElement, counting);
+      },
+      onDone: () => {
+        fill?.classList.remove('is-hud-exp-animating');
+        this.statusUIElement?.querySelector('#exp-bar-bg')?.classList.remove('is-exp-absorbing');
+        setExpBarCounting(this.statusUIElement, false);
+        this.finishHudExpHold();
+      },
+    });
+  }
+
+  private applyHudExpDisplay(totalExp: number, animateFill: boolean): void {
+    const d = expDisplayForTotal(totalExp, getRequiredExp, calculateLevel);
+    const levelValueEl = this.statusUIElement?.querySelector('#level-text .level-label-value');
+    if (levelValueEl) levelValueEl.textContent = String(d.level);
+    const fill = this.statusUIElement?.querySelector('#exp-bar-fill') as HTMLElement | null;
+    if (fill) {
+      if (!animateFill) fill.classList.add('is-hud-exp-animating');
+      fill.style.width = `${d.progress * 100}%`;
+      if (!animateFill) {
+        void fill.offsetWidth;
+        fill.classList.remove('is-hud-exp-animating');
+      }
+    }
+    setExpBarLabel(this.statusUIElement, Math.floor(d.current), Math.floor(d.needed));
+    this.lastLevel = d.level;
+    this.lastExpProgress = d.progress;
+  }
+
+  private finishHudExpHold(): void {
+    if (this.hudExpHold) {
+      this.hudExpShown = this.hudExpHold.toExp;
+    }
+    this.hudExpHold = null;
+    this.hudExpAbsorbActive = false;
+    this.hudExpAbsorbHandle = null;
+    this.catchResultExpOrigin = null;
+    this.statusUIElement?.querySelector('#exp-bar-bg')?.classList.remove('is-exp-absorbing');
+    this.statusUIElement?.querySelector('#exp-bar-fill')?.classList.remove('is-hud-exp-animating');
+    setExpBarCounting(this.statusUIElement, false);
+    this.updateStatusUI();
+    this.pumpHudExpPulses();
+  }
+
+  private cancelHudExpAbsorb(): void {
+    this.hudExpAbsorbHandle?.cancel();
+    this.hudExpAbsorbHandle = null;
+    this.hudExpAbsorbActive = false;
+    clearHudExpOrbs();
+    this.statusUIElement?.querySelector('#exp-bar-bg')?.classList.remove('is-exp-absorbing');
+    this.statusUIElement?.querySelector('#exp-bar-fill')?.classList.remove('is-hud-exp-animating');
+    setExpBarCounting(this.statusUIElement, false);
   }
 
   // ============================================
@@ -6537,7 +7092,7 @@ export default class GameScene extends Phaser.Scene {
     this.closeAquariumBagPick();
     this.clearAquariumRemoveConfirm();
     savePlayerData(this.playerData);
-    this.preloadAquariumImages();
+    this.syncAquariumRuntimesPreserving({ replacedIndex: aquariumIndex });
     this.updateUnifiedBookList();
     this.updateUnifiedBookDetail();
     this.updateAquariumFoodHud();
@@ -6752,7 +7307,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** 水槽データとランタイムを差分同期（既存魚の位置・遊泳は維持） */
-  private syncAquariumRuntimesPreserving(opts?: { removedIndex?: number }) {
+  private syncAquariumRuntimesPreserving(opts?: { removedIndex?: number; replacedIndex?: number }) {
     this.preloadAquariumImages();
     const count = (this.playerData.aquarium ?? []).length;
     const prev = this.aquariumFishRuntimes;
@@ -6779,6 +7334,17 @@ export default class GameScene extends Phaser.Scene {
           }
           return fx;
         });
+      return;
+    }
+
+    if (opts?.replacedIndex !== undefined) {
+      const replaced = opts.replacedIndex;
+      let runtime = this.aquariumFishRuntimes.find((r) => r.aquariumIndex === replaced);
+      if (!runtime) {
+        runtime = this.createAquariumRuntime(replaced);
+        this.aquariumFishRuntimes.push(runtime);
+      }
+      this.spawnAquariumIntroBubbles(runtime.x, runtime.y);
       return;
     }
 
@@ -11704,32 +12270,168 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  showQuestNotification(quest: QuestConfig) {
+  showQuestNotification(quest: QuestConfig, options?: { persist?: boolean }) {
+    if (options?.persist) {
+      this.hideAchievementNotification({ immediate: true });
+      this.hudToastQueue = [];
+      this.hudToastPlaying = true;
+      this.hudToastCurrent = {
+        kind: 'quest',
+        quest,
+        moneyGain: 0,
+        expGain: 0,
+        rewardsReleased: true,
+      };
+      this.presentQuestNotification(quest, { persist: true });
+      return;
+    }
+    const moneyGain = Math.max(0, Math.floor(quest.reward?.money ?? 0));
+    const expGain = Math.max(0, Math.floor(quest.reward?.exp ?? 0));
+    this.hudMoneyPending += moneyGain;
+    this.hudExpPending += expGain;
+    this.hudToastQueue.push({ kind: 'quest', quest, moneyGain, expGain, rewardsReleased: false });
+    this.pumpHudToastQueue();
+  }
+
+  private pumpHudToastQueue() {
+    if (this.hudToastPlaying) return;
+    const next = this.hudToastQueue.shift();
+    if (!next) return;
+    this.hudToastPlaying = true;
+    this.hudToastCurrent = next;
+    if (next.kind === 'quest') {
+      this.presentQuestNotification(next.quest);
+      return;
+    }
+    this.presentAchievementNotification(next.achievement);
+  }
+
+  private releaseHudToastRewards(toast: HudToast | null) {
+    if (!toast || toast.kind !== 'quest' || toast.rewardsReleased) return;
+    toast.rewardsReleased = true;
+    if (toast.moneyGain > 0) {
+      this.hudMoneyPending = Math.max(0, this.hudMoneyPending - toast.moneyGain);
+      const visible = Math.max(0, this.playerData.money - this.hudMoneyPending);
+      this.hudMoneyDisplay.setMoney(visible);
+      this.lastMoney = visible;
+    }
+    if (toast.expGain > 0) {
+      this.hudExpPending = Math.max(0, this.hudExpPending - toast.expGain);
+      this.enqueueHudExpPulse(toast.expGain, this.achievementNotificationElement);
+    }
+  }
+
+  private snapQuestHudPending() {
+    this.hudMoneyPending = 0;
+    this.hudExpPending = 0;
+    this.hudMoneyDisplay.setMoney(this.playerData.money, true);
+    this.lastMoney = this.playerData.money;
+    this.hudExpShown = Math.max(0, this.playerData.exp - this.pendingCatchExpGain);
+    this.applyHudExpDisplay(this.hudExpShown, false);
+  }
+
+  private presentQuestNotification(quest: QuestConfig, options?: { persist?: boolean }) {
     const notification = this.achievementNotificationElement;
     const nameEl = notification.querySelector('#achievement-notification-name') as HTMLElement;
     const descEl = notification.querySelector('#achievement-notification-desc') as HTMLElement;
     const rewardEl = notification.querySelector('#achievement-notification-reward') as HTMLElement;
+    const rewardChips = notification.querySelector('.achievement-notification__reward-chips') as HTMLElement | null;
+    const thumbEl = notification.querySelector('#achievement-notification-thumb') as HTMLElement | null;
 
-    const title = notification.querySelector('div');
-    if (title) title.textContent = '📋 クエスト達成！';
-    if (nameEl) nameEl.textContent = `${quest.emoji} ${quest.name}`;
-    if (descEl) descEl.textContent = quest.description;
-
-    if (quest.reward) {
-      const rewards: string[] = [];
-      if (quest.reward.money) rewards.push(`💰 ${quest.reward.money}G`);
-      if (quest.reward.exp) rewards.push(`⭐ ${quest.reward.exp}EXP`);
-      if (rewardEl) rewardEl.textContent = rewards.length > 0 ? `報酬: ${rewards.join(' ')}` : '';
-    } else if (rewardEl) {
+    notification.classList.add('ui-frame-box', 'is-quest');
+    if (nameEl) nameEl.textContent = quest.name;
+    if (thumbEl) {
+      thumbEl.innerHTML = this.buildQuestCardIcon(quest);
+      thumbEl.hidden = false;
+    }
+    if (descEl) {
+      descEl.textContent = '';
+      descEl.hidden = true;
+    }
+    if (rewardEl) {
       rewardEl.textContent = '';
+      rewardEl.hidden = true;
     }
 
+    const money = quest.reward?.money ?? 0;
+    const exp = quest.reward?.exp ?? 0;
+    const moneyChip = rewardChips?.querySelector('[data-quest-reward="money"]') as HTMLElement | null;
+    const expChip = rewardChips?.querySelector('[data-quest-reward="exp"]') as HTMLElement | null;
+    const moneyValue = rewardChips?.querySelector('[data-quest-reward-money]') as HTMLElement | null;
+    const expValue = rewardChips?.querySelector('[data-quest-reward-exp]') as HTMLElement | null;
+    if (moneyValue) moneyValue.textContent = String(money);
+    if (expValue) expValue.textContent = String(exp);
+    moneyChip?.toggleAttribute('hidden', money <= 0);
+    expChip?.toggleAttribute('hidden', exp <= 0);
+    if (rewardChips) rewardChips.hidden = money <= 0 && exp <= 0;
+
+    this.clearAchievementNotificationHideTimer();
+    notification.classList.remove('is-visible', 'is-leaving');
+    notification.classList.add('ui-frame-box', 'is-quest', 'is-entering');
     notification.style.display = 'block';
-    setTimeout(() => {
+    notification.setAttribute('aria-hidden', 'false');
+    void notification.offsetWidth;
+    notification.classList.remove('is-entering');
+    notification.classList.add('is-visible');
+    if (options?.persist) return;
+    this.achievementNotificationHideTimer = window.setTimeout(() => {
+      this.hideAchievementNotification();
+    }, HUD_TOAST_HOLD_MS);
+  }
+
+  private clearAchievementNotificationHideTimer() {
+    if (this.achievementNotificationHideTimer != null) {
+      window.clearTimeout(this.achievementNotificationHideTimer);
+      this.achievementNotificationHideTimer = null;
+    }
+  }
+
+  private hideAchievementNotification(options?: { immediate?: boolean }) {
+    this.clearAchievementNotificationHideTimer();
+    const notification = this.achievementNotificationElement;
+    if (!notification) return;
+
+    const finalizeHide = () => {
+      this.clearAchievementNotificationHideTimer();
+      notification.classList.remove('ui-frame-box', 'is-quest', 'is-entering', 'is-visible', 'is-leaving');
       notification.style.display = 'none';
-      const titleReset = notification.querySelector('div');
+      notification.setAttribute('aria-hidden', 'true');
+      const rewardChips = notification.querySelector('.achievement-notification__reward-chips') as HTMLElement | null;
+      if (rewardChips) rewardChips.hidden = true;
+      const titleReset = notification.querySelector('.achievement-notification__title');
       if (titleReset) titleReset.textContent = '🏆 実績解除！';
-    }, 3000);
+      const thumbReset = notification.querySelector('#achievement-notification-thumb') as HTMLElement | null;
+      if (thumbReset) {
+        thumbReset.innerHTML = '';
+        thumbReset.hidden = true;
+      }
+      const continueQueue = this.hudToastPlaying && !options?.immediate;
+      this.hudToastPlaying = false;
+      this.hudToastCurrent = null;
+      if (options?.immediate) {
+        this.hudToastQueue = [];
+        this.snapQuestHudPending();
+        return;
+      }
+      if (continueQueue) this.pumpHudToastQueue();
+    };
+
+    const canAnimateLeave =
+      !options?.immediate &&
+      notification.classList.contains('is-quest') &&
+      notification.style.display !== 'none' &&
+      !notification.classList.contains('is-leaving');
+
+    if (!canAnimateLeave) {
+      if (!options?.immediate) this.releaseHudToastRewards(this.hudToastCurrent);
+      finalizeHide();
+      return;
+    }
+
+    this.releaseHudToastRewards(this.hudToastCurrent);
+    notification.classList.remove('is-visible', 'is-entering');
+    notification.classList.add('is-leaving');
+    this.achievementNotificationHideTimer = window.setTimeout(finalizeHide, CATCH_RESULT_LEAVE_MS);
   }
 
   // ============================================
@@ -13533,12 +14235,48 @@ export default class GameScene extends Phaser.Scene {
     document.body.appendChild(this.achievementUIElement);
 
     // 実績通知
+    const qcLetter = (file: string, i: number) =>
+      `<span class="quest-complete-letter" style="--i: ${i}"><img src="/images/lvup/QuestCompleted/${file}" alt="" draggable="false" /></span>`;
+    const qcLine = (files: string[], start: number) =>
+      `<div class="achievement-notification__quest-line">${files.map((file, n) => qcLetter(file, start + n)).join('')}</div>`;
     const notificationHTML = `
-      <div id="achievement-notification" style="display: none; position: fixed; top: 20px; right: 20px; z-index: 2000; background: rgba(0,0,0,0.9); border: 2px solid #ffd700; border-radius: 10px; padding: 15px; max-width: 300px; color: #fff; pointer-events: none;">
-        <div style="font-size: 24px; margin-bottom: 10px;">🏆 実績解除！</div>
-        <div id="achievement-notification-name" style="font-size: 18px; font-weight: bold; margin-bottom: 5px;"></div>
-        <div id="achievement-notification-desc" style="font-size: 14px; margin-bottom: 10px;"></div>
-        <div id="achievement-notification-reward" style="font-size: 12px; color: #ffd700;"></div>
+      <div id="achievement-notification" class="achievement-notification" style="display: none;" aria-hidden="true">
+        <div class="achievement-notification__title">🏆 実績解除！</div>
+        <div class="achievement-notification__quest-banner" aria-label="Quest Completed!">
+          <svg class="level-up-popup__stroke-filter" aria-hidden="true" focusable="false">
+            <filter id="quest-deco-stroke" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+              <feMorphology in="SourceAlpha" operator="dilate" radius="1" result="dilated" />
+              <feFlood flood-color="#381903" result="color" />
+              <feComposite in="color" in2="dilated" operator="in" result="outline" />
+              <feMerge>
+                <feMergeNode in="outline" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </svg>
+          <div class="achievement-notification__quest-line achievement-notification__quest-line--quest">
+            <span class="quest-complete-deco quest-complete-deco--gold" style="--i: 0"><img src="/images/lvup/QuestCompleted/egold.png" alt="" draggable="false" /></span>
+            ${qcLine(['Q.png', 'u.png', 'e.png', 's.png', 't.png'], 0)}
+            <span class="quest-complete-deco quest-complete-deco--fish" style="--i: 4"><img src="/images/lvup/QuestCompleted/efish.png" alt="" draggable="false" /></span>
+          </div>
+          ${qcLine(['C.png', 'o.png', 'm.png', 'p.png', 'l.png', 'e.png', 't.png', 'e.png', 'd.png', '!.png'], 5)}
+        </div>
+        <div id="achievement-notification-thumb" class="achievement-notification__thumb" hidden></div>
+        <div id="achievement-notification-name" class="achievement-notification__name"></div>
+        <div id="achievement-notification-desc" class="achievement-notification__desc"></div>
+        <div id="achievement-notification-reward" class="achievement-notification__reward"></div>
+        <div class="achievement-notification__reward-chips catch-result-meta-row" hidden>
+          <div class="catch-result-meta-chip" data-quest-reward="money">
+            <img src="/images/ui/ゴールド.png" alt="" class="catch-result-meta-icon-image book-detail-stat-label-icon" draggable="false" />
+            <span class="catch-result-meta-value" data-quest-reward-money></span>
+            <span class="catch-result-meta-unit">g</span>
+          </div>
+          <div class="catch-result-meta-chip" data-quest-reward="exp">
+            <img src="/images/Fishing Result UI/orb.svg" alt="" class="catch-result-meta-icon-image book-detail-stat-label-icon" draggable="false" />
+            <span class="catch-result-meta-value" data-quest-reward-exp></span>
+            <span class="catch-result-meta-unit">exp</span>
+          </div>
+        </div>
       </div>
     `;
 
@@ -13898,13 +14636,32 @@ export default class GameScene extends Phaser.Scene {
   }
 
   showAchievementNotification(achievement: AchievementConfig) {
+    this.hudToastQueue.push({ kind: 'achievement', achievement });
+    this.pumpHudToastQueue();
+  }
+
+  private presentAchievementNotification(achievement: AchievementConfig) {
     const notification = this.achievementNotificationElement;
     const nameEl = notification.querySelector('#achievement-notification-name') as HTMLElement;
     const descEl = notification.querySelector('#achievement-notification-desc') as HTMLElement;
     const rewardEl = notification.querySelector('#achievement-notification-reward') as HTMLElement;
+    const title = notification.querySelector('.achievement-notification__title') as HTMLElement | null;
 
+    notification.classList.remove('ui-frame-box', 'is-quest');
+    notification.setAttribute('aria-hidden', 'false');
+    if (title) title.textContent = '🏆 実績解除！';
+    const thumbEl = notification.querySelector('#achievement-notification-thumb') as HTMLElement | null;
+    if (thumbEl) {
+      thumbEl.innerHTML = '';
+      thumbEl.hidden = true;
+    }
     if (nameEl) nameEl.textContent = `${displayAchievementEmoji(achievement.emoji)} ${achievement.name}`;
-    if (descEl) descEl.textContent = achievement.description;
+    if (descEl) {
+      descEl.hidden = false;
+      descEl.textContent = achievement.description;
+    }
+    const rewardChips = notification.querySelector('.achievement-notification__reward-chips') as HTMLElement | null;
+    if (rewardChips) rewardChips.hidden = true;
     
     if (achievement.reward) {
       const rewards: string[] = [];
@@ -13915,12 +14672,11 @@ export default class GameScene extends Phaser.Scene {
       if (rewardEl) rewardEl.textContent = '';
     }
 
+    this.clearAchievementNotificationHideTimer();
     notification.style.display = 'block';
-    
-    // 3秒後に自動で非表示
-    setTimeout(() => {
-      notification.style.display = 'none';
-    }, 3000);
+    this.achievementNotificationHideTimer = window.setTimeout(() => {
+      this.hideAchievementNotification();
+    }, HUD_TOAST_HOLD_MS);
   }
 
   toggleShop() {
@@ -14496,13 +15252,14 @@ export default class GameScene extends Phaser.Scene {
       this.playerData.equippedRodId = rod.id;
       
       // 実績チェック（装備系）
+      const fromExp = this.playerData.exp;
       const unlockedAchievements = checkAchievements(this.playerData, ['equipment']);
       unlockedAchievements.forEach(achievement => {
         this.showAchievementNotification(achievement);
       });
       
       savePlayerData(this.playerData);
-      this.updateStatusUI();
+      this.commitHudExpReward(fromExp);
       this.updateShopContent();
       this.showResult(`${rod.name}を購入！`, 1500);
     } else {
@@ -14522,14 +15279,14 @@ export default class GameScene extends Phaser.Scene {
       this.playerData.equippedBaitId = bait.id;
       this.playerData.equippedLureId = null;
       
-      // 実績チェック（装備系）
+      const fromExp = this.playerData.exp;
       const unlockedAchievements = checkAchievements(this.playerData, ['equipment']);
       unlockedAchievements.forEach(achievement => {
         this.showAchievementNotification(achievement);
       });
       
       savePlayerData(this.playerData);
-      this.updateStatusUI();
+      this.commitHudExpReward(fromExp);
       this.updateShopContent();
       this.showResult(`${bait.name}を${bait.quantity}個購入！`, 1500);
     } else {
@@ -14564,14 +15321,14 @@ export default class GameScene extends Phaser.Scene {
       this.playerData.equippedLureId = lure.id;
       this.playerData.equippedBaitId = null;
       
-      // 実績チェック（装備系）
+      const fromExp = this.playerData.exp;
       const unlockedAchievements = checkAchievements(this.playerData, ['equipment']);
       unlockedAchievements.forEach(achievement => {
         this.showAchievementNotification(achievement);
       });
       
       savePlayerData(this.playerData);
-      this.updateStatusUI();
+      this.commitHudExpReward(fromExp);
       this.updateShopContent();
       this.showResult(`${lure.name}を購入！`, 1500);
     } else {
@@ -14647,13 +15404,14 @@ export default class GameScene extends Phaser.Scene {
       this.showResult(`${tool.name}を${tool.quantity}個購入！`, 1500);
     }
 
+    const fromExp = this.playerData.exp;
     const unlockedAchievements = checkAchievements(this.playerData, ['equipment']);
     unlockedAchievements.forEach(achievement => {
       this.showAchievementNotification(achievement);
     });
 
     savePlayerData(this.playerData);
-    this.updateStatusUI();
+    this.commitHudExpReward(fromExp);
     this.updateShopContent();
   }
 

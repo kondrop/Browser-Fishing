@@ -1,0 +1,28 @@
+---
+description: 全体の DotGothic16 !important があるため、Jersey 10 / Micro 5 は子孫要素まで必ず上書きする
+alwaysApply: true
+---
+
+# フォント上書き（`*` との衝突）
+
+`src/style.css` 先頭に `* { font-family: 'DotGothic16', sans-serif !important; }` がある。
+親にだけ Jersey 10 / Micro 5 を付けても、内側の `span` などには `*` が勝ち、書体が DotGothic16 に戻る。
+
+テキストを分割・ネストしたら、**その要素自身と子孫の両方**に `!important` で指定する。`inherit` だけ、親だけの指定は禁止。
+
+```css
+/* ❌ BAD: 内側 span が DotGothic16 に戻る */
+.foo { font-family: "Jersey 10", sans-serif !important; }
+
+/* ✅ GOOD: ユーティリティ（推奨） */
+<div class="font-jersey10">Lv.<span>41</span></div>
+
+/* ✅ GOOD: セレクタで子孫も含める */
+.foo,
+.foo * {
+  font-family: "Jersey 10", sans-serif !important;
+}
+```
+
+- 英数字は `.font-jersey10`（子孫込み）。Micro 5 は `.font-micro5`。
+- 既存画面の個別 `font-family: "Jersey 10" !important` を消して回さない。新規・分割時にこのルールを守る。

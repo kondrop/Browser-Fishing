@@ -48,6 +48,34 @@ export const explorationConfig = {
     fg: { file: '前景.png', parallaxX: 1.18, riseY: 0 },
   },
 
+  /**
+   * 水中の塵パーティクル。ワールド（レイヤー）座標に固定し、カメラには追従しない。
+   * 視差は freshLayers の far / mid / fg と同じ。漂いはその場の超低速ゆらぎのみ。
+   */
+  dust: {
+    far: {
+      count: 210,
+      radius: [0.5, 1.15],
+      alpha: [0.3, 0.5],
+      driftAmp: [1.5, 5],
+      driftFreq: [0.06, 0.18],
+    },
+    mid: {
+      count: 170,
+      radius: [1.0, 2.0],
+      alpha: [0.35, 0.8],
+      driftAmp: [2, 7],
+      driftFreq: [0.08, 0.22],
+    },
+    fg: {
+      count: 236,
+      radius: [1.6, 2.8],
+      alpha: [0.2, 0.5],
+      driftAmp: [3, 9],
+      driftFreq: [0.1, 0.28],
+    },
+  },
+
   /** 遠景・背景の装飾魚影。ゲームプレイの魚とは独立 */
   decoFish: {
     bgCount: 7,
@@ -106,8 +134,8 @@ export const explorationConfig = {
   /** lg 帯で最大スケールに達する目安 cm */
   fishShadowLgRefCm: 220,
 
-  // 調整用可視化
-  debugShowSenseAndAppeal: true,
+  // 調整用可視化（感知範囲の枠とアピール数値）
+  debugShowSenseAndAppeal: false,
 
   // 針
   hookRadius: 10,

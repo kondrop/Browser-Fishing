@@ -16,6 +16,7 @@ import type { ExplorationFish, ExplorationHook } from './explorationTypes';
 import {
   drawUnderwaterBackground,
   drawUnderwaterForeground,
+  drawUnderwaterFrontDust,
   drawUnderwaterParallaxForeground,
   type ExplorationUnderwaterState,
 } from './explorationUnderwater';
@@ -323,6 +324,7 @@ export function drawExplorationFrame(args: {
     drawFishSprite(scene, fish, gear.shadowImages[getFishShadowTier(fish.size, fish.fish.id)], timeSec);
   }
 
+  drawUnderwaterFrontDust(scene, underwater, camera, timeSec);
   drawLineAndHook(scene, hook, gear, camera);
   drawUnderwaterForeground(scene, underwater);
   drawUnderwaterParallaxForeground(scene, camera);

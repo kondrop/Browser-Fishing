@@ -10,6 +10,17 @@ html, body {
   font-family: 'DotGothic16', sans-serif !important;
 }
 
+/* 親だけ Jersey 10 にしても * に負ける。子孫 span まで必ず含める */
+.font-jersey10,
+.font-jersey10 * {
+  font-family: "Jersey 10", sans-serif !important;
+}
+
+.font-micro5,
+.font-micro5 * {
+  font-family: "Micro 5", sans-serif !important;
+}
+
 /* ゲーム内では常にデフォルトカーソルを維持（hover時の pointer 変化を無効化） */
 body * {
   cursor: inherit !important;
@@ -441,7 +452,8 @@ img {
   flex: 0 0 auto;
 }
 
-/* 所持数背景.png (741x341) を9スライス。角金具＋木枠は約80px、下辺は内側影込み約95px */
+/* 所持数背景.png を9スライス枠のみ使う（中央の fill は使わず、中は単色）。
+   角金具＋木枠は約80px、下辺は内側影込み約95px。stretch は辺だけ。 */
 #level-text.level-label-box {
   --hud-player-slice-t: 80;
   --hud-player-slice-r: 80;
@@ -452,11 +464,13 @@ img {
   --hud-player-bw-r: calc(var(--hud-player-slice-r) * var(--hud-player-scale) * 1px);
   --hud-player-bw-b: calc(var(--hud-player-slice-b) * var(--hud-player-scale) * 1px);
   --hud-player-bw-l: calc(var(--hud-player-slice-l) * var(--hud-player-scale) * 1px);
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   box-sizing: border-box;
-  padding: 2px 10px 2px 6px;
+  min-width: 206px;
+  padding: 0 6px 6px 6px;
   background: transparent;
   box-shadow: none;
   color: #5f2d1d;
@@ -464,7 +478,7 @@ img {
   border-color: transparent;
   border-width: var(--hud-player-bw-t) var(--hud-player-bw-r) var(--hud-player-bw-b) var(--hud-player-bw-l);
   border-image-source: url("/images/ui/所持数背景.png");
-  border-image-slice: 80 80 95 80 fill;
+  border-image-slice: 80 80 95 80;
   border-image-width: var(--hud-player-bw-t) var(--hud-player-bw-r) var(--hud-player-bw-b) var(--hud-player-bw-l);
   border-image-repeat: stretch;
   image-rendering: pixelated;
@@ -472,13 +486,30 @@ img {
   -ms-interpolation-mode: nearest-neighbor;
 }
 
+#level-text.level-label-box::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -1px;
+  bottom: 0;
+  left: -1px;
+  background: #f5d79f;
+  pointer-events: none;
+  z-index: 0;
+}
+
+#level-text.level-label-box > * {
+  position: relative;
+  z-index: 1;
+}
+
 .level-character-icon {
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   flex: 0 0 auto;
   position: relative;
-  top: -3px;
-  left: -3px;
+  top: -1px;
+  left: -2px;
 }
 
 .level-character-icon__inner {
@@ -511,79 +542,81 @@ img {
 .level-info {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  min-width: 52px;
-  width: auto;
+  justify-content: center;
+  gap: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 158px;
   position: relative;
-  left: -4px;
   font-family: "Jersey 10" !important;
   font-style: normal;
   color: #5f2d1d;
 }
 
+.level-info-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
 .player-name {
-  width: fit-content;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: "Jersey 10" !important;
-  font-size: 24px;
+  font-size: 30px;
   line-height: 1;
   margin: 0;
   color: #5f2d1d;
-  text-shadow:
-    -1px 0 #f4e4c4,
-    1px 0 #f4e4c4,
-    0 -1px #f4e4c4,
-    0 1px #f4e4c4;
 }
 
 .level-row {
-  position: relative;
-  width: 100%;
-  height: 33px;
-  line-height: normal;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  flex: 0 0 auto;
+  line-height: 1;
   white-space: nowrap;
 }
 
-span.level-label-prefix {
-  font-family: "Jersey 10" !important;
-  font-size: 24px;
-  color: #5f2d1d;
-  border-style: none;
-  border-width: 0px;
-  border-color: rgba(0, 0, 0, 0);
-  border-image: none;
-  text-shadow:
-    -1px 0 #f4e4c4,
-    1px 0 #f4e4c4,
-    0 -1px #f4e4c4,
-    0 1px #f4e4c4;
-}
-
-span.level-label-value {
-  font-family: "Jersey 10" !important;
-  font-size: 32px;
-  color: #5f2d1d;
-  text-shadow:
-    -1px 0 #f4e4c4,
-    1px 0 #f4e4c4,
-    0 -1px #f4e4c4,
-    0 1px #f4e4c4;
-}
-
-/* Figma: Lv. (14px) / value (22px) の配置 */
+span.level-label-prefix,
 .level-row .level-label-prefix {
-  position: absolute;
-  left: 3px;
-  top: 7px;
-  font-size: 21px;
+  position: static;
+  font-family: "Jersey 10" !important;
+  font-size: 18px;
   line-height: 1;
+  color: #5f2d1d;
+  border: none;
 }
 
+span.level-label-value,
 .level-row .level-label-value {
-  position: absolute;
-  left: 26px;
-  top: -3px;
-  font-size: 33px;
+  position: static;
+  left: auto;
+  top: auto;
+  font-family: "Jersey 10" !important;
+  font-size: 30px;
   line-height: 1;
+  color: #5f2d1d;
+}
+
+.level-info-exp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.level-exp-label {
+  flex: 0 0 auto;
+  font-family: "Jersey 10" !important;
+  font-size: 18px;
+  line-height: 1;
+  color: #5f2d1d;
+  white-space: nowrap;
 }
 
 /* 右上: 金額（上段）+ 装備/バッグ（下段） */
@@ -596,20 +629,154 @@ span.level-label-value {
   gap: 6px;
 }
 
-/* EXPバー（右側）※位置検討のため一時非表示 */
+/* EXPバー（以前の非表示HUDバーと同じ見た目。数字はバー内中央） */
 #exp-bar-bg {
-  display: none;
-  flex: 0 0 auto;
-  width: 100%;
-  min-width: 140px;
-  height: 36px;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 96px;
+  height: 22px;
   background: #5a3d2e;
   border-style: solid;
-  border-width: 4px;
+  border-width: 3px;
   border-color: rgba(95, 45, 29, 1);
-  border-radius: 0px;
+  border-radius: 0;
   overflow: hidden;
   position: relative;
+  width: auto;
+}
+
+#exp-bar-ticks {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 5%;
+  right: 5%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.exp-tick {
+  width: 2px;
+  background-color: rgba(232, 207, 166, 0.2);
+}
+
+.exp-tick--thick {
+  height: 12px;
+}
+
+.exp-tick--thin {
+  height: 8px;
+}
+
+#exp-bar-fill {
+  height: 100%;
+  margin: 0;
+  background: linear-gradient(90deg, rgba(121, 228, 75, 1) 0%, rgba(81, 245, 169, 1) 100%);
+  box-shadow:
+    inset 0px 3px 0px 0px rgba(255, 255, 255, 0.3),
+    inset 3px 0px 0px 0px rgba(255, 255, 255, 0.3),
+    inset 0px -3px 0px 0px rgba(0, 0, 0, 0.2),
+    inset -3px 0px 0px 0px rgba(0, 0, 0, 0.2);
+  width: 0%;
+  transition: width 0.3s;
+  position: relative;
+  z-index: 1;
+}
+
+#exp-bar-fill.is-hud-exp-animating {
+  transition: none;
+}
+
+#exp-bar-bg.is-exp-absorbing {
+  box-shadow: 0 0 10px 3px rgba(121, 228, 75, 0.55);
+}
+
+#hud-exp-orb-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2400;
+}
+
+.hud-exp-orb {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  opacity: 0;
+  pointer-events: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  will-change: transform, opacity;
+}
+
+#exp-bar-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0;
+  text-align: center;
+  font-family: "Micro 5" !important;
+  font-size: 20px;
+  color: #ffffff;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 3;
+}
+
+#exp-bar-text .exp-bar-current,
+#exp-bar-text .exp-bar-needed,
+#exp-bar-text .exp-bar-sep {
+  font-family: "Micro 5" !important;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.exp-bar-current {
+  display: inline-block;
+  transform-origin: 50% 70%;
+}
+
+#exp-bar-text.is-counting .exp-bar-current {
+  animation: exp-current-pop-rattle 0.07s linear infinite;
+}
+
+@keyframes exp-current-pop-rattle {
+  0%,
+  100% {
+    transform: scale(1.32) translate3d(0, 0, 0);
+  }
+  18% {
+    transform: scale(1.32) translate3d(-1px, 1px, 0);
+  }
+  40% {
+    transform: scale(1.32) translate3d(1px, -1px, 0);
+  }
+  62% {
+    transform: scale(1.32) translate3d(-1px, 0, 0);
+  }
+  82% {
+    transform: scale(1.32) translate3d(1px, 1px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #exp-bar-text.is-counting .exp-bar-current {
+    animation: none;
+    transform: none;
+  }
 }
 
 /* 下段: 装備 + バッグ横並び */
@@ -714,10 +881,21 @@ span.level-label-value {
   -ms-interpolation-mode: nearest-neighbor;
   flex: 0 0 auto;
   transform-origin: 50% 50%;
+  overflow: visible;
+}
+
+.hud-money-kira {
+  position: absolute;
+  /* 所持金プレートより少し大きめの長方形 */
+  inset: -10px -16px;
+  z-index: 1;
+  pointer-events: none;
+  overflow: visible;
 }
 
 .money-display__digits {
   position: absolute;
+  z-index: 2;
   left: calc(var(--money-slot-x) / var(--money-img-w) * 100%);
   top: calc(var(--money-slot-y) / var(--money-img-h) * 100%);
   width: calc(var(--money-slot-w) / var(--money-img-w) * 100%);
@@ -783,47 +961,6 @@ span.level-label-value {
   }
 }
 
-/* EXPバーの目盛り（実体DOMで均等分布させる） */
-#exp-bar-ticks {
-  position: absolute;
-  /* 枠線(4px)の内側 + 親の横幅の80%をセンター揃えで使用 */
-  top: 4px;
-  bottom: 4px;
-  left: 5%;
-  right: 5%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.exp-tick {
-  background-color: rgba(232, 207, 166, 0.2);
-}
-
-.exp-tick--thick {
-  width: 4px;
-  height: 16px;
-  background-color: rgba(232, 207, 166, 0.2);
-}
-
-.exp-tick--thin {
-  width: 3px;
-  height: 10px;
-}
-
-#exp-bar-fill {
-  height: 100%;
-  margin: 0;
-  background: linear-gradient(90deg, rgba(121, 228, 75, 1) 0%, rgba(81, 245, 169, 1) 100%);
-  box-shadow: inset 0px 4px 0px 0px rgba(255, 255, 255, 0.3), inset 4px 0px 0px 0px rgba(255, 255, 255, 0.3), inset 0px -4px 0px 0px rgba(0, 0, 0, 0.2), inset -4px 0px 0px 0px rgba(0, 0, 0, 0.2);
-  width: 0%;
-  transition: width 0.3s;
-  position: relative;
-  z-index: 1;
-}
-
 #stats-section {
   display: none;
 }
@@ -887,21 +1024,6 @@ span.level-label-value {
 }
 
 /* 旧: #level-section / #exp-bar-bg / #exp-bar-fill の重複定義は上の統一設定に集約 */
-
-#exp-bar-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 100%;
-  text-align: center;
-  font-family: "Micro 5" !important;
-  font-size: 24px;
-  color: #ffffff;
-  line-height: 1;
-  pointer-events: none;
-  z-index: 3;
-}
 
 /* 右下: 受注中クエストHUD */
 .quest-hud {
@@ -2342,7 +2464,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   --catch-result-fish-nudge-x: 0px;
   --catch-result-fish-nudge-y: 0px;
   /* 魚背面の光芒（kouka.svg）。魚サイズ基準。元240%から30%縮小 */
-  --catch-result-kouka-size: calc(var(--catch-result-fish-size) * 1.68);
+  --catch-result-kouka-size: calc(var(--catch-result-fish-size) * 1.42);
   position: fixed;
   top: 50%;
   left: 50%;
@@ -2379,6 +2501,223 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   opacity: 1;
 }
 
+.level-up-popup {
+  --level-up-banner-w: min(520px, 86vw);
+  --level-up-plate-w: calc(var(--level-up-banner-w) * 982 / 1883);
+  --level-up-kouka-size: calc(var(--level-up-banner-w) * 0.767);
+  position: fixed;
+  top: calc(50% - 16px);
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 520;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  width: max-content;
+  max-width: 92vw;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  overflow: visible;
+}
+
+.level-up-popup.is-visible {
+  opacity: 1;
+  animation: catch-result-enter 0.58s both;
+}
+
+.level-up-popup.is-leaving {
+  animation: catch-result-leave 0.45s both;
+  transition: none;
+}
+
+.level-up-popup__kouka {
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  top: calc(50% - 40px);
+  width: var(--level-up-kouka-size);
+  height: var(--level-up-kouka-size);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+}
+
+.level-up-popup.is-visible .level-up-popup__kouka {
+  animation:
+    catch-result-kouka-fade 0.7s ease-out forwards,
+    catch-result-kouka-spin 12s linear infinite;
+}
+
+.level-up-popup__banner-wrap {
+  position: relative;
+  z-index: 2;
+  width: var(--level-up-banner-w);
+  overflow: visible;
+}
+
+.level-up-popup__banner {
+  position: relative;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  pointer-events: none;
+}
+
+.level-up-popup__title {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: -8px;
+  bottom: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.level-up-popup__letter {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  opacity: 0;
+  overflow: visible;
+}
+
+.level-up-popup__letter img {
+  display: block;
+  height: calc(56% - 4px);
+  width: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  pointer-events: none;
+  user-select: none;
+}
+
+.level-up-popup__space {
+  flex: 0 0 max(0px, calc(4.8% - 6px));
+  height: 100%;
+}
+
+.level-up-popup.is-visible .level-up-popup__letter {
+  animation: level-up-letter-enter 0.62s cubic-bezier(0.16, 0.72, 0.28, 1) both;
+  animation-delay: calc(0.14s + var(--i, 0) * 0.078s);
+}
+
+.level-up-popup.is-visible .level-up-popup__letter img {
+  animation: level-up-letter-idle 2.35s ease-in-out infinite;
+  animation-delay: calc(0.58s + var(--i, 0) * 0.078s);
+}
+
+@keyframes level-up-letter-enter {
+  0% {
+    opacity: 0;
+    transform: translate(-16px, 26px);
+  }
+  58% {
+    opacity: 1;
+    transform: translate(1px, -6px);
+  }
+  78% {
+    transform: translate(-0.5px, 3px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes level-up-letter-idle {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  32% {
+    transform: translateY(-3px);
+  }
+  68% {
+    transform: translateY(2px);
+  }
+}
+
+.level-up-popup__plate {
+  position: relative;
+  z-index: 4;
+  width: calc(var(--level-up-plate-w) - 8px);
+  margin-top: -14px;
+}
+
+.level-up-popup__plate-bg {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  pointer-events: none;
+}
+
+.level-up-popup__kira {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  height: calc(var(--level-up-banner-w) * 475 / 1883);
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.level-up-popup__levels {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.level-up-popup__stroke-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.level-up-popup__levels .level-up-popup__letter img {
+  height: calc(58% * 2 / 3 - 3px);
+  filter: url(#level-up-glyph-stroke);
+}
+
+.level-up-popup__levels .level-up-popup__letter--lv img {
+  height: calc(58% * 312 / 807 + 4px);
+}
+
+.level-up-popup__levels .level-up-popup__letter--arrow {
+  margin: 0 6px;
+}
+
+.level-up-popup__levels .level-up-popup__letter--arrow img {
+  height: calc(58% * 392 / 807 - 6px);
+}
+
+.level-up-popup.is-visible .kira-spark {
+  animation: catch-result-kira-twinkle var(--kira-dur, 1.7s) ease-in-out var(--kira-delay, 0s) 1 forwards;
+}
+
 /* 画像の intrinsic 比率で枠サイズを決める（変倍なし） */
 .catch-result-bg {
   position: relative;
@@ -2412,10 +2751,56 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 .catch-result-popup.is-visible {
   opacity: 1;
+  animation: catch-result-enter 0.58s both;
 }
 
-.catch-result-popup.is-entering {
-  transform: translate(-50%, calc(-50% + 50px));
+.catch-result-popup.is-leaving {
+  animation: catch-result-leave 0.45s both;
+  transition: none;
+}
+
+@keyframes catch-result-enter {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 120px)) rotate(-10deg);
+    animation-timing-function: cubic-bezier(0.16, 0.72, 0.28, 1);
+  }
+  /* 勢いよく上がって少し行き過ぎ、反対に傾く */
+  48% {
+    opacity: 1;
+    transform: translate(-50%, calc(-50% - 11px)) rotate(5deg);
+    animation-timing-function: cubic-bezier(0.55, 0.02, 0.85, 0.35);
+  }
+  /* 着地でカタッ */
+  68% {
+    transform: translate(-50%, calc(-50% + 6px)) rotate(-2.8deg);
+    animation-timing-function: ease-out;
+  }
+  84% {
+    transform: translate(-50%, calc(-50% - 2px)) rotate(0.9deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+}
+
+@keyframes catch-result-leave {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(0deg);
+    animation-timing-function: cubic-bezier(0.3, 0, 0.55, 0.4);
+  }
+  /* 少し浮いてカタッ */
+  20% {
+    opacity: 1;
+    transform: translate(-50%, calc(-50% - 8px)) rotate(4.5deg);
+    animation-timing-function: cubic-bezier(0.4, 0.05, 0.85, 0.25);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 120px)) rotate(-12deg);
+  }
 }
 
 .catch-result-exp-chip {
@@ -2524,6 +2909,58 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   }
 }
 
+.catch-result-kira {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.catch-result-kira-spark,
+.kira-spark {
+  position: absolute;
+  left: var(--kira-x, 50%);
+  top: var(--kira-y, 50%);
+  width: var(--kira-size, 9px);
+  height: var(--kira-size, 9px);
+  transform: translate(-50%, -50%) scale(0.15);
+  opacity: 0;
+  image-rendering: pixelated;
+  pointer-events: none;
+  user-select: none;
+}
+
+.catch-result-popup.is-visible .catch-result-kira-spark,
+.catch-result-popup.is-visible .kira-spark,
+.hud-money-kira.is-playing .kira-spark {
+  animation: catch-result-kira-twinkle var(--kira-dur, 1.7s) ease-in-out var(--kira-delay, 0s) 1 forwards;
+}
+
+.catch-result-popup--notice .catch-result-kira,
+.catch-result-popup--junk .catch-result-kira {
+  display: none;
+}
+
+@keyframes catch-result-kira-twinkle {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.12);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  42% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+}
+
 .catch-result-text-wrap {
   position: relative;
   z-index: 2;
@@ -2568,50 +3005,50 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 @keyframes catch-result-fish-flop {
   0%,
   100% {
-    transform: translate(0, 0) rotate(-1.5deg) scale(1, 1);
+    transform: translate(0, 0) rotate(-0.8deg) scale(1, 1);
   }
   /* 一発目: 勢いよく跳ねて左右にひっくり返り気味 */
   6% {
-    transform: translate(1px, -8px) rotate(5deg) scale(1.02, 0.9);
+    transform: translate(1px, -8px) rotate(3deg) scale(1.02, 0.9);
   }
   11% {
-    transform: translate(-1px, 1px) rotate(-6deg) scale(0.98, 1.05);
+    transform: translate(-1px, 1px) rotate(-3.5deg) scale(0.98, 1.05);
   }
   16% {
-    transform: translate(1px, -5px) rotate(4deg) scale(1.015, 0.93);
+    transform: translate(1px, -5px) rotate(2.4deg) scale(1.015, 0.93);
   }
   21% {
-    transform: translate(0, 0) rotate(-2deg) scale(1, 1);
+    transform: translate(0, 0) rotate(-1.2deg) scale(1, 1);
   }
   /* 小休止 */
   34% {
-    transform: translate(0, 0) rotate(-1deg) scale(1, 1);
+    transform: translate(0, 0) rotate(-0.6deg) scale(1, 1);
   }
   /* 二発目: 短くピチピチ */
   39% {
-    transform: translate(-1px, -7px) rotate(-4.5deg) scale(1.02, 0.91);
+    transform: translate(-1px, -7px) rotate(-2.7deg) scale(1.02, 0.91);
   }
   44% {
-    transform: translate(2px, 0) rotate(5.5deg) scale(0.985, 1.04);
+    transform: translate(2px, 0) rotate(3.2deg) scale(0.985, 1.04);
   }
   49% {
-    transform: translate(-1px, -4px) rotate(-3.5deg) scale(1.01, 0.95);
+    transform: translate(-1px, -4px) rotate(-2.1deg) scale(1.01, 0.95);
   }
   54% {
-    transform: translate(0, 0) rotate(1.5deg) scale(1, 1);
+    transform: translate(0, 0) rotate(0.9deg) scale(1, 1);
   }
   /* 長めの休息 → また暴れる */
   72% {
-    transform: translate(0, 0) rotate(-1deg) scale(1, 1);
+    transform: translate(0, 0) rotate(-0.6deg) scale(1, 1);
   }
   78% {
-    transform: translate(1px, -4px) rotate(3deg) scale(1.015, 0.94);
+    transform: translate(1px, -4px) rotate(1.8deg) scale(1.015, 0.94);
   }
   84% {
-    transform: translate(-1px, 0) rotate(-2.5deg) scale(0.99, 1.02);
+    transform: translate(-1px, 0) rotate(-1.5deg) scale(0.99, 1.02);
   }
   90% {
-    transform: translate(0, -1px) rotate(1deg) scale(1, 1);
+    transform: translate(0, -1px) rotate(0.6deg) scale(1, 1);
   }
 }
 
@@ -2621,8 +3058,67 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
     animation: none;
   }
 
-  .catch-result-popup.is-visible .catch-result-kouka {
+  .catch-result-popup.is-visible {
+    animation: none;
+  }
+
+  .catch-result-popup.is-leaving {
+    animation: none;
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+  }
+
+  .level-up-popup.is-visible {
+    animation: none;
+  }
+
+  .level-up-popup.is-visible .level-up-popup__letter,
+  .level-up-popup.is-visible .level-up-popup__letter img,
+  #achievement-notification.is-quest.is-visible .quest-complete-letter,
+  #achievement-notification.is-quest.is-visible .quest-complete-letter img,
+  #achievement-notification.is-quest.is-visible .quest-complete-deco,
+  #achievement-notification.is-quest.is-visible .quest-complete-deco img {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  #achievement-notification.is-quest.is-visible .quest-complete-deco--gold img {
+    transform: rotate(-18deg);
+  }
+
+  #achievement-notification.is-quest.is-visible .quest-complete-deco--fish img {
+    transform: rotate(-16deg);
+  }
+
+  .level-up-popup.is-leaving {
+    animation: none;
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+  }
+
+  #achievement-notification.is-quest.is-visible {
+    animation: none;
+  }
+
+  #achievement-notification.is-quest.is-leaving {
+    animation: none;
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+  }
+
+  .catch-result-popup.is-visible .catch-result-kouka,
+  .level-up-popup.is-visible .level-up-popup__kouka {
     animation: catch-result-kouka-fade 0.5s ease-out forwards;
+  }
+
+  .catch-result-popup.is-visible .catch-result-kira-spark,
+  .catch-result-popup.is-visible .kira-spark,
+  .hud-money-kira.is-playing .kira-spark,
+  .level-up-popup.is-visible .kira-spark {
+    animation: none;
+    opacity: 0.85;
+    transform: translate(-50%, -50%) scale(1);
   }
 }
 
@@ -4721,8 +5217,361 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   margin-top: 5px;
 }
 
-#achievement-notification {
+#achievement-notification,
+.achievement-notification {
+  display: none;
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.9);
+  border: 2px solid #ffd700;
+  border-radius: 10px;
+  padding: 15px;
+  max-width: 300px;
+  color: #fff;
+  pointer-events: none;
   animation: slideInRight 0.3s ease-out;
+}
+
+.achievement-notification__title {
+  font-size: 24px;
+  margin-bottom: 10px;
+}
+
+.achievement-notification__name {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.achievement-notification__desc {
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.achievement-notification__reward {
+  font-size: 12px;
+  color: #ffd700;
+}
+
+/* クエスト達成: 掲示板と同じ boardBG.png を 9 スライス。右下クエストHUDの直上 */
+#achievement-notification.is-quest.ui-frame-box {
+  top: auto;
+  right: 16px;
+  bottom: calc(16px + 66px + 14px);
+  width: 252px;
+  max-width: calc(100vw - 32px);
+  --frame-slice: 80;
+  --frame-scale: 0.28;
+  --frame-fill-color: #edcc9b;
+  --frame-fill-inset: calc(var(--frame-slice) * var(--frame-scale) * 1px);
+  padding: calc(var(--frame-slice) * var(--frame-scale) * 1px + 10px);
+  padding-bottom: calc(var(--frame-slice) * var(--frame-scale) * 1px + 4px);
+  isolation: isolate;
+  color: #5c4030;
+  opacity: 0;
+  transform-origin: 50% 50%;
+  overflow: visible;
+}
+
+#achievement-notification.is-quest.is-visible {
+  opacity: 1;
+  animation: quest-complete-enter 0.58s both;
+}
+
+#achievement-notification.is-quest.is-leaving {
+  animation: quest-complete-leave 0.45s both;
+  transition: none;
+}
+
+#achievement-notification.is-quest.ui-frame-box::after {
+  border-image: url(/images/ui/boardBG.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+#achievement-notification.is-quest .achievement-notification__title {
+  display: none;
+}
+
+.achievement-notification__quest-banner {
+  display: none;
+}
+
+#achievement-notification.is-quest .achievement-notification__quest-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin: -12px 0 8px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.achievement-notification__quest-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 47px;
+  gap: 0;
+  overflow: visible;
+}
+
+.achievement-notification__quest-line--quest {
+  position: relative;
+  align-self: stretch;
+  width: 100%;
+}
+
+.achievement-notification__quest-line--quest .achievement-notification__quest-line {
+  position: relative;
+  z-index: 1;
+  height: 47px;
+}
+
+.achievement-notification__quest-line--quest + .achievement-notification__quest-line {
+  margin-top: -12px;
+}
+
+.quest-complete-deco {
+  position: absolute;
+  top: -3px;
+  bottom: 3px;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  overflow: visible;
+}
+
+.quest-complete-deco--gold {
+  left: 2px;
+}
+
+.quest-complete-deco--fish {
+  right: -4px;
+}
+
+.quest-complete-deco img {
+  display: block;
+  width: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  pointer-events: none;
+  user-select: none;
+  filter: url(#quest-deco-stroke);
+}
+
+.quest-complete-deco--gold img {
+  height: 48px;
+  transform: rotate(-18deg);
+}
+
+.quest-complete-deco--fish img {
+  height: 35px;
+  transform: rotate(-16deg);
+}
+
+.quest-complete-letter {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  opacity: 0;
+  overflow: visible;
+}
+
+.achievement-notification__quest-line .quest-complete-letter + .quest-complete-letter {
+  margin-left: -4px;
+}
+
+.quest-complete-letter img {
+  display: block;
+  height: 47px;
+  width: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  pointer-events: none;
+  user-select: none;
+}
+
+#achievement-notification.is-quest.is-visible .quest-complete-letter,
+#achievement-notification.is-quest.is-visible .quest-complete-deco {
+  animation: level-up-letter-enter 0.5s cubic-bezier(0.16, 0.72, 0.28, 1) both;
+  animation-delay: calc(0.08s + var(--i, 0) * 0.046s);
+}
+
+#achievement-notification.is-quest.is-visible .quest-complete-letter img {
+  animation: level-up-letter-idle 2.35s ease-in-out infinite;
+  animation-delay: calc(0.46s + var(--i, 0) * 0.046s);
+}
+
+#achievement-notification.is-quest.is-visible .quest-complete-deco--gold img {
+  animation: quest-deco-idle-gold 2.35s ease-in-out infinite;
+  animation-delay: calc(0.46s + var(--i, 0) * 0.046s);
+}
+
+#achievement-notification.is-quest.is-visible .quest-complete-deco--fish img {
+  animation: quest-deco-idle-fish 2.35s ease-in-out infinite;
+  animation-delay: calc(0.46s + var(--i, 0) * 0.046s);
+}
+
+@keyframes quest-deco-idle-gold {
+  0%,
+  100% {
+    transform: rotate(-18deg) translateY(0);
+  }
+  32% {
+    transform: rotate(-18deg) translateY(-3px);
+  }
+  68% {
+    transform: rotate(-18deg) translateY(2px);
+  }
+}
+
+@keyframes quest-deco-idle-fish {
+  0%,
+  100% {
+    transform: rotate(-16deg) translateY(0);
+  }
+  32% {
+    transform: rotate(-16deg) translateY(-3px);
+  }
+  68% {
+    transform: rotate(-16deg) translateY(2px);
+  }
+}
+
+.achievement-notification__thumb {
+  display: none;
+}
+
+#achievement-notification.is-quest .achievement-notification__thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 114px;
+  height: 114px;
+  margin: -20px auto -14px;
+  padding: 0;
+  flex-shrink: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+#achievement-notification.is-quest .achievement-notification__thumb::before,
+#achievement-notification.is-quest .achievement-notification__thumb::after {
+  content: none;
+}
+
+#achievement-notification.is-quest .achievement-notification__thumb .quest-card__icon-img {
+  width: 114px;
+  height: 114px;
+}
+
+#achievement-notification.is-quest .achievement-notification__thumb .quest-card__icon-img--item {
+  width: 78px;
+  height: 78px;
+}
+
+#achievement-notification.is-quest .achievement-notification__thumb .quest-card__icon-emoji {
+  font-size: 70px;
+}
+
+#achievement-notification.is-quest .achievement-notification__name {
+  margin: -2px 0 8px;
+  font-family: "DotGothic16", sans-serif !important;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: center;
+  color: #5c4030;
+}
+
+#achievement-notification.is-quest #achievement-notification-desc,
+#achievement-notification.is-quest .achievement-notification__desc {
+  display: none !important;
+}
+
+#achievement-notification.is-quest .achievement-notification__reward {
+  display: none;
+}
+
+#achievement-notification.is-quest .achievement-notification__reward-chips {
+  margin: 4px 0 0;
+  width: 100%;
+  gap: 6px;
+}
+
+#achievement-notification.is-quest .catch-result-meta-chip {
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
+}
+
+#achievement-notification.is-quest .catch-result-meta-icon-image {
+  width: 27px;
+  height: 27px;
+  object-fit: contain;
+}
+
+#achievement-notification.is-quest [data-quest-reward="money"] .catch-result-meta-icon-image {
+  margin-right: -4px;
+}
+
+#achievement-notification.is-quest [data-quest-reward="exp"] .catch-result-meta-icon-image {
+  width: 18px;
+  height: 18px;
+  margin-right: 2px;
+  position: relative;
+  top: -1px;
+}
+
+#achievement-notification.is-quest .catch-result-meta-chip[hidden] {
+  display: none;
+}
+
+@keyframes quest-complete-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(120px) rotate(-10deg);
+    animation-timing-function: cubic-bezier(0.16, 0.72, 0.28, 1);
+  }
+  48% {
+    opacity: 1;
+    transform: translateY(-11px) rotate(5deg);
+    animation-timing-function: cubic-bezier(0.55, 0.02, 0.85, 0.35);
+  }
+  68% {
+    transform: translateY(6px) rotate(-2.8deg);
+    animation-timing-function: ease-out;
+  }
+  84% {
+    transform: translateY(-2px) rotate(0.9deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+@keyframes quest-complete-leave {
+  0% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+    animation-timing-function: cubic-bezier(0.3, 0, 0.55, 0.4);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-8px) rotate(4.5deg);
+    animation-timing-function: cubic-bezier(0.4, 0.05, 0.85, 0.25);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(120px) rotate(-12deg);
+  }
 }
 
 @keyframes slideInRight {
@@ -8727,7 +9576,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 .aquarium-slot-name {
-  font-size: 16px;
+  font-size: 15px;
   font-family: "DotGothic16", sans-serif;
   color: var(--color-semantic-text-primary, #320e0e);
   white-space: nowrap;
