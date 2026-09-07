@@ -1,7 +1,7 @@
 import { getItemImagePath } from '../../data/shopConfig';
 import { getFishSwimBoyon } from '../../render/fishSwimStretch';
 import { drawWaterWarpPostEffect } from '../../render/waterWarp';
-import { explorationConfig, type ExplorationCamera } from './explorationConfig';
+import { explorationConfig, getExplorationViewSize, type ExplorationCamera } from './explorationConfig';
 import {
   getFishShadowScale,
   getFishShadowTier,
@@ -12,7 +12,8 @@ import {
   isHookInSenseRange,
   type FishShadowTier,
 } from './explorationFish';
-import type { ExplorationFish, ExplorationHook } from './explorationTypes';
+import { drawPickups } from './explorationPickups';
+import type { ExplorationFish, ExplorationHook, ExplorationPickup } from './explorationTypes';
 import {
   drawUnderwaterBackground,
   drawUnderwaterForeground,
@@ -286,7 +287,7 @@ let warpBuffer: HTMLCanvasElement | null = null;
 let warpBufferCtx: CanvasRenderingContext2D | null = null;
 
 function getWarpBuffer(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
-  const { canvasW, canvasH } = explorationConfig;
+  const { canvasW, canvasH } = getExplorationViewSize();
   if (!warpBuffer || !warpBufferCtx) {
     warpBuffer = document.createElement('canvas');
     warpBufferCtx = warpBuffer.getContext('2d');
@@ -303,14 +304,15 @@ export function drawExplorationFrame(args: {
   ctx: CanvasRenderingContext2D;
   underwater: ExplorationUnderwaterState;
   fishes: ExplorationFish[];
+  pickups: ExplorationPickup[];
   hook: ExplorationHook;
   gear: ExplorationDrawContext;
   camera: ExplorationCamera;
   timeSec: number;
 }): void {
-  const { ctx, underwater, fishes, hook, gear, camera, timeSec } = args;
+  const { ctx, underwater, fishes, pickups, hook, gear, camera, timeSec } = args;
   const { canvas: buffer, ctx: scene } = getWarpBuffer();
-  const { canvasW, canvasH } = explorationConfig;
+  const { canvasW, canvasH } = getExplorationViewSize();
 
   scene.imageSmoothingEnabled = false;
   scene.clearRect(0, 0, canvasW, canvasH);
@@ -325,6 +327,7 @@ export function drawExplorationFrame(args: {
   }
 
   drawUnderwaterFrontDust(scene, underwater, camera, timeSec);
+  drawPickups(scene, pickups, hook, timeSec);
   drawLineAndHook(scene, hook, gear, camera);
   drawUnderwaterForeground(scene, underwater);
   drawUnderwaterParallaxForeground(scene, camera);

@@ -3,7 +3,7 @@ import { config } from '../config';
 import type { FishConfig } from '../data/fishConfig';
 import { rarityStars, getFishById, fishDatabase, rarityStarCount, rarityWeights, rarityColors, Habitat, Rarity, fishImageFileNames, getFishImagePath, type RarityBonuses } from '../data/fish';
 import type { PlayerData } from '../data/inventory';
-import { loadPlayerData, savePlayerData, addFishToInventory, applyCatchRewards, swapCaughtFishIntoInventory, getInventoryCount, getInventoryDisplayOrder, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, generateRandomSize, getCastDistanceRatio, calculatePriceWithSizeBonus, getInventoryEntryBaseSellPrice, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp, calculateLevel, isBigSizeRatio } from '../data/inventory';
+import { loadPlayerData, savePlayerData, addFishToInventory, applyCatchRewards, swapCaughtFishIntoInventory, getInventoryCount, getInventoryDisplayOrder, sellAllFish, addBait, consumeBait, getBaitCount, getExpProgress, getExpByRarity, generateRandomSize, getCastDistanceRatio, calculatePriceWithSizeBonus, getInventoryEntryBaseSellPrice, checkAchievements, getAchievementProgress, getAchievementProgressDisplay, incrementConsecutiveSuccess, resetConsecutiveSuccess, getRequiredExp, calculateLevel, isBigSizeRatio, addExp } from '../data/inventory';
 import {
   clearHudExpOrbs,
   expDisplayForTotal,
@@ -31,6 +31,7 @@ import {
   type SkillTreeId,
 } from '../data/skills';
 import {
+  achievementConfigs,
   displayAchievementEmoji,
   getAllCategories,
   getAchievementsByCategory,
@@ -236,6 +237,7 @@ interface AquariumGodRay {
 import { characterConfigs, getCharacterById, getDefaultCharacterId } from '../data/characterConfig';
 import { calculateDisplayStatIndices, getEffectiveSkillStatBonuses } from '../debug/balanceDebug';
 import { createBalanceDebugPanel, type BalanceDebugPanelHandle } from '../debug/balanceDebugPanel';
+import { createBookColorEditor, type BookColorEditorHandle } from '../debug/bookColorEditor';
 import {
   FIGHT_TRACK_CENTER,
   fishParamsFromConfig,
@@ -255,7 +257,7 @@ import { placeKiraInRect, placeKiraOnEllipse, startKiraField, type KiraFieldHand
 import { ExplorationController } from '../fishing/exploration/explorationController';
 import { explorationConfig } from '../fishing/exploration/explorationConfig';
 import { applyHookDepthToFightParams } from '../fishing/exploration/explorationFish';
-import type { ExplorationResult } from '../fishing/exploration/explorationTypes';
+import type { ExplorationPickupCollectEvent, ExplorationResult } from '../fishing/exploration/explorationTypes';
 import { drawWaterWarpPostEffect } from '../render/waterWarp';
 
 const FishingState = {
@@ -275,10 +277,9 @@ const HUD_TOAST_HOLD_MS = 3000;
 type HudToast =
   | { kind: 'quest'; quest: QuestConfig; moneyGain: number; expGain: number; rewardsReleased: boolean }
   | { kind: 'achievement'; achievement: AchievementConfig };
-type HudExpPulse = { gain: number; origin?: Element | null };
-/** ポップアップ編集モード: true でリザルト/レベルアップ/クエスト達成を切り替え表示。終わったら false */
-const DEBUG_POPUP_EDIT_MODE = true;
-type DebugPopupEditKind = 'catch' | 'level' | 'quest';
+type HudExpPulse = { gain: number; origin?: Element | null; originPoint?: Point | null };
+/** 左下「UI調整」でオンオフ。リザルト/レベルアップ/クエスト/実績をピン表示する */
+type DebugPopupEditKind = 'catch' | 'level' | 'quest' | 'achievement';
 
 export default class GameScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -330,6 +331,7 @@ export default class GameScene extends Phaser.Scene {
   private catchResultExpOrigin: Point | null = null;
   private debugCatchResultReplayBusy = false;
   private debugReplayMoneyBusy = false;
+  private uiAdjustMode = false;
   private debugPopupEditKind: DebugPopupEditKind = 'catch';
   private achievementNotificationHideTimer: number | null = null;
   private hudToastQueue: HudToast[] = [];
@@ -679,6 +681,7 @@ export default class GameScene extends Phaser.Scene {
   // デバッグ用キャラクター設定UI
   private characterSettingsElement!: HTMLElement;
   private balanceDebugPanel!: BalanceDebugPanelHandle;
+  private bookColorEditor: BookColorEditorHandle | null = null;
   private characterPreviewIntervalId: number | null = null;
   private characterColorTemp: string = '#ffffff';
   private readonly CHARACTER_COLORS: { value: string; label?: string }[] = [
@@ -1185,9 +1188,6 @@ export default class GameScene extends Phaser.Scene {
     document.body.appendChild(this.catchResultDimmerElement);
     document.body.appendChild(this.catchResultElement);
     document.body.appendChild(this.levelUpPopupElement);
-    if (DEBUG_POPUP_EDIT_MODE) {
-      this.debugApplyPopupEditKind('catch');
-    }
 
     this.createCatchBagFullUI();
 
@@ -1227,6 +1227,8 @@ export default class GameScene extends Phaser.Scene {
     // デバッグ用キャラクター設定UI（起動時に一度生成）
     this.createCharacterSettingsUI();
     this.createBalanceDebugUI();
+    // Book配色の localStorage 上書きを起動時に適用
+    this.createBookColorEditorUI();
 
     const markUiMenuMousePointer = (e?: PointerEvent) => {
       if (e && e.type === 'pointermove' && e.movementX === 0 && e.movementY === 0) return;
@@ -1827,15 +1829,18 @@ export default class GameScene extends Phaser.Scene {
         <div id="debug-settings-btn-wrap" style="position: absolute; bottom: 52px; left: 16px; pointer-events: auto; display: flex; flex-direction: column; gap: 8px;">
           <button type="button" id="character-settings-btn" class="nes-btn is-small">キャラ設定</button>
           <button type="button" id="balance-debug-btn" class="nes-btn is-small">バランス</button>
-          ${DEBUG_POPUP_EDIT_MODE ? `
-          <div id="debug-popup-edit-tabs" style="display: flex; flex-direction: column; gap: 6px;">
-            <button type="button" class="nes-btn is-small" data-popup-edit="catch">リザルト</button>
-            <button type="button" class="nes-btn is-small" data-popup-edit="level">レベルアップ</button>
-            <button type="button" class="nes-btn is-small" data-popup-edit="quest">クエスト達成</button>
+          <button type="button" id="book-color-editor-btn" class="nes-btn is-small">Book配色</button>
+          <button type="button" id="ui-adjust-mode-btn" class="nes-btn is-small" aria-pressed="false">UI調整</button>
+          <div id="debug-popup-edit-tools" style="display: flex; flex-direction: column; gap: 8px;" hidden>
+            <div id="debug-popup-edit-tabs" style="display: flex; flex-direction: column; gap: 6px;">
+              <button type="button" class="nes-btn is-small" data-popup-edit="catch">リザルト</button>
+              <button type="button" class="nes-btn is-small" data-popup-edit="level">レベルアップ</button>
+              <button type="button" class="nes-btn is-small" data-popup-edit="quest">クエスト達成</button>
+              <button type="button" class="nes-btn is-small" data-popup-edit="achievement">実績獲得</button>
+            </div>
+            <button type="button" id="catch-result-replay-btn" class="nes-btn is-small">経験値演出</button>
+            <button type="button" id="catch-result-money-replay-btn" class="nes-btn is-small">所持金演出</button>
           </div>
-          <button type="button" id="catch-result-replay-btn" class="nes-btn is-small">経験値演出</button>
-          <button type="button" id="catch-result-money-replay-btn" class="nes-btn is-small">所持金演出</button>
-          ` : ''}
         </div>
 
         <div id="quest-hud" class="quest-hud" aria-label="進行中クエスト">
@@ -1874,6 +1879,16 @@ export default class GameScene extends Phaser.Scene {
         this.openBalanceDebug();
       });
     }
+    const bookColorBtn = document.getElementById('book-color-editor-btn');
+    if (bookColorBtn) {
+      bookColorBtn.addEventListener('click', () => {
+        this.toggleBookColorEditor();
+      });
+    }
+    const uiAdjustModeBtn = document.getElementById('ui-adjust-mode-btn');
+    if (uiAdjustModeBtn) {
+      uiAdjustModeBtn.addEventListener('click', () => this.setUiAdjustMode(!this.uiAdjustMode));
+    }
     const catchResultReplayBtn = document.getElementById('catch-result-replay-btn');
     if (catchResultReplayBtn) {
       catchResultReplayBtn.addEventListener('click', () => this.debugReplayCatchResultAnimation());
@@ -1882,17 +1897,15 @@ export default class GameScene extends Phaser.Scene {
     if (catchResultMoneyReplayBtn) {
       catchResultMoneyReplayBtn.addEventListener('click', () => this.debugReplayMoneyAnimation());
     }
-    if (DEBUG_POPUP_EDIT_MODE) {
-      this.statusUIElement?.querySelectorAll<HTMLButtonElement>('[data-popup-edit]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const kind = btn.getAttribute('data-popup-edit');
-          if (kind === 'catch' || kind === 'level' || kind === 'quest') {
-            this.debugApplyPopupEditKind(kind);
-          }
-        });
+    this.statusUIElement?.querySelectorAll<HTMLButtonElement>('[data-popup-edit]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const kind = btn.getAttribute('data-popup-edit');
+        if (kind === 'catch' || kind === 'level' || kind === 'quest' || kind === 'achievement') {
+          this.debugApplyPopupEditKind(kind);
+        }
       });
-      this.debugSyncPopupEditTabs();
-    }
+    });
+    this.syncUiAdjustModeChrome();
 
     this.renderStatusCharacterIcon(characterId, this.getSelectedColor());
     this.bindHudEquipmentShortcuts();
@@ -3746,7 +3759,38 @@ export default class GameScene extends Phaser.Scene {
       lureId: this.playerData.equippedLureId,
       onHookSuccess: (result) => this.onExplorationHookSuccess(result),
       onCancel: () => this.onExplorationCancel(),
+      onPickupCollect: (event) => this.onExplorationPickupCollect(event),
     });
+  }
+
+  private onExplorationPickupCollect(event: ExplorationPickupCollectEvent): void {
+    if (event.amount <= 0) return;
+
+    if (event.kind === 'exp') {
+      addExp(this.playerData, event.amount);
+      savePlayerData(this.playerData);
+      const toExp = this.playerData.exp - this.hudExpPending;
+      const gain = Math.max(0, toExp - this.hudExpShown);
+      if (gain <= 0) {
+        this.updateStatusUI();
+        return;
+      }
+      if (this.pendingCatchExpGain > 0) {
+        this.pendingCatchExpGain += gain;
+        this.updateStatusUI();
+        return;
+      }
+      // 先にキューして HUD を freeze してから update（バーが最終値へ飛ばないように）
+      this.enqueueHudExpPulse(gain, null, { x: event.screenX, y: event.screenY });
+      this.updateStatusUI();
+      return;
+    }
+
+    if (event.kind === 'gold') {
+      this.playerData.money += event.amount;
+      savePlayerData(this.playerData);
+      this.updateStatusUI();
+    }
   }
 
   private onExplorationHookSuccess(result: ExplorationResult): void {
@@ -4386,12 +4430,47 @@ export default class GameScene extends Phaser.Scene {
     showAt(0);
   }
 
-  /** ポップアップ編集モード: リザルト / レベルアップ / クエスト達成を切り替え */
+  private setUiAdjustMode(on: boolean) {
+    if (this.uiAdjustMode === on) {
+      this.syncUiAdjustModeChrome();
+      return;
+    }
+    this.uiAdjustMode = on;
+    this.syncUiAdjustModeChrome();
+    if (on) {
+      this.debugApplyPopupEditKind(this.debugPopupEditKind);
+      return;
+    }
+    this.debugCatchResultReplayBusy = false;
+    this.debugReplayMoneyBusy = false;
+    const replayBtn = document.getElementById('catch-result-replay-btn') as HTMLButtonElement | null;
+    if (replayBtn) replayBtn.disabled = false;
+    const moneyReplayBtn = document.getElementById('catch-result-money-replay-btn') as HTMLButtonElement | null;
+    if (moneyReplayBtn) moneyReplayBtn.disabled = false;
+    this.hideCatchResultPopup({ force: true, immediate: true, skipExpAbsorb: true });
+    this.hideAchievementNotification({ immediate: true });
+  }
+
+  private syncUiAdjustModeChrome() {
+    const btn = document.getElementById('ui-adjust-mode-btn');
+    btn?.classList.toggle('is-primary', this.uiAdjustMode);
+    btn?.setAttribute('aria-pressed', this.uiAdjustMode ? 'true' : 'false');
+    const tools = document.getElementById('debug-popup-edit-tools');
+    if (tools) tools.hidden = !this.uiAdjustMode;
+    if (this.uiAdjustMode) this.debugSyncPopupEditTabs();
+  }
+
+  /** UI調整モード: リザルト / レベルアップ / クエスト達成 / 実績獲得を切り替え */
   private debugApplyPopupEditKind(kind: DebugPopupEditKind) {
+    if (!this.uiAdjustMode) return;
     this.debugPopupEditKind = kind;
     this.debugSyncPopupEditTabs();
     if (kind === 'quest') {
       this.debugPinQuestPopup();
+      return;
+    }
+    if (kind === 'achievement') {
+      this.debugPinAchievementPopup();
       return;
     }
     this.hideAchievementNotification({ immediate: true });
@@ -4459,9 +4538,18 @@ export default class GameScene extends Phaser.Scene {
     this.showQuestNotification(quest, { persist: true });
   }
 
+  private debugPinAchievementPopup() {
+    this.hideCatchResultPopup({ force: true, immediate: true, skipExpAbsorb: true });
+    const achievement =
+      achievementConfigs.find((a) => a.reward?.exp && a.reward?.money)
+      ?? achievementConfigs[0];
+    if (!achievement) return;
+    this.showAchievementNotification(achievement, { persist: true });
+  }
+
   /** リザルトUI調整用: 閉じる→スフィア→バー増加を通しで再生する */
   private debugReplayCatchResultAnimation() {
-    if (!DEBUG_POPUP_EDIT_MODE || this.debugCatchResultReplayBusy) return;
+    if (!this.uiAdjustMode || this.debugCatchResultReplayBusy) return;
     this.debugCatchResultReplayBusy = true;
     const replayBtn = document.getElementById('catch-result-replay-btn') as HTMLButtonElement | null;
     if (replayBtn) replayBtn.disabled = true;
@@ -4505,7 +4593,7 @@ export default class GameScene extends Phaser.Scene {
 
   /** リザルトUI調整用: 所持金カウント＋キラを再生し、金額は元に戻す */
   private debugReplayMoneyAnimation() {
-    if (!DEBUG_POPUP_EDIT_MODE || this.debugReplayMoneyBusy) return;
+    if (!this.uiAdjustMode || this.debugReplayMoneyBusy) return;
     const actual = this.playerData.money;
     const previewGain = 2000;
     const duration = this.hudMoneyDisplay.previewGain(previewGain);
@@ -4759,7 +4847,7 @@ export default class GameScene extends Phaser.Scene {
     skipExpAbsorb?: boolean;
     onHidden?: () => void;
   }) {
-    if (DEBUG_POPUP_EDIT_MODE && !options?.force) return;
+    if (this.uiAdjustMode && !options?.force) return;
     if (!this.catchResultElement) return;
     if (this.catchResultTimer) {
       this.catchResultTimer.remove(false);
@@ -4833,7 +4921,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private dismissCatchResultPopupByUser(): boolean {
-    if (DEBUG_POPUP_EDIT_MODE) {
+    if (this.uiAdjustMode) {
       if (this.debugPopupEditKind === 'catch') {
         this.debugReplayCatchResultAnimation();
       }
@@ -4909,10 +4997,10 @@ export default class GameScene extends Phaser.Scene {
     if (immediate) this.finishHudExpHold();
   }
 
-  private enqueueHudExpPulse(gain: number, origin?: Element | null): void {
+  private enqueueHudExpPulse(gain: number, origin?: Element | null, originPoint?: Point | null): void {
     const mag = Math.max(0, Math.floor(gain));
     if (mag <= 0) return;
-    this.hudExpPulseQueue.push({ gain: mag, origin });
+    this.hudExpPulseQueue.push({ gain: mag, origin, originPoint });
     this.pumpHudExpPulses();
   }
 
@@ -4921,10 +5009,14 @@ export default class GameScene extends Phaser.Scene {
     const next = this.hudExpPulseQueue.shift();
     if (!next) return;
     this.hudExpHold = { fromExp: this.hudExpShown, toExp: this.hudExpShown + next.gain };
-    this.beginHudExpAbsorb({ origin: next.origin });
+    this.beginHudExpAbsorb({ origin: next.origin, originPoint: next.originPoint });
   }
 
-  private beginHudExpAbsorb(options?: { immediate?: boolean; origin?: Element | null }): void {
+  private beginHudExpAbsorb(options?: {
+    immediate?: boolean;
+    origin?: Element | null;
+    originPoint?: Point | null;
+  }): void {
     const hold = this.hudExpHold;
     if (!hold || this.hudExpAbsorbActive) return;
     this.hudExpAbsorbActive = true;
@@ -4936,7 +5028,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     const origin =
-      getElementCenter(options?.origin)
+      options?.originPoint
+      ?? getElementCenter(options?.origin)
       ?? this.catchResultExpOrigin
       ?? getElementCenter(this.achievementNotificationElement)
       ?? getElementCenter(this.statusUIElement?.querySelector('#quest-hud'));
@@ -11979,6 +12072,7 @@ export default class GameScene extends Phaser.Scene {
     const n = achievements.length;
     if (n === 0) {
       this.achievementNavArea = 'left';
+      requestAnimationFrame(() => this.updateUnifiedBookRightPaneScrollFade());
       return;
     }
     if (this.achievementNavArea === 'right') {
@@ -11995,7 +12089,10 @@ export default class GameScene extends Phaser.Scene {
           behavior: 'smooth',
           block: 'nearest',
         });
+        this.updateUnifiedBookRightPaneScrollFade();
       });
+    } else {
+      requestAnimationFrame(() => this.updateUnifiedBookRightPaneScrollFade());
     }
   }
 
@@ -12338,7 +12435,8 @@ export default class GameScene extends Phaser.Scene {
     const rewardChips = notification.querySelector('.achievement-notification__reward-chips') as HTMLElement | null;
     const thumbEl = notification.querySelector('#achievement-notification-thumb') as HTMLElement | null;
 
-    notification.classList.add('ui-frame-box', 'is-quest');
+    notification.classList.remove('is-achievement');
+    notification.classList.add('ui-frame-box', 'is-complete-toast', 'is-quest');
     if (nameEl) nameEl.textContent = quest.name;
     if (thumbEl) {
       thumbEl.innerHTML = this.buildQuestCardIcon(quest);
@@ -12367,7 +12465,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.clearAchievementNotificationHideTimer();
     notification.classList.remove('is-visible', 'is-leaving');
-    notification.classList.add('ui-frame-box', 'is-quest', 'is-entering');
+    notification.classList.add('ui-frame-box', 'is-complete-toast', 'is-quest', 'is-entering');
     notification.style.display = 'block';
     notification.setAttribute('aria-hidden', 'false');
     void notification.offsetWidth;
@@ -12393,7 +12491,15 @@ export default class GameScene extends Phaser.Scene {
 
     const finalizeHide = () => {
       this.clearAchievementNotificationHideTimer();
-      notification.classList.remove('ui-frame-box', 'is-quest', 'is-entering', 'is-visible', 'is-leaving');
+      notification.classList.remove(
+        'ui-frame-box',
+        'is-complete-toast',
+        'is-quest',
+        'is-achievement',
+        'is-entering',
+        'is-visible',
+        'is-leaving',
+      );
       notification.style.display = 'none';
       notification.setAttribute('aria-hidden', 'true');
       const rewardChips = notification.querySelector('.achievement-notification__reward-chips') as HTMLElement | null;
@@ -12418,7 +12524,7 @@ export default class GameScene extends Phaser.Scene {
 
     const canAnimateLeave =
       !options?.immediate &&
-      notification.classList.contains('is-quest') &&
+      notification.classList.contains('is-complete-toast') &&
       notification.style.display !== 'none' &&
       !notification.classList.contains('is-leaving');
 
@@ -14239,6 +14345,10 @@ export default class GameScene extends Phaser.Scene {
       `<span class="quest-complete-letter" style="--i: ${i}"><img src="/images/lvup/QuestCompleted/${file}" alt="" draggable="false" /></span>`;
     const qcLine = (files: string[], start: number) =>
       `<div class="achievement-notification__quest-line">${files.map((file, n) => qcLetter(file, start + n)).join('')}</div>`;
+    const acLetter = (file: string, i: number) =>
+      `<span class="quest-complete-letter" style="--i: ${i}"><img src="/images/achieve/${file}" alt="" draggable="false" /></span>`;
+    const acLine = (files: string[], start: number) =>
+      `<div class="achievement-notification__quest-line">${files.map((file, n) => acLetter(file, start + n)).join('')}</div>`;
     const notificationHTML = `
       <div id="achievement-notification" class="achievement-notification" style="display: none;" aria-hidden="true">
         <div class="achievement-notification__title">🏆 実績解除！</div>
@@ -14260,6 +14370,9 @@ export default class GameScene extends Phaser.Scene {
             <span class="quest-complete-deco quest-complete-deco--fish" style="--i: 4"><img src="/images/lvup/QuestCompleted/efish.png" alt="" draggable="false" /></span>
           </div>
           ${qcLine(['C.png', 'o.png', 'm.png', 'p.png', 'l.png', 'e.png', 't.png', 'e.png', 'd.png', '!.png'], 5)}
+        </div>
+        <div class="achievement-notification__achieve-banner" aria-label="Unlocked!">
+          ${acLine(['U.png', 'N.png', 'L.png', 'O.png', 'C.png', 'K.png', 'E.png', 'D.png', '!.png'], 0)}
         </div>
         <div id="achievement-notification-thumb" class="achievement-notification__thumb" hidden></div>
         <div id="achievement-notification-name" class="achievement-notification__name"></div>
@@ -14362,6 +14475,31 @@ export default class GameScene extends Phaser.Scene {
     this.balanceDebugPanel.stopFightPreview();
     document.body.classList.remove('balance-debug-open');
     this.closeModal(this.MODAL_IDS.BALANCE_DEBUG);
+  }
+
+  // --- Book UI 配色エディタ（モーダル非依存・Bookを開いたまま編集可） ---
+
+  createBookColorEditorUI() {
+    if (this.bookColorEditor?.element) return;
+    this.bookColorEditor = createBookColorEditor();
+  }
+
+  openBookColorEditor() {
+    if (!this.bookColorEditor?.element) {
+      this.createBookColorEditorUI();
+    }
+    this.bookColorEditor?.open();
+  }
+
+  closeBookColorEditor() {
+    this.bookColorEditor?.close();
+  }
+
+  toggleBookColorEditor() {
+    if (!this.bookColorEditor?.element) {
+      this.createBookColorEditorUI();
+    }
+    this.bookColorEditor?.toggle();
   }
 
   // --- キャラクター設定UI（デバッグ用） ---
@@ -14635,45 +14773,65 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  showAchievementNotification(achievement: AchievementConfig) {
+  showAchievementNotification(achievement: AchievementConfig, options?: { persist?: boolean }) {
+    if (options?.persist) {
+      this.hideAchievementNotification({ immediate: true });
+      this.hudToastQueue = [];
+      this.hudToastPlaying = true;
+      this.hudToastCurrent = { kind: 'achievement', achievement };
+      this.presentAchievementNotification(achievement, { persist: true });
+      return;
+    }
     this.hudToastQueue.push({ kind: 'achievement', achievement });
     this.pumpHudToastQueue();
   }
 
-  private presentAchievementNotification(achievement: AchievementConfig) {
+  private presentAchievementNotification(achievement: AchievementConfig, options?: { persist?: boolean }) {
     const notification = this.achievementNotificationElement;
     const nameEl = notification.querySelector('#achievement-notification-name') as HTMLElement;
     const descEl = notification.querySelector('#achievement-notification-desc') as HTMLElement;
     const rewardEl = notification.querySelector('#achievement-notification-reward') as HTMLElement;
-    const title = notification.querySelector('.achievement-notification__title') as HTMLElement | null;
-
-    notification.classList.remove('ui-frame-box', 'is-quest');
-    notification.setAttribute('aria-hidden', 'false');
-    if (title) title.textContent = '🏆 実績解除！';
-    const thumbEl = notification.querySelector('#achievement-notification-thumb') as HTMLElement | null;
-    if (thumbEl) {
-      thumbEl.innerHTML = '';
-      thumbEl.hidden = true;
-    }
-    if (nameEl) nameEl.textContent = `${displayAchievementEmoji(achievement.emoji)} ${achievement.name}`;
-    if (descEl) {
-      descEl.hidden = false;
-      descEl.textContent = achievement.description;
-    }
     const rewardChips = notification.querySelector('.achievement-notification__reward-chips') as HTMLElement | null;
-    if (rewardChips) rewardChips.hidden = true;
-    
-    if (achievement.reward) {
-      const rewards: string[] = [];
-      if (achievement.reward.money) rewards.push(`💰 ${achievement.reward.money}G`);
-      if (achievement.reward.exp) rewards.push(`⭐ ${achievement.reward.exp}EXP`);
-      if (rewardEl) rewardEl.textContent = rewards.length > 0 ? `報酬: ${rewards.join(' ')}` : '';
-    } else {
-      if (rewardEl) rewardEl.textContent = '';
+    const thumbEl = notification.querySelector('#achievement-notification-thumb') as HTMLElement | null;
+
+    notification.classList.remove('is-quest');
+    notification.classList.add('ui-frame-box', 'is-complete-toast', 'is-achievement');
+    if (nameEl) nameEl.textContent = achievement.name;
+    if (thumbEl) {
+      const emoji = displayAchievementEmoji(achievement.emoji) || achievement.emoji || '🏆';
+      thumbEl.innerHTML = `<span class="quest-card__icon-emoji" aria-hidden="true">${emoji}</span>`;
+      thumbEl.hidden = false;
     }
+    if (descEl) {
+      descEl.textContent = achievement.description;
+      descEl.hidden = !achievement.description;
+    }
+    if (rewardEl) {
+      rewardEl.textContent = '';
+      rewardEl.hidden = true;
+    }
+
+    const money = achievement.reward?.money ?? 0;
+    const exp = achievement.reward?.exp ?? 0;
+    const moneyChip = rewardChips?.querySelector('[data-quest-reward="money"]') as HTMLElement | null;
+    const expChip = rewardChips?.querySelector('[data-quest-reward="exp"]') as HTMLElement | null;
+    const moneyValue = rewardChips?.querySelector('[data-quest-reward-money]') as HTMLElement | null;
+    const expValue = rewardChips?.querySelector('[data-quest-reward-exp]') as HTMLElement | null;
+    if (moneyValue) moneyValue.textContent = String(money);
+    if (expValue) expValue.textContent = String(exp);
+    moneyChip?.toggleAttribute('hidden', money <= 0);
+    expChip?.toggleAttribute('hidden', exp <= 0);
+    if (rewardChips) rewardChips.hidden = money <= 0 && exp <= 0;
 
     this.clearAchievementNotificationHideTimer();
+    notification.classList.remove('is-visible', 'is-leaving');
+    notification.classList.add('ui-frame-box', 'is-complete-toast', 'is-achievement', 'is-entering');
     notification.style.display = 'block';
+    notification.setAttribute('aria-hidden', 'false');
+    void notification.offsetWidth;
+    notification.classList.remove('is-entering');
+    notification.classList.add('is-visible');
+    if (options?.persist) return;
     this.achievementNotificationHideTimer = window.setTimeout(() => {
       this.hideAchievementNotification();
     }, HUD_TOAST_HOLD_MS);

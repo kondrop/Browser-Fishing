@@ -1,4 +1,4 @@
-import { explorationConfig, getExplorationCamera, stepExplorationCamera } from './explorationConfig';
+import { explorationConfig, getExplorationCamera, getExplorationViewSize, setExplorationViewSizeFromCss, stepExplorationCamera } from './explorationConfig';
 import { drawExplorationFrame, loadFishShadowImages, loadGearImage } from './explorationRenderer';
 import {
   applySpaceAppeal,
@@ -20,9 +20,20 @@ import {
   isHookIntroPlaying,
   endHookIntro,
 } from './explorationFish';
+import {
+  createInitialPickups,
+  findCollectiblePickup,
+  getPickupDrawPos,
+  loadPickupImages,
+  markPickupCollected,
+  pruneFinishedPickups,
+  tickPickups,
+  worldToExplorationScreen,
+} from './explorationPickups';
 import type {
   ExplorationFish,
   ExplorationHook,
+  ExplorationPickup,
   ExplorationResult,
   ExplorationStartOptions,
 } from './explorationTypes';
@@ -42,6 +53,7 @@ export class ExplorationController {
   private active = false;
   private closed = false;
   private fishes: ExplorationFish[] = [];
+  private pickups: ExplorationPickup[] = [];
   private hook: ExplorationHook = createHook();
   private underwater: ExplorationUnderwaterState = createUnderwaterState();
   private camera = getExplorationCamera(0, 0);
@@ -65,6 +77,7 @@ export class ExplorationController {
   private pendingResult: ExplorationResult | null = null;
   private successTimer = 0;
   private hitStampEl: HTMLElement | null = null;
+  private onResize = () => this.syncLayoutSafeAreas();
 
   isActive(): boolean {
     return this.active;
@@ -90,6 +103,8 @@ export class ExplorationController {
       castDistanceRatio: options.castDistanceRatio,
       timeSec,
     });
+    loadPickupImages();
+    this.pickups = createInitialPickups();
     this.baitImage = loadGearImage(options.baitId);
     this.lureImage = loadGearImage(options.lureId);
     this.mount();
@@ -97,6 +112,7 @@ export class ExplorationController {
     window.addEventListener('keyup', this.onKeyUp, true);
     document.addEventListener('pointermove', this.onPointerMove, true);
     document.addEventListener('pointerdown', this.onPointerDown, true);
+    window.addEventListener('resize', this.onResize);
     this.rafId = requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -116,9 +132,11 @@ export class ExplorationController {
     window.removeEventListener('keyup', this.onKeyUp, true);
     document.removeEventListener('pointermove', this.onPointerMove, true);
     document.removeEventListener('pointerdown', this.onPointerDown, true);
+    window.removeEventListener('resize', this.onResize);
     this.setKeyboardCursorHidden(false);
     this.unmount();
     this.fishes = [];
+    this.pickups = [];
     this.options = null;
   }
 
@@ -131,7 +149,7 @@ export class ExplorationController {
   }
 
   handleSpace(): void {
-    if (!this.active || this.closed) return;
+    if (!this.active || this.closed || this.successHold) return;
     if (isHookIntroPlaying(this.hook)) endHookIntro(this.hook);
     const now = performance.now();
     if (now - this.lastSpaceAt < 40) return;
@@ -149,7 +167,28 @@ export class ExplorationController {
       }
       return;
     }
+    const timeSec = now / 1000;
+    if (this.tryCollectPickup(timeSec)) return;
     applySpaceAppeal(this.fishes, this.hook);
+  }
+
+  private tryCollectPickup(timeSec: number): boolean {
+    const target = findCollectiblePickup(this.pickups, this.hook, timeSec);
+    if (!target) return false;
+    const pos = getPickupDrawPos(target, timeSec);
+    markPickupCollected(target);
+    const canvas = this.canvas;
+    const onCollect = this.options?.onPickupCollect;
+    if (canvas && onCollect) {
+      const screen = worldToExplorationScreen(pos.x, pos.y, this.camera, canvas);
+      onCollect({
+        kind: target.kind,
+        amount: target.amount,
+        screenX: screen.x,
+        screenY: screen.y,
+      });
+    }
+    return true;
   }
 
   private completeHook(fish: ExplorationFish): void {
@@ -181,7 +220,7 @@ export class ExplorationController {
   private layoutHitStamp(): void {
     if (!this.hitStampEl) return;
     const pos = getHookDrawPos(this.hook);
-    const { canvasW, canvasH } = explorationConfig;
+    const { canvasW, canvasH } = getExplorationViewSize();
     const sx = ((pos.x - this.camera.x) / canvasW) * 100;
     const sy = ((pos.y - this.camera.y) / canvasH) * 100;
     this.hitStampEl.style.left = `${sx}%`;
@@ -216,7 +255,7 @@ export class ExplorationController {
         </div>
         <div class="exploration-hint">
           <span>←↑↓→ 針を動かす</span>
-          <span>SPACE アピール / フッキング</span>
+          <span>SPACE アピール / フッキング / 回収</span>
           <span>ESC やめる</span>
         </div>
       </div>
@@ -225,16 +264,49 @@ export class ExplorationController {
     root.style.setProperty('--exploration-leave-sec', `${explorationConfig.hookToFightIntro.overlayFadeSec}s`);
     root.style.setProperty('--exploration-hit-shake-sec', `${explorationConfig.hookToFightIntro.stampShakeSec}s`);
     document.body.appendChild(root);
+    document.body.classList.add('ui-exploration-open');
     this.root = root;
     this.canvas = root.querySelector('#exploration-canvas');
     this.hitStampEl = root.querySelector('.exploration-hit-stamp');
+    // レイアウト確定後に視野サイズを合わせる
+    requestAnimationFrame(() => this.syncLayoutSafeAreas());
+    this.syncLayoutSafeAreas();
   }
 
   private unmount(): void {
+    document.body.classList.remove('ui-exploration-open');
     this.root?.remove();
     this.root = null;
     this.canvas = null;
     this.hitStampEl = null;
+  }
+
+  /** 装備UI〜クエストUIの実寸を測り、上下に同じ gap でモーダルを置く */
+  private syncLayoutSafeAreas(): void {
+    if (!this.root) return;
+    const topUi = document.getElementById('top-ui');
+    const questHud = document.getElementById('quest-hud');
+    const topHud = topUi
+      ? Math.ceil(topUi.getBoundingClientRect().bottom)
+      : 120;
+    const bottomHud = questHud
+      ? Math.ceil(window.innerHeight - questHud.getBoundingClientRect().top)
+      : 90;
+    this.root.style.setProperty('--exploration-hud-top', `${Math.max(72, topHud)}px`);
+    this.root.style.setProperty('--exploration-hud-bottom', `${Math.max(72, bottomHud)}px`);
+    this.syncCanvasViewSize();
+  }
+
+  /** 表示枠の縦横比にバッファを合わせ、CSS 非等方ストレッチで絵が潰れるのを防ぐ */
+  private syncCanvasViewSize(): void {
+    const wrap = this.root?.querySelector('.exploration-canvas-wrap') as HTMLElement | null;
+    const canvas = this.canvas;
+    if (!wrap || !canvas) return;
+    const rect = wrap.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return;
+    const { canvasW, canvasH } = setExplorationViewSizeFromCss(rect.width, rect.height);
+    if (canvas.width !== canvasW) canvas.width = canvasW;
+    if (canvas.height !== canvasH) canvas.height = canvasH;
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
@@ -311,19 +383,24 @@ export class ExplorationController {
         timeSec,
         options,
       });
+      tickPickups(this.pickups, dt);
+      this.pickups = pruneFinishedPickups(this.pickups);
     } else {
       this.layoutHitStamp();
+      tickPickups(this.pickups, dt);
     }
     tickHookFx(this.hook, dt);
     const camera = this.camera;
     tickUnderwater(this.underwater, dt, timeSec, camera);
 
+    this.syncCanvasViewSize();
     const ctx = this.canvas?.getContext('2d');
     if (ctx) {
       drawExplorationFrame({
         ctx,
         underwater: this.underwater,
         fishes: this.fishes,
+        pickups: this.pickups,
         hook: this.hook,
         gear: {
           shadowImages: this.shadowImages,

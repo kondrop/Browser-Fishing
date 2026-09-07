@@ -235,6 +235,52 @@ export const explorationConfig = {
   deepEscapeRateMul: 1.18,
   shallowFishSpeedMul: 0.94,
   deepFishSpeedMul: 1.12,
+
+  /**
+   * 水中の回収シンボル。ワールドにばら撒き、針を近づけて SPACE で取る。
+   * kind ごとに増やす前提。
+   */
+  pickups: {
+    /** 針中心からの回収距離 */
+    collectRange: 76,
+    /** 回収後の消滅演出秒 */
+    collectAnimSec: 0.9,
+    exp: {
+      count: 5,
+      /** 1個あたりの経験値候補 */
+      amounts: [5, 8, 10, 12],
+      radius: 16,
+      drawSize: 30,
+      imagePath: '/images/Fishing Result UI/orb.svg',
+      minSeparation: 140,
+      /** 針の初期着水付近は空ける */
+      avoidHookStartDist: 200,
+      bobAmp: 3.5,
+      bobFreq: 0.58,
+      glowAlpha: 0.35,
+      glowRgb: '118, 248, 97',
+      nearRingRgba: '238, 251, 236, 0.85',
+      fallbackFill: '#76F861',
+      labelFill: '#EEFBEC',
+    },
+    gold: {
+      count: 5,
+      /** 1個あたりの所持金候補 */
+      amounts: [10, 15, 20, 30],
+      radius: 16,
+      drawSize: 28,
+      imagePath: '/images/ui/ゴールド.png',
+      minSeparation: 140,
+      avoidHookStartDist: 200,
+      bobAmp: 3.5,
+      bobFreq: 0.58,
+      glowAlpha: 0.4,
+      glowRgb: '255, 200, 64',
+      nearRingRgba: '255, 236, 170, 0.9',
+      fallbackFill: '#F0C040',
+      labelFill: '#FFE9A8',
+    },
+  },
 } as const;
 
 export type ExplorationConfig = typeof explorationConfig;
@@ -244,6 +290,37 @@ export type ExplorationCamera = {
   y: number;
 };
 
+/** 表示バッファ（＝カメラ視野）。CSS 枠の縦横比に合わせて更新し、非等方ストレッチを避ける */
+let liveViewW: number = explorationConfig.canvasW;
+let liveViewH: number = explorationConfig.canvasH;
+
+export function getExplorationViewSize(): { canvasW: number; canvasH: number } {
+  return { canvasW: liveViewW, canvasH: liveViewH };
+}
+
+/**
+ * CSS 表示枠のサイズから視野を決める。
+ * 設計高さ 640 を基準に横幅を合わせ、ワールド内に収まるようクランプ。
+ * バッファ縦横比＝表示枠縦横比になるので、CSS で引き伸ばしても円が潰れない。
+ */
+export function setExplorationViewSizeFromCss(cssW: number, cssH: number): { canvasW: number; canvasH: number } {
+  const { worldW, worldH } = getExplorationWorldSize();
+  const aspect = cssW / Math.max(1, cssH);
+  let canvasH: number = explorationConfig.canvasH;
+  let canvasW: number = Math.round(canvasH * aspect);
+  if (canvasW > worldW) {
+    canvasW = Math.floor(worldW);
+    canvasH = Math.max(2, Math.round(canvasW / aspect));
+  }
+  if (canvasH > worldH) {
+    canvasH = Math.floor(worldH);
+    canvasW = Math.max(2, Math.round(canvasH * aspect));
+  }
+  liveViewW = Math.max(2, canvasW);
+  liveViewH = Math.max(2, canvasH);
+  return { canvasW: liveViewW, canvasH: liveViewH };
+}
+
 export function getExplorationWorldSize(): { worldW: number; worldH: number } {
   return {
     worldW: explorationConfig.canvasW * explorationConfig.worldScreensX,
@@ -252,7 +329,7 @@ export function getExplorationWorldSize(): { worldW: number; worldH: number } {
 }
 
 export function getExplorationCamera(focusX: number, focusY: number): ExplorationCamera {
-  const { canvasW, canvasH } = explorationConfig;
+  const { canvasW, canvasH } = getExplorationViewSize();
   const { worldW, worldH } = getExplorationWorldSize();
   const maxX = Math.max(0, worldW - canvasW);
   const maxY = Math.max(0, worldH - canvasH);

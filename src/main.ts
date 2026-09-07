@@ -1,6 +1,10 @@
 import './style.css';
+import { applyStoredBookColors } from './debug/bookColorEditor';
 import Phaser from 'phaser';
 import GameScene from './scenes/GameScene';
+
+// CSS 読み込み直後に配色オーバーライドを復元（GameScene より前）
+applyStoredBookColors();
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,

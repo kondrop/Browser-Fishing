@@ -27,6 +27,7 @@ import {
 } from '../../data/aquariumConfig';
 import {
   explorationConfig,
+  getExplorationViewSize,
   getExplorationWorldSize,
   type ExplorationCamera,
 } from './explorationConfig';
@@ -103,7 +104,7 @@ export function createUnderwaterState(): ExplorationUnderwaterState {
 }
 
 function createBubble(camera: ExplorationCamera, yOverride?: number): ExplorationBubble {
-  const { canvasW, canvasH } = explorationConfig;
+  const { canvasW, canvasH } = getExplorationViewSize();
   const baseX = camera.x - 40 + Math.random() * (canvasW + 80);
   const r =
     AQUARIUM_BUBBLE_RADIUS_MIN +
@@ -163,7 +164,7 @@ export function spawnHookIntroBubbles(
 }
 
 function createGodRay(camera: ExplorationCamera, ageOverride?: number): ExplorationGodRay {
-  const { canvasW } = explorationConfig;
+  const { canvasW } = getExplorationViewSize();
   const { worldW } = getExplorationWorldSize();
   const life =
     AQUARIUM_GODRAY_LIFE_MIN +
@@ -198,7 +199,7 @@ function lerp(a: number, b: number, t: number): number {
 }
 
 function getLayerDestW(layer: FreshLayerDef): number {
-  const { canvasW } = explorationConfig;
+  const { canvasW } = getExplorationViewSize();
   const { worldW } = getExplorationWorldSize();
   const maxCamX = worldW - canvasW;
   return Math.max(worldW, canvasW + maxCamX * layer.parallaxX);
@@ -253,7 +254,7 @@ export function seedUnderwater(
   state.dust = [];
   state.hookBubbleAcc = 0;
   state.hookIntroBurstDone = false;
-  const { canvasH } = explorationConfig;
+  const { canvasH } = getExplorationViewSize();
   for (let i = 0; i < AQUARIUM_BUBBLE_SEED_COUNT; i++) {
     const t = (i + Math.random()) / AQUARIUM_BUBBLE_SEED_COUNT;
     const y = camera.y + 24 + t * (canvasH - 32);
@@ -282,7 +283,7 @@ export function tickUnderwater(
   timeSec: number,
   camera: ExplorationCamera,
 ): void {
-  const { canvasW } = explorationConfig;
+  const { canvasW } = getExplorationViewSize();
   const { worldW } = getExplorationWorldSize();
   if (state.bubbles.length < AQUARIUM_BUBBLE_MAX && Math.random() < AQUARIUM_BUBBLE_SPAWN_PER_SEC * dt) {
     state.bubbles.push(createBubble(camera));
@@ -334,7 +335,7 @@ function drawGodRays(
   camera: ExplorationCamera,
 ): void {
   if (rays.length === 0) return;
-  const { canvasW, canvasH } = explorationConfig;
+  const { canvasW, canvasH } = getExplorationViewSize();
   const angle = AQUARIUM_GODRAY_ANGLE;
   const dirX = Math.sin(angle);
   const dirY = Math.cos(angle);
@@ -427,7 +428,7 @@ const decoShadowImages: Record<DecoShadowTier, HTMLImageElement> = {
 
 function getLayerShift(camera: ExplorationCamera, layer: FreshLayerDef): { ox: number; oy: number } {
   const { worldH } = getExplorationWorldSize();
-  const maxCamY = worldH - explorationConfig.canvasH;
+  const maxCamY = worldH - getExplorationViewSize().canvasH;
   const t = maxCamY <= 0 ? 0 : Math.max(0, Math.min(1, (maxCamY - camera.y) / maxCamY));
   return {
     ox: camera.x * (1 - layer.parallaxX),
@@ -463,7 +464,7 @@ function drawDustLayer(
 ): void {
   const layer = explorationConfig.freshLayers[layerId];
   const shift = getLayerShift(camera, layer);
-  const { canvasW, canvasH } = explorationConfig;
+  const { canvasW, canvasH } = getExplorationViewSize();
   const viewL = camera.x - 6;
   const viewR = camera.x + canvasW + 6;
   const viewT = camera.y - 6;

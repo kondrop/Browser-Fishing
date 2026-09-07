@@ -88,6 +88,32 @@ export type ExplorationResult = {
   hookDepthRatio: number;
 };
 
+/** 水中の回収物。item は後日追加予定 */
+export type ExplorationPickupKind = 'exp' | 'gold';
+
+export type ExplorationPickup = {
+  id: string;
+  kind: ExplorationPickupKind;
+  x: number;
+  y: number;
+  /** ゆらぎ位相 */
+  phase: number;
+  /** 報酬量（exp=経験値 / gold=所持金） */
+  amount: number;
+  radius: number;
+  collected: boolean;
+  /** 回収演出の経過秒 */
+  collectT: number;
+};
+
+export type ExplorationPickupCollectEvent = {
+  kind: ExplorationPickupKind;
+  amount: number;
+  /** キャンバス上のスクリーン座標（HUD orb 飛行の起点） */
+  screenX: number;
+  screenY: number;
+};
+
 export type ExplorationStartOptions = {
   rarityBonuses: RarityBonuses;
   junkWeightMultiplier: number;
@@ -96,6 +122,7 @@ export type ExplorationStartOptions = {
   lureId: string | null;
   onHookSuccess: (result: ExplorationResult) => void;
   onCancel: () => void;
+  onPickupCollect?: (event: ExplorationPickupCollectEvent) => void;
 };
 
 export type HookInputResult = 'success' | 'fail' | 'noop';

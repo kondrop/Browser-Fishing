@@ -203,12 +203,28 @@ img {
   --space-12: 12px;
   --space-16: 16px;
   --space-20: 20px;
-  --bg-panel-inner: #f2e2b6;
-  --color-semantic-bg-book-container: #f2e2b6;
+
+  /* Book UI 配色コア（リアルタイムエディタで上書き可） */
+  --color-book-frame-idle: #cbb792;
+  --color-book-frame-active: #f9deb3;
+  --color-book-frame-surface: #eed3a5;
+  --color-book-parchment: #f5ce94;
+  --color-book-text-secondary: #5c4030;
+  --color-book-stat-up: #4ea65e;
+  --color-book-stat-down: #d35757;
+  --color-book-pedia-idle: #decda4;
+
+  /* Book UI ハイライト／補助（近い色はコアへ統合済み） */
+  --color-book-quest-card-selected: #fff6da;
+  --color-book-btn-muted: #8a8a8a;
+  --color-book-overlay: #231c14;
+  --color-book-scrim: #000000;
+
+  --bg-panel-inner: var(--color-book-frame-surface);
+  --color-semantic-bg-book-container: var(--color-book-frame-surface);
   --color-semantic-border-book: #5e2e1c;
   --color-semantic-border-soft: #704a2b;
   --color-semantic-text-muted: #8a7060;
-  --color-semantic-bg-nonactive: #d3cfbe;
   --color-primitive-gray-700: #4a4a4a;
   --color-primitive-green-600: #4e8a42;
 
@@ -229,7 +245,6 @@ img {
   --color-primitive-brown-400: #4a3020;
   --color-primitive-orange-600: #c2681f;
   --color-primitive-natural-sand-300: #b9a67e;
-  --color-primitive-natural-sand-400: #ecd5ab;
   --color-primitive-white: #ffffff;
   --color-semantic-text-primary: #320e0e;
   --color-semantic-text-white: #ffffff;
@@ -290,12 +305,12 @@ img {
 /* 塗りの色を --frame-fill-color で変える例 */
 .ui-frame--cream .ui-frame-fill,
 .ui-frame-fill--cream {
-  --frame-fill-color: #d3c4a7;
+  --frame-fill-color: var(--color-book-pedia-idle);
 }
 
 .ui-frame--green .ui-frame-fill,
 .ui-frame-fill--green {
-  --frame-fill-color: #8bc34a;
+  --frame-fill-color: var(--color-semantic-bg-active);
 }
 
 .ui-frame--blue .ui-frame-fill,
@@ -310,7 +325,7 @@ img {
 .ui-frame-box {
   --frame-slice: 4;
   --frame-scale: 4;
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
   position: relative;
   box-sizing: border-box;
   padding: calc(var(--frame-slice) * var(--frame-scale) * 1px);
@@ -373,39 +388,41 @@ img {
   inset: 0 !important;
 }
 
-/* 選択・タブアクティブ時の黄色塗りは廃止。枠は uiframe.png ↔ border.png、塗りは #CBB792 ↔ #e8cfa6（各セクションで指定） */
+/* 選択・タブアクティブ時の黄色塗りは廃止。枠は uiframe.png ↔ border.png。
+ * 非選択（uiframe.png）は border-image の fill で画像中心を塗りに使う。
+ * 選択・active は border.png（枠のみ）+ --frame-fill-color の CSS 塗り。 */
 
 /* 統合BookUI（左リスト）選択中: 塗りはクリーム（枠は下の #book-ui #book-list-scroll で border.png） */
 #book-ui #book-list-scroll .book-ui-node.book-list-item.is-selected.ui-frame-box::before,
 .book-ui-node.book-list-item.is-selected.ui-frame-box::before {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 /* 閉じるボタン押下時は少し暗く */
 .modal-close:active.ui-frame-box::before,
 .book-close:active.ui-frame-box::before {
-  --frame-fill-color: #c9b896;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 /* 経験値バー背景は暗い茶系 */
 #exp-bar-bg.ui-frame-box::before {
-  --frame-fill-color: #5a3d2e;
+  --frame-fill-color: var(--color-book-text-secondary);
 }
 
 /* 生息地バッジは青緑系 */
 .detail-habitat.ui-frame-box::before,
 .book-detail-habitat.ui-frame-box::before {
-  --frame-fill-color: #327F75;
+  --frame-fill-color: var(--color-habitat-stream);
 }
 
 /* 詳細モーダルはクリーム系 */
 .modal-content.detail-modal.ui-frame-box::before {
-  --frame-fill-color: #d3c4a7;
+  --frame-fill-color: var(--color-book-pedia-idle);
 }
 
 /* 実績詳細カード: デフォルト sand-400（未達成ダークは下で上書き） */
 .achievement-detail-item.ui-frame-box::before {
-  --frame-fill-color: var(--color-primitive-natural-sand-400);
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 /* ステータスUI */
@@ -635,7 +652,7 @@ span.level-label-value,
   flex: 1 1 auto;
   min-width: 96px;
   height: 22px;
-  background: #5a3d2e;
+  background: var(--color-book-text-secondary);
   border-style: solid;
   border-width: 3px;
   border-color: rgba(95, 45, 29, 1);
@@ -674,12 +691,12 @@ span.level-label-value,
 #exp-bar-fill {
   height: 100%;
   margin: 0;
-  background: linear-gradient(90deg, rgba(121, 228, 75, 1) 0%, rgba(81, 245, 169, 1) 100%);
+  background: linear-gradient(90deg, #55a848 0%, #3d8f5c 100%);
   box-shadow:
-    inset 0px 3px 0px 0px rgba(255, 255, 255, 0.3),
-    inset 3px 0px 0px 0px rgba(255, 255, 255, 0.3),
-    inset 0px -3px 0px 0px rgba(0, 0, 0, 0.2),
-    inset -3px 0px 0px 0px rgba(0, 0, 0, 0.2);
+    inset 0px 3px 0px 0px rgba(255, 255, 255, 0.25),
+    inset 3px 0px 0px 0px rgba(255, 255, 255, 0.25),
+    inset 0px -3px 0px 0px rgba(0, 0, 0, 0.25),
+    inset -3px 0px 0px 0px rgba(0, 0, 0, 0.25);
   width: 0%;
   transition: width 0.3s;
   position: relative;
@@ -691,7 +708,7 @@ span.level-label-value,
 }
 
 #exp-bar-bg.is-exp-absorbing {
-  box-shadow: 0 0 10px 3px rgba(121, 228, 75, 0.55);
+  box-shadow: 0 0 10px 3px rgba(85, 168, 72, 0.55);
 }
 
 #hud-exp-orb-layer {
@@ -730,6 +747,7 @@ span.level-label-value,
   font-family: "Micro 5" !important;
   font-size: 20px;
   color: #ffffff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
   line-height: 1;
   pointer-events: none;
   z-index: 3;
@@ -1083,7 +1101,7 @@ span.level-label-value,
   width: 46px;
   height: 46px;
   border-radius: inherit;
-  background: #fffdf4;
+  background: var(--color-book-quest-card-selected);
   box-shadow:
     inset 0 0 0 3px rgba(95, 45, 29, 0.45),
     inset 0 -4px 0 rgba(0, 0, 0, 0.08);
@@ -1176,7 +1194,7 @@ span.level-label-value,
 }
 
 .quest-hud-popover-card.ui-frame-box {
-  --frame-fill-color: var(--color-primitive-natural-sand-400);
+  --frame-fill-color: var(--color-book-frame-active);
   width: 100%;
   padding: 12px;
 }
@@ -1370,7 +1388,7 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   gap: 12px;
   justify-content: center;
   padding: 25px 0;
-  background: rgba(0, 0, 0, 0.2);
+  background: color-mix(in srgb, var(--color-book-scrim) 20%, transparent);
   margin: 15px 0;
 }
 
@@ -1447,17 +1465,17 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
 #inventory-modal .inventory-slot .slot-bg.ui-frame-box,
 #book-modal .book-slot .slot-bg.ui-frame-box {
   --frame-scale: 3;
-  --frame-fill-color: #CBB792;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 #inventory-modal .inventory-slot .slot-bg.ui-frame-box::after,
 #book-modal .book-slot .slot-bg.ui-frame-box::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 #inventory-modal .inventory-slot.is-selected .slot-bg.ui-frame-box::before,
 #book-modal .book-slot.is-selected .slot-bg.ui-frame-box::before {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #inventory-modal .inventory-slot.is-selected .slot-bg.ui-frame-box::after,
@@ -1526,8 +1544,8 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
 }
 
 .rarity-label-text {
-  background: #c2681f;
-  color: #dfd3b9;
+  background: var(--color-primitive-orange-600);
+  color: var(--color-book-pedia-idle);
   padding: 0 3px;
   font-size: 18px;
   font-family: 'Micro 5', 'DotGothic16', sans-serif;
@@ -1538,24 +1556,24 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
 .rarity-label-decoration {
   width: 6px;
   height: 14px;
-  background: #c2681f;
+  background: var(--color-primitive-orange-600);
   position: relative;
   display: block;
   /* ドットパターンの装飾（簡略版） */
   background-image: 
-    radial-gradient(circle, #c2681f 1px, transparent 1px),
-    radial-gradient(circle, #c2681f 1px, transparent 1px);
+    radial-gradient(circle, var(--color-primitive-orange-600) 1px, transparent 1px),
+    radial-gradient(circle, var(--color-primitive-orange-600) 1px, transparent 1px);
   background-size: 2px 2px;
   background-position: 0 0, 2px 2px;
 }
 
 /* 魚のイラストコンテナ */
 .detail-image-container {
-  border: 6px solid #dfd3b9;
+  border: 6px solid var(--color-book-pedia-idle);
   width: 100%;
   height: 165px;
   position: relative;
-  background: #bdb294;
+  background: var(--color-book-frame-idle);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -1566,7 +1584,7 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   content: '';
   position: absolute;
   inset: 0;
-  background: #bdb294;
+  background: var(--color-book-frame-idle);
   opacity: 0.6;
   z-index: 1;
 }
@@ -1654,13 +1672,13 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
 }
 
 .detail-note-header {
-  border-bottom: 1px solid #d3c4a7;
+  border-bottom: 1px solid var(--color-book-pedia-idle);
   padding-bottom: 2px;
 }
 
 .detail-note-title {
   font-size: 20px;
-  color: #c2681f;
+  color: var(--color-primitive-orange-600);
   font-family: 'Jersey 10', 'DotGothic16', sans-serif;
   line-height: 1;
 }
@@ -1695,7 +1713,7 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   gap: 12px;
   justify-content: center;
   padding: 25px 0;
-  background: rgba(0, 0, 0, 0.2);
+  background: color-mix(in srgb, var(--color-book-scrim) 20%, transparent);
   margin: 15px 0;
 }
 
@@ -1751,7 +1769,7 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   /* boardBG.png: 掲示板と同じ木枠＋羊皮紙 */
   --frame-slice: 80;
   --frame-scale: 0.35;
-  --frame-fill-color: #edcc9b;
+  --frame-fill-color: var(--color-book-parchment);
   --frame-fill-inset: calc(var(--frame-slice) * var(--frame-scale) * 1px);
   padding: calc(var(--frame-slice) * var(--frame-scale) * 1px + var(--space-12));
 }
@@ -1774,7 +1792,7 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
 
 .modal-content.shop-modal .modal-header h2 {
   margin: 0;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   font-size: 48px;
   line-height: 1;
   font-family: "Jersey 10", "DotGothic16", sans-serif !important;
@@ -1797,7 +1815,7 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   font-size: 48px;
   font-weight: 400;
   line-height: 1;
-  color: #5c4030 !important;
+  color: var(--color-book-text-secondary) !important;
   letter-spacing: 0.02em;
   text-align: left;
   box-shadow: none;
@@ -1909,8 +1927,8 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   bottom: 0;
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--frame-fill-color, #edcc9b) 94%, transparent) 0%,
-    color-mix(in srgb, var(--frame-fill-color, #edcc9b) 52%, transparent) 42%,
+    color-mix(in srgb, #f5ce94 94%, transparent) 0%,
+    color-mix(in srgb, #f5ce94 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -1919,8 +1937,8 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   top: 0;
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--frame-fill-color, #edcc9b) 94%, transparent) 0%,
-    color-mix(in srgb, var(--frame-fill-color, #edcc9b) 52%, transparent) 42%,
+    color-mix(in srgb, #f5ce94 94%, transparent) 0%,
+    color-mix(in srgb, #f5ce94 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -2078,7 +2096,7 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
   /* タブ・商品行・所持金と同じ 9 スライス倍率（既定 4 より細い枠） */
   --frame-scale: 3;
   --frame-fill-inset: 3px;
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
   min-width: 140px;
   height: 40px;
   padding: 6px 14px 10px;
@@ -2121,7 +2139,7 @@ body.ui-menu-input-keyboard #catch-bag-full-ui * {
 
 body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-action-button.nes-btn.ui-frame-box:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled),
 #shop-modal .shop-item-action-button.nes-btn.ui-frame-box:hover:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled) {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
 }
 
 #shop-modal .shop-item-action-button.nes-btn.ui-frame-box:active:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled) {
@@ -2129,20 +2147,20 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 body.ui-menu-input-keyboard #shop-modal .shop-item-action-button.nes-btn.ui-frame-box:hover:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled) {
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
 }
 
 body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-action-button.nes-btn.ui-frame-box:not(:disabled):not(.is-owned):not(.is-equipped):not(.is-disabled) {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
 }
 
 .shop-item-action-button.is-equipped {
-  --frame-fill-color: #cbb792;
+  --frame-fill-color: var(--color-book-frame-idle);
   color: #320e0e;
 }
 
 .shop-item-action-button.is-owned {
-  --frame-fill-color: #8a8a8a;
+  --frame-fill-color: var(--color-book-btn-muted);
   color: #f2f2f2;
 }
 
@@ -2248,7 +2266,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 .shop-money {
   --frame-scale: 3;
-  --frame-fill-color: #ecd5ab;
+  --frame-fill-color: var(--color-book-frame-active);
   margin: 0;
   padding: 4px 16px;
   border: none;
@@ -2332,15 +2350,15 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 #shop-modal .shop-tab-button.ui-frame-box {
   --frame-scale: 3;
   --frame-fill-inset: 3px;
-  --frame-fill-color: #CBB792;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 #shop-modal .shop-tab-button.ui-frame-box::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 #shop-modal .shop-tab-button.active.ui-frame-box::before {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #shop-modal .shop-tab-button.active.ui-frame-box::after {
@@ -2349,16 +2367,16 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 #shop-modal .shop-item .shop-item-content.ui-frame-box {
   --frame-scale: 3;
-  --frame-fill-color: #CBB792;
+  --frame-fill-color: var(--color-book-frame-idle);
   --frame-fill-inset: 3px;
 }
 
 #shop-modal .shop-item .shop-item-content.ui-frame-box::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 #shop-modal .shop-item .shop-item-content.ui-frame-box.is-selected::before {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #shop-modal .shop-item .shop-item-content.ui-frame-box.is-selected::after {
@@ -2405,17 +2423,17 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   left: 10px;
   color: #320e0e;
   font-size: 18px;
-  background: #e8cfa6;
+  background: var(--color-book-frame-active);
   padding: 8px;
   border: none;
   z-index: 100;
   user-select: none;
   pointer-events: none;
     box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
+    4px 0 var(--color-semantic-border-soft),
+    -4px 0 var(--color-semantic-border-soft),
+    0 4px var(--color-semantic-border-soft),
+    0 -4px var(--color-semantic-border-soft),
     inset -4px 0 #c49a6c,
     inset 0 -4px #c49a6c;
 }
@@ -2428,7 +2446,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   transform: translate(-50%, -50%);
   color: #320e0e;
   font-size: 22px;
-  background: #e8cfa6;
+  background: var(--color-book-frame-active);
   padding: 16px;
   border: none;
   z-index: 500;
@@ -2436,10 +2454,10 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   pointer-events: none;
   text-align: center;
     box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
+    4px 0 var(--color-semantic-border-soft),
+    -4px 0 var(--color-semantic-border-soft),
+    0 4px var(--color-semantic-border-soft),
+    0 -4px var(--color-semantic-border-soft),
     inset -4px 0 #c49a6c,
     inset 0 -4px #c49a6c;
   white-space: pre-line;
@@ -2491,7 +2509,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   position: fixed;
   inset: 0;
   z-index: 519;
-  background: rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, var(--color-book-scrim) 50%, transparent);
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s ease-out;
@@ -2816,7 +2834,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   text-align: right;
   gap: 0;
   padding: 2px 10px;
-  background: #7cb86c;
+  background: var(--color-semantic-bg-active);
   border-radius: 4px;
   color: #fff;
   z-index: 2;
@@ -3074,20 +3092,20 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
   .level-up-popup.is-visible .level-up-popup__letter,
   .level-up-popup.is-visible .level-up-popup__letter img,
-  #achievement-notification.is-quest.is-visible .quest-complete-letter,
-  #achievement-notification.is-quest.is-visible .quest-complete-letter img,
-  #achievement-notification.is-quest.is-visible .quest-complete-deco,
-  #achievement-notification.is-quest.is-visible .quest-complete-deco img {
+  #achievement-notification.is-complete-toast.is-visible .quest-complete-letter,
+  #achievement-notification.is-complete-toast.is-visible .quest-complete-letter img,
+  #achievement-notification.is-complete-toast.is-visible .quest-complete-deco,
+  #achievement-notification.is-complete-toast.is-visible .quest-complete-deco img {
     animation: none;
     opacity: 1;
     transform: none;
   }
 
-  #achievement-notification.is-quest.is-visible .quest-complete-deco--gold img {
+  #achievement-notification.is-complete-toast.is-visible .quest-complete-deco--gold img {
     transform: rotate(-18deg);
   }
 
-  #achievement-notification.is-quest.is-visible .quest-complete-deco--fish img {
+  #achievement-notification.is-complete-toast.is-visible .quest-complete-deco--fish img {
     transform: rotate(-16deg);
   }
 
@@ -3097,11 +3115,11 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
     transition: opacity 0.3s ease-out;
   }
 
-  #achievement-notification.is-quest.is-visible {
+  #achievement-notification.is-complete-toast.is-visible {
     animation: none;
   }
 
-  #achievement-notification.is-quest.is-leaving {
+  #achievement-notification.is-complete-toast.is-leaving {
     animation: none;
     opacity: 0;
     transition: opacity 0.3s ease-out;
@@ -3160,7 +3178,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   gap: 2px;
   padding: 4px 8px;
   border-radius: 4px;
-  background: #f2e2b6;
+  background: var(--color-book-frame-surface);
   color: #212121;
 }
 
@@ -3239,27 +3257,27 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 ::-webkit-scrollbar-track {
-  background: #e8cfa6;
+  background: var(--color-book-frame-active);
   border: none;
   border-radius: 0;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
+    4px 0 var(--color-semantic-border-soft),
+    -4px 0 var(--color-semantic-border-soft),
+    0 4px var(--color-semantic-border-soft),
+    0 -4px var(--color-semantic-border-soft),
     inset -4px 0 #c49a6c,
     inset 0 -4px #c49a6c;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #704A2B;
+  background: var(--color-semantic-border-soft);
   border: none;
   border-radius: 0;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
+    4px 0 var(--color-semantic-border-soft),
+    -4px 0 var(--color-semantic-border-soft),
+    0 4px var(--color-semantic-border-soft),
+    0 -4px var(--color-semantic-border-soft),
     inset -4px 0 #c49a6c,
     inset 0 -4px #c49a6c;
   min-height: 40px;
@@ -3272,23 +3290,23 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 ::-webkit-scrollbar-thumb:active {
   background: #c49a6c;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
+    4px 0 var(--color-semantic-border-soft),
+    -4px 0 var(--color-semantic-border-soft),
+    0 4px var(--color-semantic-border-soft),
+    0 -4px var(--color-semantic-border-soft),
     inset 4px 0 #c49a6c,
     inset 0 4px #c49a6c;
 }
 
 ::-webkit-scrollbar-corner {
-  background: #e8cfa6;
+  background: var(--color-book-frame-active);
   border: none;
   border-radius: 0;
   box-shadow: 
-    4px 0 #704A2B,
-    -4px 0 #704A2B,
-    0 4px #704A2B,
-    0 -4px #704A2B,
+    4px 0 var(--color-semantic-border-soft),
+    -4px 0 var(--color-semantic-border-soft),
+    0 4px var(--color-semantic-border-soft),
+    0 -4px var(--color-semantic-border-soft),
     inset -4px 0 #c49a6c,
     inset 0 -4px #c49a6c;
 }
@@ -3296,7 +3314,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 /* Firefox */
 * {
   scrollbar-width: auto;
-  scrollbar-color: #704A2B #e8cfa6;
+  scrollbar-color: var(--color-semantic-border-soft) var(--color-book-frame-active);
 }
 
 /* Book UI - 統合インベントリ/図鑑（2ペイン） */
@@ -3342,11 +3360,11 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
  * 9スライスはフル表示（clip-path で下端だけ切ると左右ボーダーが途切れて見える）。
  * ヘッダーは min-height + overflow: visible。ラベル有り無しで高さが変わらないようボタンに min-height。 */
 #book-ui .book-tab-button.ui-frame-box {
-  --frame-fill-color: #CBB792;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 #book-ui .book-tab-button.active.ui-frame-box::before {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
   background:
     linear-gradient(
       to top,
@@ -3358,7 +3376,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 #book-ui .book-tab-button.ui-frame-box::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 #book-ui .book-tab-button.active.ui-frame-box::after {
@@ -3389,12 +3407,12 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 /* #book-list-scroll 配下の9スライス枠素材だけ差し替え（他は元に戻す） */
 #book-ui #book-list-scroll .ui-frame-box::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-/* 画像側の塗り（中心色）に合わせる */
+/* 非選択枠は uiframe.png（fill で画像中心塗り）。::before の idle 色は選択切替用の下地 */
 #book-ui #book-list-scroll .ui-frame-box {
-  --frame-fill-color: #CBB792;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 /* 統合BookUI（左リスト）の選択枠だけ border.png を使う */
@@ -3403,17 +3421,17 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-/* 実績カテゴリ: スキルノードと同型（非選択 #f2e2b6 / 選択 #e8cfa6） */
+/* 実績カテゴリ: スキルノードと同型（非選択 var(--color-book-frame-surface) / 選択 var(--color-book-frame-active)） */
 #book-ui[data-tab="achievement"] #book-list-scroll .achievement-category-item.book-ui-node.ui-frame-box.is-selected {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 /*
  * 左リスト（バッグ・図鑑）・実績カテゴリ: ホバーはステータス能力値リストと同型
- *（非選択時に塗り #e8cfa6 + border.png）。.book-list-item 側の scale/filter は使わない。
+ *（非選択時に塗り var(--color-book-frame-active) + border.png）。.book-list-item 側の scale/filter は使わない。
  */
 #book-ui #book-list-scroll .book-ui-node.book-list-item.ui-frame-box:not(.is-selected):hover {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-ui #book-list-scroll .book-ui-node.book-list-item.ui-frame-box:not(.is-selected):hover::after {
@@ -3423,7 +3441,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 #book-ui[data-tab="achievement"]
   #book-list-scroll
   .achievement-category-item.book-ui-node.ui-frame-box:not(.is-selected):hover {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-ui[data-tab="achievement"]
@@ -3434,35 +3452,35 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 /* キー操作中: スキル / 実績 / 図鑑の左リストでホバー見た目を出さない（キー選択と併存させない） */
 #book-ui.is-book-kb-input #book-list-scroll .book-ui-node.book-list-item.ui-frame-box:not(.is-selected):hover {
-  --frame-fill-color: #cbb792;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 #book-ui.is-book-kb-input #book-list-scroll .book-ui-node.book-list-item.ui-frame-box:not(.is-selected):hover::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 #book-ui.is-book-kb-input[data-tab="achievement"]
   #book-list-scroll
   .achievement-category-item.book-ui-node.ui-frame-box:not(.is-selected):hover {
-  --frame-fill-color: #cbb792;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 #book-ui.is-book-kb-input[data-tab="achievement"]
   #book-list-scroll
   .achievement-category-item.book-ui-node.ui-frame-box:not(.is-selected):hover::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 #book-ui.is-book-kb-input[data-tab="pedia"]
   #book-list-scroll
   .book-list-item--pedia.ui-frame-box:not(.is-selected):hover::before {
-  --frame-fill-color: #decda4;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 #book-ui.is-book-kb-input[data-tab="pedia"]
   #book-list-scroll
   .book-list-item--pedia.ui-frame-box:not(.is-selected):hover::after {
-  border-image: url(/images/ui/uiframe2.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 /* キー操作中: スキルツリー・カテゴリ◇・解放ボタンのホバーを抑止 */
@@ -3470,18 +3488,18 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   #book-skill-tree-grid
   .book-ui-row:not(.state-selected):not(.state-locked)
   .book-ui-node.ui-frame-box:hover {
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 #book-ui.is-book-kb-input[data-tab="skills"] .book-skill-category-tab:not(.is-active):not(:disabled):hover::before {
-  background: #d8c7a7;
+  background: var(--color-book-frame-active);
 }
 
 #book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:hover:not(.is-nav-selected),
 #book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:active:not(.is-nav-selected),
 #book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:focus:not(.is-nav-selected),
 #book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box:focus-visible:not(.is-nav-selected) {
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
   transform: none;
   animation: none;
 }
@@ -3490,7 +3508,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 #book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:active,
 #book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:focus,
 #book-ui.is-book-kb-input[data-tab="skills"] #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected:focus-visible {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
   transform: none;
 }
 
@@ -3633,7 +3651,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   justify-content: center;
   box-sizing: border-box;
   padding: var(--space-16, 16px);
-  background: rgba(35, 28, 20, 0.5);
+  background: color-mix(in srgb, var(--color-book-overlay) 50%, transparent);
   pointer-events: auto;
 }
 
@@ -3641,7 +3659,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   width: 100%;
   max-width: 360px;
   padding: 24px var(--space-16, 16px);
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -3683,13 +3701,13 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box,
 #book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box,
 #book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box {
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
   color: #fff;
 }
 
 #book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box,
 #book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box {
-  --frame-fill-color: #b8a88c;
+  --frame-fill-color: var(--color-primitive-natural-sand-300);
   color: #320e0e;
   width: 64px;
 }
@@ -3737,7 +3755,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 #book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box.is-nav-selected,
 #book-ui #skill-unlock-confirm-cancel.nes-btn.ui-frame-box:hover,
 #book-ui #quest-abandon-confirm-cancel.nes-btn.ui-frame-box:hover {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box.is-nav-selected,
@@ -3746,7 +3764,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 #book-ui #skill-unlock-confirm-ok.nes-btn.ui-frame-box:hover,
 #book-ui #quest-abandon-confirm-ok.nes-btn.ui-frame-box:hover,
 #book-ui[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:hover {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
   color: #fff;
 }
 
@@ -3764,7 +3782,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 .book-container {
   border: none;
   width: 90%;
-  max-width: 740px;
+  max-width: 780px;
   height: 85%;
   max-height: 800px;
   display: flex;
@@ -3779,7 +3797,6 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   overflow: hidden;
   gap: 0px;
   margin: 0;
-  padding: var(--space-16);
   box-sizing: border-box;
 }
 
@@ -3812,9 +3829,29 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   }
 }
 
-/* メインコンテナ: 9スライス枠（BOOK_UI_STYLE_GUIDE / .ui-frame-box 既定の border.png + 塗り） */
-#book-ui .book-container.ui-frame-box::before {
-  --frame-fill-color: var(--color-semantic-bg-book-container);
+/* メインコンテナ: 掲示板と同じ boardBG.png を 9 スライス */
+#book-ui .book-container.ui-frame-box {
+  /* boardBG.png (1168x442): 角の金具＋木枠＋羊皮紙の内側影が約80px */
+  --frame-slice: 80;
+  --frame-scale: 0.35;
+  --frame-fill-color: var(--color-book-parchment);
+  --frame-fill-inset: calc(var(--frame-slice) * var(--frame-scale) * 1px);
+  /* 内側スクロールフェード等を羊皮紙色に合わせる */
+  --color-semantic-bg-book-container: var(--color-book-parchment);
+  padding: calc(var(--frame-slice) * var(--frame-scale) * 1px + var(--space-16) - 6px);
+  isolation: isolate;
+}
+
+#book-ui .book-container.ui-frame-box::after {
+  border-image: url(/images/ui/boardBG.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+}
+
+/* 外枠の変数がタブ・リストカードへ継承されないように戻す */
+#book-ui .book-container .ui-frame-box {
+  --frame-slice: 4;
+  --frame-scale: 3;
+  --frame-fill-inset: 3px;
+  isolation: isolate;
 }
 
 /* 統合BookUIが開いている時：下から50pxの位置からスライドイン */
@@ -4010,15 +4047,15 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   line-height: 1;
   letter-spacing: 0.03em;
   color: #320e0e;
-  --frame-fill-color: #cbb792;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 #book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 #book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box.is-active {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box.is-active::after {
@@ -4026,7 +4063,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 #book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box:not(.is-active):hover {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box:not(.is-active):hover::after {
@@ -4041,7 +4078,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 /* キーでソート行を操作中: Book UI の枠切り替え + マウスホバー見た目を抑止 */
 #book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box.is-nav-selected {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-ui[data-tab="pedia"] .book-pedia-sort-btn.ui-frame-box.is-nav-selected::after {
@@ -4049,15 +4086,15 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 #book-ui[data-tab="pedia"].is-pedia-sort-kb-nav .book-pedia-sort-btn.ui-frame-box:not(.is-active):hover {
-  --frame-fill-color: #cbb792;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 #book-ui[data-tab="pedia"].is-pedia-sort-kb-nav .book-pedia-sort-btn.ui-frame-box:not(.is-active):hover::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 #book-ui[data-tab="pedia"].is-pedia-sort-kb-nav .book-pedia-sort-btn.ui-frame-box.is-active:hover {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-ui[data-tab="pedia"].is-pedia-sort-kb-nav .book-pedia-sort-btn.ui-frame-box.is-active:hover::after {
@@ -4070,10 +4107,10 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   margin: 0 4px 8px 4px;
   border: none;
   border-radius: 8px;
-  background: #e6d5ac;
+  background: var(--color-book-frame-active);
   font-size: 24px;
   line-height: 1;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   text-align: left;
   display: flex;
   align-items: center;
@@ -4087,7 +4124,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   min-height: 34px;
   font-size: 24px;
   line-height: 1;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -4278,21 +4315,21 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   white-space: nowrap;
 }
 
-/* 図鑑・非選択: 枠は淡色の uiframe2.png（子は完全不透明のまま） */
+/* 図鑑・非選択: 他リストと同じ uiframe.png（旧 uiframe2 は淡色でくすんで見えた） */
 #book-ui[data-tab="pedia"]
   #book-list-scroll
   .book-list-item--pedia.ui-frame-box:not(.is-selected)::after {
-  border-image: url(/images/ui/uiframe2.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-/* 枠トーンに合わせて塗り（非選択のみ） */
+/* 枠トーンに合わせて塗り（非選択のみ・fill 下地／ホバー時用） */
 #book-ui[data-tab="pedia"]
   #book-list-scroll
   .book-list-item--pedia.ui-frame-box:not(.is-selected)::before {
-  --frame-fill-color: #decda4;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
-/* ホバーはバッグ等と同型（uiframe2 ではなく border.png） */
+/* ホバーはバッグ等と同型（uiframe ではなく border.png） */
 #book-ui[data-tab="pedia"]
   #book-list-scroll
   .book-list-item--pedia.ui-frame-box:not(.is-selected):hover::after {
@@ -4329,13 +4366,13 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   opacity: 0;
 }
 
-/* 本の内側（.book-container 塗り）と同じトークンで馴染ませる */
+/* 本の内側（boardBG 羊皮紙）と同じ直値で馴染ませる */
 .book-list-scroll-fade--bottom {
   bottom: 0;
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--color-semantic-bg-book-container) 94%, transparent) 0%,
-    color-mix(in srgb, var(--color-semantic-bg-book-container) 52%, transparent) 42%,
+    color-mix(in srgb, #f5ce94 94%, transparent) 0%,
+    color-mix(in srgb, #f5ce94 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -4344,8 +4381,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   top: 0;
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--color-semantic-bg-book-container) 94%, transparent) 0%,
-    color-mix(in srgb, var(--color-semantic-bg-book-container) 52%, transparent) 42%,
+    color-mix(in srgb, #f5ce94 94%, transparent) 0%,
+    color-mix(in srgb, #f5ce94 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -4484,62 +4521,62 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 #book-ui[data-tab="inventory"]
   #book-list-scroll
   .book-list-item[data-rarity="common"].ui-frame-box:not(.is-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 42%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 42%, var(--color-book-frame-idle));
 }
 
 #book-ui[data-tab="inventory"]
   #book-list-scroll
   .book-list-item[data-rarity="uncommon"].ui-frame-box:not(.is-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 38%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 38%, var(--color-book-frame-idle));
 }
 
 #book-ui[data-tab="inventory"]
   #book-list-scroll
   .book-list-item[data-rarity="rare"].ui-frame-box:not(.is-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 38%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 38%, var(--color-book-frame-idle));
 }
 
 #book-ui[data-tab="inventory"]
   #book-list-scroll
   .book-list-item[data-rarity="epic"].ui-frame-box:not(.is-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 38%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 38%, var(--color-book-frame-idle));
 }
 
 #book-ui[data-tab="inventory"]
   #book-list-scroll
   .book-list-item[data-rarity="legendary"].ui-frame-box:not(.is-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 40%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 40%, var(--color-book-frame-idle));
 }
 
 /* 選択中もレア色を残しつつクリーム寄りに少し明るく */
 #book-ui[data-tab="inventory"]
   #book-list-scroll
   .book-list-item[data-rarity="common"].is-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 32%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 32%, var(--color-book-frame-active));
 }
 
 #book-ui[data-tab="inventory"]
   #book-list-scroll
   .book-list-item[data-rarity="uncommon"].is-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 30%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 30%, var(--color-book-frame-active));
 }
 
 #book-ui[data-tab="inventory"]
   #book-list-scroll
   .book-list-item[data-rarity="rare"].is-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 30%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 30%, var(--color-book-frame-active));
 }
 
 #book-ui[data-tab="inventory"]
   #book-list-scroll
   .book-list-item[data-rarity="epic"].is-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 30%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 30%, var(--color-book-frame-active));
 }
 
 #book-ui[data-tab="inventory"]
   #book-list-scroll
   .book-list-item[data-rarity="legendary"].is-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 32%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 32%, var(--color-book-frame-active));
 }
 
 /* バッグ: BIGサイズ魚のタグ（釣果UIと同じ Big-label.svg） */
@@ -4573,7 +4610,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 .book-list-item-lv-label {
   font-size: 14px;
   font-family: "Jersey 10", "DotGothic16", sans-serif !important;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
 }
 
 .book-list-item-lv-num {
@@ -4727,7 +4764,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   padding: 0;
   display: flex;
   flex-direction: column;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -4740,9 +4777,9 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   padding: 14px calc(var(--frame-slice) * var(--frame-scale) * 1px) 18px
     calc(var(--frame-slice) * var(--frame-scale) * 1px);
 }
-/* 他UIと同じデフォルト枠塗り色 (#e8cfa6) に合わせる */
+/* 他UIと同じデフォルト枠塗り色 (var(--color-book-frame-active)) に合わせる */
 .book-right-pane-inner.ui-frame-box::before {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 .book-detail-placeholder {
@@ -4766,8 +4803,27 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   gap: 10px;
 }
 
+/* バッグ／図鑑の魚詳細のみ: surface 継承＋クリームパネルで親高さまで stretch */
+#book-ui[data-tab="inventory"] #book-detail-content,
+#book-ui[data-tab="pedia"] #book-detail-content {
+  --frame-fill-color: var(--color-book-frame-surface);
+  --color-semantic-bg-book-container: var(--color-book-frame-surface);
+}
+
 .book-detail-content.active {
   display: flex;
+}
+
+#book-ui[data-tab="inventory"] #book-detail-content.active,
+#book-ui[data-tab="pedia"] #book-detail-content.active {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: 100%;
+  height: 100%;
+  background: var(--color-book-frame-active);
+  border-radius: 8px;
+  padding: 14px 16px 18px;
+  box-sizing: border-box;
 }
 
 .book-detail-sections {
@@ -4827,7 +4883,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 .book-detail-growth-lv-label {
   font-size: 18px;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   font-family: "Jersey 10", "DotGothic16", sans-serif !important;
   line-height: 1;
 }
@@ -4841,7 +4897,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 .book-detail-rarity-badge {
   position: relative;
-  background: #dfd3b9;
+  background: var(--color-book-pedia-idle);
   padding: 8px;
   padding-bottom: 12px;
   display: flex;
@@ -5050,7 +5106,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 .book-detail-note-title {
   font-size: 20px;
-  color: #c2681f;
+  color: var(--color-primitive-orange-600);
   font-family: "Jersey 10" !important;
   line-height: 1;
 }
@@ -5097,15 +5153,15 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 /* 実績モーダル: カテゴリタブもショップ／Book と同じ枠切り替え */
 #achievement-modal .achievement-tab.ui-frame-box {
   --frame-scale: 3;
-  --frame-fill-color: #CBB792;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 #achievement-modal .achievement-tab.ui-frame-box::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 #achievement-modal .achievement-tab.active.ui-frame-box::before {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #achievement-modal .achievement-tab.active.ui-frame-box::after {
@@ -5118,7 +5174,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 #achievement-modal .achievement-item.ui-frame-box::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 .achievement-list {
@@ -5149,7 +5205,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 /* モーダル実績カード: 進行中・達成とも sand-400 + 同一 uiframe 枠 */
 .achievement-item.unlocked.ui-frame-box::before,
 .achievement-item.locked.ui-frame-box::before {
-  --frame-fill-color: var(--color-primitive-natural-sand-400);
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 .achievement-item-main {
@@ -5194,13 +5250,13 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 .achievement-item-progress-bar {
-  background: rgba(0, 0, 0, 0.35);
+  background: color-mix(in srgb, var(--color-book-scrim) 35%, transparent);
   height: 20px;
   overflow: hidden;
 }
 
 .achievement-item-progress-fill {
-  background: linear-gradient(90deg, #66bb6a 0%, #43a047 100%);
+  background: linear-gradient(90deg, var(--color-semantic-bg-active) 0%, var(--color-primitive-green-600) 100%);
   height: 100%;
   transition: width 0.3s;
 }
@@ -5224,7 +5280,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   top: 20px;
   right: 20px;
   z-index: 2000;
-  background: rgba(0, 0, 0, 0.9);
+  background: color-mix(in srgb, var(--color-book-scrim) 90%, transparent);
   border: 2px solid #ffd700;
   border-radius: 10px;
   padding: 15px;
@@ -5256,7 +5312,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 /* クエスト達成: 掲示板と同じ boardBG.png を 9 スライス。右下クエストHUDの直上 */
-#achievement-notification.is-quest.ui-frame-box {
+#achievement-notification.is-complete-toast.ui-frame-box {
   top: auto;
   right: 16px;
   bottom: calc(16px + 66px + 14px);
@@ -5264,40 +5320,58 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   max-width: calc(100vw - 32px);
   --frame-slice: 80;
   --frame-scale: 0.28;
-  --frame-fill-color: #edcc9b;
+  --frame-fill-color: var(--color-book-parchment);
   --frame-fill-inset: calc(var(--frame-slice) * var(--frame-scale) * 1px);
   padding: calc(var(--frame-slice) * var(--frame-scale) * 1px + 10px);
   padding-bottom: calc(var(--frame-slice) * var(--frame-scale) * 1px + 4px);
   isolation: isolate;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   opacity: 0;
   transform-origin: 50% 50%;
   overflow: visible;
 }
 
-#achievement-notification.is-quest.is-visible {
+#achievement-notification.is-achievement.ui-frame-box {
+  top: calc(16px + var(--hud-bar-h, 48px) + 6px + var(--hud-bar-h, 48px) + 14px);
+  bottom: auto;
+  right: 16px;
+  padding-top: calc(var(--frame-slice) * var(--frame-scale) * 1px + 14px);
+}
+
+#achievement-notification.is-complete-toast.is-visible {
   opacity: 1;
   animation: quest-complete-enter 0.58s both;
 }
 
-#achievement-notification.is-quest.is-leaving {
+#achievement-notification.is-complete-toast.is-leaving {
   animation: quest-complete-leave 0.45s both;
   transition: none;
 }
 
-#achievement-notification.is-quest.ui-frame-box::after {
+#achievement-notification.is-achievement.is-visible {
+  animation: achievement-complete-enter 0.58s both;
+}
+
+#achievement-notification.is-achievement.is-leaving {
+  animation: achievement-complete-leave 0.45s both;
+  transition: none;
+}
+
+#achievement-notification.is-complete-toast.ui-frame-box::after {
   border-image: url(/images/ui/boardBG.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-#achievement-notification.is-quest .achievement-notification__title {
+#achievement-notification.is-complete-toast .achievement-notification__title {
   display: none;
 }
 
-.achievement-notification__quest-banner {
+.achievement-notification__quest-banner,
+.achievement-notification__achieve-banner {
   display: none;
 }
 
-#achievement-notification.is-quest .achievement-notification__quest-banner {
+#achievement-notification.is-quest .achievement-notification__quest-banner,
+#achievement-notification.is-achievement .achievement-notification__achieve-banner {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -5396,23 +5470,31 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   user-select: none;
 }
 
-#achievement-notification.is-quest.is-visible .quest-complete-letter,
-#achievement-notification.is-quest.is-visible .quest-complete-deco {
+#achievement-notification.is-achievement .achievement-notification__quest-line {
+  height: 38px;
+}
+
+#achievement-notification.is-achievement .quest-complete-letter img {
+  height: 38px;
+}
+
+#achievement-notification.is-complete-toast.is-visible .quest-complete-letter,
+#achievement-notification.is-complete-toast.is-visible .quest-complete-deco {
   animation: level-up-letter-enter 0.5s cubic-bezier(0.16, 0.72, 0.28, 1) both;
   animation-delay: calc(0.08s + var(--i, 0) * 0.046s);
 }
 
-#achievement-notification.is-quest.is-visible .quest-complete-letter img {
+#achievement-notification.is-complete-toast.is-visible .quest-complete-letter img {
   animation: level-up-letter-idle 2.35s ease-in-out infinite;
   animation-delay: calc(0.46s + var(--i, 0) * 0.046s);
 }
 
-#achievement-notification.is-quest.is-visible .quest-complete-deco--gold img {
+#achievement-notification.is-complete-toast.is-visible .quest-complete-deco--gold img {
   animation: quest-deco-idle-gold 2.35s ease-in-out infinite;
   animation-delay: calc(0.46s + var(--i, 0) * 0.046s);
 }
 
-#achievement-notification.is-quest.is-visible .quest-complete-deco--fish img {
+#achievement-notification.is-complete-toast.is-visible .quest-complete-deco--fish img {
   animation: quest-deco-idle-fish 2.35s ease-in-out infinite;
   animation-delay: calc(0.46s + var(--i, 0) * 0.046s);
 }
@@ -5447,7 +5529,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   display: none;
 }
 
-#achievement-notification.is-quest .achievement-notification__thumb {
+#achievement-notification.is-complete-toast .achievement-notification__thumb {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5461,33 +5543,33 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   box-shadow: none !important;
 }
 
-#achievement-notification.is-quest .achievement-notification__thumb::before,
-#achievement-notification.is-quest .achievement-notification__thumb::after {
+#achievement-notification.is-complete-toast .achievement-notification__thumb::before,
+#achievement-notification.is-complete-toast .achievement-notification__thumb::after {
   content: none;
 }
 
-#achievement-notification.is-quest .achievement-notification__thumb .quest-card__icon-img {
+#achievement-notification.is-complete-toast .achievement-notification__thumb .quest-card__icon-img {
   width: 114px;
   height: 114px;
 }
 
-#achievement-notification.is-quest .achievement-notification__thumb .quest-card__icon-img--item {
+#achievement-notification.is-complete-toast .achievement-notification__thumb .quest-card__icon-img--item {
   width: 78px;
   height: 78px;
 }
 
-#achievement-notification.is-quest .achievement-notification__thumb .quest-card__icon-emoji {
+#achievement-notification.is-complete-toast .achievement-notification__thumb .quest-card__icon-emoji {
   font-size: 70px;
 }
 
-#achievement-notification.is-quest .achievement-notification__name {
+#achievement-notification.is-complete-toast .achievement-notification__name {
   margin: -2px 0 8px;
   font-family: "DotGothic16", sans-serif !important;
   font-size: 20px;
   font-weight: 400;
   line-height: 1.2;
   text-align: center;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
 }
 
 #achievement-notification.is-quest #achievement-notification-desc,
@@ -5495,33 +5577,52 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   display: none !important;
 }
 
-#achievement-notification.is-quest .achievement-notification__reward {
+#achievement-notification.is-achievement .achievement-notification__name {
+  margin-bottom: 4px;
+}
+
+#achievement-notification.is-achievement .achievement-notification__desc,
+#achievement-notification.is-achievement .achievement-notification__desc * {
+  font-family: "DotGothic16", sans-serif !important;
+}
+
+#achievement-notification.is-achievement .achievement-notification__desc {
+  display: block;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--color-book-text-secondary);
+}
+
+#achievement-notification.is-complete-toast .achievement-notification__reward {
   display: none;
 }
 
-#achievement-notification.is-quest .achievement-notification__reward-chips {
+#achievement-notification.is-complete-toast .achievement-notification__reward-chips {
   margin: 4px 0 0;
   width: 100%;
   gap: 6px;
 }
 
-#achievement-notification.is-quest .catch-result-meta-chip {
+#achievement-notification.is-complete-toast .catch-result-meta-chip {
   flex: 1;
   justify-content: center;
   min-width: 0;
 }
 
-#achievement-notification.is-quest .catch-result-meta-icon-image {
+#achievement-notification.is-complete-toast .catch-result-meta-icon-image {
   width: 27px;
   height: 27px;
   object-fit: contain;
 }
 
-#achievement-notification.is-quest [data-quest-reward="money"] .catch-result-meta-icon-image {
+#achievement-notification.is-complete-toast [data-quest-reward="money"] .catch-result-meta-icon-image {
   margin-right: -4px;
 }
 
-#achievement-notification.is-quest [data-quest-reward="exp"] .catch-result-meta-icon-image {
+#achievement-notification.is-complete-toast [data-quest-reward="exp"] .catch-result-meta-icon-image {
   width: 18px;
   height: 18px;
   margin-right: 2px;
@@ -5529,7 +5630,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   top: -1px;
 }
 
-#achievement-notification.is-quest .catch-result-meta-chip[hidden] {
+#achievement-notification.is-complete-toast .catch-result-meta-chip[hidden] {
   display: none;
 }
 
@@ -5574,6 +5675,47 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   }
 }
 
+@keyframes achievement-complete-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(-120px) rotate(10deg);
+    animation-timing-function: cubic-bezier(0.16, 0.72, 0.28, 1);
+  }
+  48% {
+    opacity: 1;
+    transform: translateY(11px) rotate(-5deg);
+    animation-timing-function: cubic-bezier(0.55, 0.02, 0.85, 0.35);
+  }
+  68% {
+    transform: translateY(-6px) rotate(2.8deg);
+    animation-timing-function: ease-out;
+  }
+  84% {
+    transform: translateY(2px) rotate(-0.9deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+@keyframes achievement-complete-leave {
+  0% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+    animation-timing-function: cubic-bezier(0.3, 0, 0.55, 0.4);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(8px) rotate(-4.5deg);
+    animation-timing-function: cubic-bezier(0.4, 0.05, 0.85, 0.25);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-120px) rotate(12deg);
+  }
+}
+
 @keyframes slideInRight {
   from {
     transform: translateX(100%);
@@ -5614,8 +5756,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   min-height: 0;
   gap: 8px;
   padding: 16px;
-  /* #book-list-scroll 既定の #CBB792 を上書き（非選択は明るいクリーム） */
-  --frame-fill-color: #f2e2b6;
+  /* #book-list-scroll 既定の var(--color-book-frame-idle) を上書き（非選択は明るいクリーム） */
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 /* 左リスト共通の uiframe ではなく、スキルノード（.book-ui-node）と同じ border.png 枠に統一 */
@@ -5675,7 +5817,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 .achievement-category-seg--off {
-  --achievement-category-seg-fill: var(--color-semantic-bg-nonactive);
+  --achievement-category-seg-fill: var(--color-book-pedia-idle);
 }
 
 .achievement-category-seg--on::before,
@@ -5748,6 +5890,22 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   overflow-y: auto;
 }
 
+/* Book 実績: スクロールは右ペイン本体に任せ、上下グラデ（#book-right-pane-fade-*）を使う */
+#book-ui[data-tab="achievement"] .achievement-detail-list {
+  max-height: none;
+  overflow: visible;
+}
+
+/* Book 実績／クエスト: バーは非表示 */
+#book-ui .achievement-detail-list {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+#book-ui .achievement-detail-list::-webkit-scrollbar {
+  display: none;
+}
+
 /* Book / モーダル: 実績カード内側 ≒ Figma space/16 */
 #book-ui .achievement-detail-item.ui-frame-box,
 #achievement-modal .achievement-item.ui-frame-box {
@@ -5770,7 +5928,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 /* 右ペインキー選択中: Book UI と同じ枠・クリーム塗り（達成済みの枠半透明を上書き） */
 #book-ui .achievement-detail-item.ui-frame-box.achievement-detail-item--kb-selected::before {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-ui .achievement-detail-item.ui-frame-box.achievement-detail-item--kb-selected::after {
@@ -6163,8 +6321,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   width: 24px;
   height: 24px;
   transform: translate(-50%, -50%) rotate(45deg);
-  background: #d8c7a7;
-  border: 2px solid #704a2b;
+  background: var(--color-book-frame-surface);
+  border: 2px solid var(--color-semantic-border-soft);
   box-sizing: border-box;
   opacity: 1;
   z-index: -1;
@@ -6191,7 +6349,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 .book-skill-category-tab.is-active::before {
   width: 24px;
   height: 24px;
-  background: #7cb86c;
+  background: var(--color-semantic-bg-active);
   opacity: 1;
 }
 
@@ -6227,21 +6385,21 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   gap: 8px;
   min-height: 36px;
   padding: 0 12px;
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 .book-skill-sp-label {
   font-size: 16px;
   line-height: 17px;
   font-family: "DotGothic16", sans-serif;
-  color: var(--color-semantic-text-muted, #5c4030);
+  color: var(--color-semantic-text-muted, var(--color-book-text-secondary));
 }
 
 .book-skill-sp-value {
   font-size: 40px;
   line-height: 1;
   font-family: "Jersey 10", "DotGothic16", sans-serif;
-  color: #c2681f;
+  color: var(--color-primitive-orange-600);
 }
 
 .book-skill-summary-subrow {
@@ -6257,7 +6415,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 .book-skill-summary-item {
   font-family: "DotGothic16", sans-serif;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
 }
 
 .book-skill-summary-item b {
@@ -6270,7 +6428,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 .book-skill-content-row.ui-frame-box {
-  --frame-fill-color: #f4e8c6;
+  --frame-fill-color: var(--color-book-frame-active);
   width: 100%;
   min-height: 0;
   flex: 1;
@@ -6318,7 +6476,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   display: none;
 }
 
-/* 親の --frame-fill-color（#f4e8c6）に合わせた上下フェード（他タブの book-list-scroll-fade と同型） */
+/* スキル列背景（frame-active）に合わせた上下フェード */
 .book-skill-tree-scroll-fade {
   position: absolute;
   left: 0;
@@ -6333,8 +6491,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   bottom: 0;
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--frame-fill-color, #f4e8c6) 94%, transparent) 0%,
-    color-mix(in srgb, var(--frame-fill-color, #f4e8c6) 52%, transparent) 42%,
+    color-mix(in srgb, #f9deb3 94%, transparent) 0%,
+    color-mix(in srgb, #f9deb3 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -6343,8 +6501,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   top: 0;
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--frame-fill-color, #f4e8c6) 94%, transparent) 0%,
-    color-mix(in srgb, var(--frame-fill-color, #f4e8c6) 52%, transparent) 42%,
+    color-mix(in srgb, #f9deb3 94%, transparent) 0%,
+    color-mix(in srgb, #f9deb3 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -6387,7 +6545,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 .book-skill-cost-num {
-  color: #c2681f;
+  color: var(--color-primitive-orange-600);
 }
 
 .book-ui-node.ui-frame-box {
@@ -6404,7 +6562,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   min-height: 34px;
   padding: 12px;
   box-sizing: border-box;
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 /* 左リストのカードは行内で全幅 */
@@ -6425,7 +6583,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   width: 8px;
   height: 8px;
   transform: rotate(45deg);
-  background: #cbb792;
+  background: var(--color-book-frame-idle);
 }
 
 .book-ui-marker.is-ability .book-ui-marker-inner {
@@ -6446,23 +6604,27 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 #book-ui #book-skill-tree-grid .book-ui-row.state-selected .book-ui-node.ui-frame-box {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-parchment);
 }
 
-/* スキルツリーノード: ホバーはステータス能力値リストと同型（選択行以外・ロック行は除外） */
+/* スキルツリーノード: ホバー／フォーカスは羊皮紙（選択行以外・ロック行は除外） */
 #book-ui
   #book-skill-tree-grid
   .book-ui-row:not(.state-selected):not(.state-locked)
-  .book-ui-node.ui-frame-box:hover {
-  --frame-fill-color: #e8cfa6;
+  .book-ui-node.ui-frame-box:hover,
+#book-ui
+  #book-skill-tree-grid
+  .book-ui-row:not(.state-selected):not(.state-locked)
+  .book-ui-node.ui-frame-box:focus-visible {
+  --frame-fill-color: var(--color-book-parchment);
 }
 
 .book-skill-category-tab:not(.is-active):not(:disabled):hover::before {
-  background: #e8cfa6;
+  background: var(--color-book-frame-active);
 }
 
 #book-ui #book-skill-tree-grid .book-ui-row.state-obtained .book-ui-marker-inner {
-  background: #7cb86c;
+  background: var(--color-semantic-bg-active);
   opacity: 1;
 }
 
@@ -6483,7 +6645,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   flex: 1 1 0;
   width: 100%;
   padding: 16px 20px;
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 .book-skill-detail-name {
@@ -6502,7 +6664,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   margin: 0;
   font-size: 13px;
   line-height: 1.35;
-  color: var(--color-semantic-text-muted, #5c4030);
+  color: var(--color-semantic-text-muted, var(--color-book-text-secondary));
 }
 
 .book-skill-detail-prereq,
@@ -6516,7 +6678,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 /* nes.css の inset box-shadow / focus リングを外し、枠内塗りをグリーンに統一 */
 #book-ui #book-skill-unlock.nes-btn.ui-frame-box {
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6563,7 +6725,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 /* キー選択中と同じオレンジ塗りを、マウスホバー時にも出す */
 #book-ui #book-skill-unlock.nes-btn.ui-frame-box:hover:not(:disabled),
 #book-ui #book-skill-unlock.nes-btn.ui-frame-box.is-nav-selected {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
 }
 
 #book-ui #book-skill-unlock.nes-btn:disabled {
@@ -6576,7 +6738,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   opacity: 1;
   filter: none;
   cursor: default;
-  --frame-fill-color: #8a8a8a;
+  --frame-fill-color: var(--color-book-btn-muted);
   color: #f2f2f2;
 }
 
@@ -6585,7 +6747,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 #book-ui #book-skill-unlock.nes-btn.ui-frame-box:disabled.book-skill-unlock--obtained:focus-visible,
 #book-ui #book-skill-unlock.nes-btn.ui-frame-box:disabled.book-skill-unlock--obtained:active {
   color: #f2f2f2;
-  --frame-fill-color: #8a8a8a;
+  --frame-fill-color: var(--color-book-btn-muted);
   box-shadow: none !important;
 }
 
@@ -6614,7 +6776,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   gap: 16px;
   align-items: stretch;
   padding: 24px 18px 22px;
-  background: rgba(92, 64, 48, 0.08);
+  background: var(--color-book-frame-active);
   border-radius: 8px;
 }
 
@@ -6678,7 +6840,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   align-items: baseline;
   gap: 0;
   font-size: 15px;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
 }
 
 .book-status-level-num {
@@ -6691,7 +6853,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 .book-status-panel .book-status-label {
   font-size: 20px;
   font-weight: 700;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
 }
 
 .book-status-exp-bar-wrap {
@@ -6706,8 +6868,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 .book-status-exp-bar {
   flex: 1;
   height: 12px;
-  background: #b9a67e;
-  border: 2px solid #704A2B;
+  background: var(--color-primitive-natural-sand-300);
+  border: 2px solid var(--color-semantic-border-soft);
   box-shadow:
     inset 2px 2px 0 rgba(255, 255, 255, 0.25),
     inset -2px -2px 0 rgba(0, 0, 0, 0.08);
@@ -6716,13 +6878,13 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 .book-status-exp-fill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(180deg, #7cb86c 0%, #4e8a42 100%);
+  background: linear-gradient(180deg, var(--color-semantic-bg-active) 0%, var(--color-primitive-green-600) 100%);
   transition: width 0.2s ease-out;
 }
 
 .book-status-exp-summary {
   font-size: 21px;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -6748,7 +6910,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   gap: 8px;
   padding: 12px;
   border-radius: 8px;
-  background: rgba(112, 74, 43, 0.10);
+  background: color-mix(in srgb, var(--color-semantic-border-soft) 10%, transparent);
   border: 0 none rgba(0, 0, 0, 0);
   border-image: none;
 }
@@ -6804,7 +6966,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 .book-status-change-btn.ui-frame-box {
   /* スキル解放ボタンと同じく、ui-frame-box の塗りでグリーンを作る */
   --frame-fill-inset: 3px;
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
   flex: 0 0 auto;
   width: 100%;
   min-height: 32px;
@@ -6835,7 +6997,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 .book-status-change-btn.ui-frame-box.is-nav-selected,
 .book-status-change-btn.ui-frame-box:hover {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
 }
 
 .book-status-change-btn.ui-frame-box::after {
@@ -6856,7 +7018,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 #book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:active:not(.is-nav-selected),
 #book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:focus:not(.is-nav-selected),
 #book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box:focus-visible:not(.is-nav-selected) {
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
   transform: none;
   animation: none;
 }
@@ -6865,7 +7027,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 #book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box.is-nav-selected:active,
 #book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box.is-nav-selected:focus,
 #book-status-panel.is-status-kb-nav-input .book-status-change-btn.ui-frame-box.is-nav-selected:focus-visible {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
   transform: none;
 }
 
@@ -6885,10 +7047,10 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   margin: 0 0 8px 0;
   font-size: 16px;
   font-weight: normal;
-  color: #704A2B;
+  color: var(--color-semantic-border-soft);
   padding: 0 0 4px 8px;
-  border-bottom: 2px solid rgba(112, 74, 43, 0.20);
-  border-left: 3px solid #704A2B;
+  border-bottom: 2px solid color-mix(in srgb, var(--color-semantic-border-soft) 20%, transparent);
+  border-left: 3px solid var(--color-semantic-border-soft);
 }
 
 .book-status-hint {
@@ -6926,24 +7088,27 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   position: relative;
   border: none;
   /* スキルノード既定と同型: 非選択=明るいクリーム / 選択=やや濃いクリーム（選択は .is-selected で上書き） */
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 .book-status-stat-list li.ui-frame-box::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
-/* ホバー: 選択時に近い塗り・枠（矢印は .book-stat-name::before） */
-.book-status-stat-list li:not(.is-selected):hover {
-  --frame-fill-color: #e8cfa6;
+/* スキルツリーノードと同色: ホバー／フォーカス／選択 = 羊皮紙。矢印は .book-stat-name::before */
+.book-status-stat-list li:not(.is-selected):hover,
+.book-status-stat-list li:not(.is-selected):focus-visible,
+.book-status-stat-list li.is-selected {
+  --frame-fill-color: var(--color-book-parchment);
 }
 
-.book-status-stat-list li:not(.is-selected):hover.ui-frame-box::after {
+.book-status-stat-list li:not(.is-selected):hover.ui-frame-box::after,
+.book-status-stat-list li:not(.is-selected):focus-visible.ui-frame-box::after {
   border-image: url(/images/ui/border.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 #book-status-panel.is-status-kb-nav-input .book-status-stat-list li:not(.is-selected):hover {
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 #book-status-panel.is-status-kb-nav-input .book-status-stat-list li:not(.is-selected):hover.ui-frame-box::after {
@@ -6964,7 +7129,6 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 .book-status-stat-list li.is-selected {
-  --frame-fill-color: #e8cfa6;
   padding-left: 28px;
 }
 
@@ -7135,11 +7299,11 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 #book-status-panel.is-status-previewing .book-status-stat-list li.is-delta-plus .book-stat-val:not(.book-stat-val-current) {
-  color: #4ea65e;
+  color: var(--color-book-stat-up);
 }
 
 #book-status-panel.is-status-previewing .book-status-stat-list li.is-delta-minus .book-stat-val:not(.book-stat-val-current) {
-  color: #d35757;
+  color: var(--color-book-stat-down);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -7167,15 +7331,15 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 #book-status-panel.is-status-previewing .book-status-rarity-prob-item.is-delta-plus .book-status-rarity-prob-value:not(.book-status-rarity-prob-value-current) {
-  color: #4ea65e;
+  color: var(--color-book-stat-up);
 }
 
 #book-status-panel.is-status-previewing .book-status-rarity-prob-item.is-delta-minus .book-status-rarity-prob-value:not(.book-status-rarity-prob-value-current) {
-  color: #d35757;
+  color: var(--color-book-stat-down);
 }
 
 .book-status-detail-note {
-  background: rgba(230, 213, 172, 1);
+  background: var(--color-book-frame-active);
   color: var(--color-semantic-text-detail);
   min-height: 100%;
   height: fit-content;
@@ -7257,8 +7421,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   top: 30px;
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, rgba(230, 213, 172, 1) 94%, transparent) 0%,
-    color-mix(in srgb, rgba(230, 213, 172, 1) 52%, transparent) 42%,
+    color-mix(in srgb, #f9deb3 94%, transparent) 0%,
+    color-mix(in srgb, #f9deb3 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -7267,8 +7431,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   bottom: 6px;
   background: linear-gradient(
     to top,
-    color-mix(in srgb, rgba(230, 213, 172, 1) 94%, transparent) 0%,
-    color-mix(in srgb, rgba(230, 213, 172, 1) 52%, transparent) 42%,
+    color-mix(in srgb, #f9deb3 94%, transparent) 0%,
+    color-mix(in srgb, #f9deb3 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -7290,7 +7454,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   padding: 12px;
   border: none;
   background: transparent;
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
   color: var(--color-semantic-text-detail);
   display: flex;
   align-items: center;
@@ -7303,21 +7467,21 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 .book-status-equip-option.is-selected {
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 .book-status-equip-option.is-nav-selected,
 .book-status-equip-option:hover {
-  --frame-fill-color: #efd28f;
+  --frame-fill-color: var(--color-book-parchment);
 }
 
 /* キー操作中はホバー塗りを出さず、矢印選択（is-nav-selected）のみを正とする */
 #book-status-panel.is-status-kb-nav-input .book-status-equip-option:hover:not(.is-nav-selected) {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-status-panel.is-status-kb-nav-input .book-status-equip-option.is-selected:hover:not(.is-nav-selected) {
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 .book-status-equip-option.ui-frame-box::after {
@@ -7376,7 +7540,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 .book-status-equip-option-icon.is-placeholder {
   border-radius: 4px;
-  background: rgba(112, 74, 43, 0.2);
+  background: color-mix(in srgb, var(--color-semantic-border-soft) 20%, transparent);
 }
 
 .book-status-rarity-prob {
@@ -7414,7 +7578,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   justify-content: center;
   align-items: center;
   padding: 10px 4px 8px;
-  background: rgba(112, 74, 43, 0.08);
+  background: color-mix(in srgb, var(--color-semantic-border-soft) 8%, transparent);
   border-radius: 8px;
 }
 
@@ -7453,7 +7617,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 .book-status-rarity-prob-label {
   font-size: 17px;
   line-height: 14px;
-  color: #704A2B;
+  color: var(--color-semantic-border-soft);
 }
 
 .book-status-rarity-prob-label-wrap {
@@ -7549,11 +7713,11 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 .book-status-rarity-prob-value.is-plus {
-  color: #4ea65e;
+  color: var(--color-book-stat-up);
 }
 
 .book-status-rarity-prob-value.is-minus {
-  color: #d35757;
+  color: var(--color-book-stat-down);
 }
 
 #book-status-rarity-common {
@@ -7587,7 +7751,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 .book-status-inline-effects li:nth-child(odd) {
-  background: rgba(112, 74, 43, 0.05);
+  background: color-mix(in srgb, var(--color-semantic-border-soft) 5%, transparent);
 }
 
 .book-status-inline-effects li span:last-child {
@@ -7612,12 +7776,12 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 .book-status-equip-line:nth-child(odd) {
-  background: rgba(112, 74, 43, 0.05);
+  background: color-mix(in srgb, var(--color-semantic-border-soft) 5%, transparent);
 }
 
 .book-status-equip-label {
   flex: 0 0 3.5em;
-  color: #704A2B;
+  color: var(--color-semantic-border-soft);
   font-size: 13px;
 }
 
@@ -7633,13 +7797,13 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 .book-status-rarity-table td {
   padding: 6px 6px;
   text-align: left;
-  border-bottom: 1px solid rgba(112, 74, 43, 0.18);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-semantic-border-soft) 18%, transparent);
 }
 
 .book-status-rarity-table th {
-  background: rgba(112, 74, 43, 0.10);
+  background: color-mix(in srgb, var(--color-semantic-border-soft) 10%, transparent);
   font-weight: normal;
-  color: #704A2B;
+  color: var(--color-semantic-border-soft);
   font-size: 12px;
 }
 
@@ -7648,7 +7812,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 .book-status-rarity-table tbody tr:nth-child(odd) {
-  background: rgba(112, 74, 43, 0.04);
+  background: color-mix(in srgb, var(--color-semantic-border-soft) 4%, transparent);
 }
 
 .book-status-eff {
@@ -8168,7 +8332,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 .fishing-fight-gauge__player-bar {
   position: absolute;
-  background: #7cb86c;
+  background: var(--color-semantic-bg-active);
   border: 1.5px solid rgba(250, 221, 180, 0.5);
   border-radius: 2px;
   box-sizing: border-box;
@@ -8303,7 +8467,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   top: 0;
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #5a9e4a 0%, #7cb86c 45%, #9ed88d 100%);
+  background: linear-gradient(90deg, #5a9e4a 0%, var(--color-semantic-bg-active) 45%, #9ed88d 100%);
   transition: width 0.05s linear;
   overflow: hidden;
   transform-origin: center center;
@@ -8553,9 +8717,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   /* boardBG.png (1168x442): 角の金具＋木枠＋羊皮紙の内側影が約80px */
   --frame-slice: 80;
   --frame-scale: 0.35;
-  --frame-fill-color: #edcc9b;
+  --frame-fill-color: var(--color-book-parchment);
   --frame-fill-inset: calc(var(--frame-slice) * var(--frame-scale) * 1px);
-  --quest-board-scroll-fade-color: var(--frame-fill-color);
   max-width: 900px;
   width: min(94vw, 900px);
   max-height: 84vh;
@@ -8607,7 +8770,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   font-size: 48px;
   font-weight: 400;
   line-height: 1;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   white-space: nowrap;
   flex-shrink: 0;
   letter-spacing: 0.02em;
@@ -8668,8 +8831,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   bottom: 0;
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--quest-board-scroll-fade-color) 94%, transparent) 0%,
-    color-mix(in srgb, var(--quest-board-scroll-fade-color) 52%, transparent) 42%,
+    color-mix(in srgb, #f5ce94 94%, transparent) 0%,
+    color-mix(in srgb, #f5ce94 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -8678,8 +8841,8 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
   top: 0;
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--quest-board-scroll-fade-color) 94%, transparent) 0%,
-    color-mix(in srgb, var(--quest-board-scroll-fade-color) 52%, transparent) 42%,
+    color-mix(in srgb, #f5ce94 94%, transparent) 0%,
+    color-mix(in srgb, #f5ce94 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -8712,7 +8875,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 
 /* カード本体 */
 .quest-card {
-  --frame-fill-color: #f3e6c4;
+  --frame-fill-color: var(--color-book-frame-surface);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -8733,7 +8896,7 @@ body.ui-menu-input-keyboard #shop-modal .shop-item.state-selected .shop-item-act
 }
 
 body.ui-menu-input-keyboard .quest-card.is-nav-selected {
-  --frame-fill-color: #fff6da;
+  --frame-fill-color: var(--color-book-quest-card-selected);
   transform: translateY(-2px);
 }
 
@@ -8782,7 +8945,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected {
 
 /* アイコン枠 */
 .quest-card__icon {
-  --frame-fill-color: #fffdf4;
+  --frame-fill-color: var(--color-book-quest-card-selected);
   width: 100px;
   height: 100px;
   margin-top: var(--space-8);
@@ -8881,7 +9044,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__reward {
 
 /* 受注ボタン（ステータス「変更する」と同じホバー／選択） */
 .quest-card__accept.ui-frame-box {
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
   width: 100%;
   height: 48px;
   margin-top: var(--space-4);
@@ -8912,7 +9075,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__reward {
 
 body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-frame-box,
 .quest-card__accept.ui-frame-box:hover {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
 }
 
 .quest-card__accept.ui-frame-box::after {
@@ -8929,11 +9092,11 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 body.ui-menu-input-keyboard .quest-card__accept.ui-frame-box:hover:not(:focus) {
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
 }
 
 body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-frame-box {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
 }
 
 /* 破棄ボタン（Book UI クエストログ・進行中のみ。#book-skill-unlock と同じ幅制御） */
@@ -8976,7 +9139,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 #book-ui.is-book-kb-input[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:hover:not(.is-nav-selected),
 #book-ui.is-book-kb-input[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:focus:not(.is-nav-selected),
 #book-ui.is-book-kb-input[data-tab="quest"] .quest-card__abandon.nes-btn.ui-frame-box:focus-visible:not(.is-nav-selected) {
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
   animation: none;
 }
 
@@ -9053,7 +9216,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   min-height: 0;
   gap: var(--space-16);
   padding: 16px;
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 #book-ui[data-tab="quest"] #book-list-scroll .quest-log-category.book-ui-node.ui-frame-box::after {
@@ -9065,13 +9228,13 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 #book-ui[data-tab="quest"] #book-list-scroll .quest-log-category.book-ui-node.ui-frame-box.is-selected {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-ui[data-tab="quest"]
   #book-list-scroll
   .quest-log-category.book-ui-node.ui-frame-box:not(.is-selected):hover {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #book-ui[data-tab="quest"]
@@ -9083,13 +9246,13 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 #book-ui.is-book-kb-input[data-tab="quest"]
   #book-list-scroll
   .quest-log-category.book-ui-node.ui-frame-box:not(.is-selected):hover {
-  --frame-fill-color: #cbb792;
+  --frame-fill-color: var(--color-book-frame-idle);
 }
 
 #book-ui.is-book-kb-input[data-tab="quest"]
   #book-list-scroll
   .quest-log-category.book-ui-node.ui-frame-box:not(.is-selected):hover::after {
-  border-image: url(/images/ui/uiframe.png) var(--frame-slice) / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
+  border-image: url(/images/ui/uiframe.png) var(--frame-slice) fill / calc(var(--frame-slice) * var(--frame-scale) * 1px) / 0 stretch;
 }
 
 .quest-log-category__head {
@@ -9148,7 +9311,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 .quest-log-slot-seg--off {
-  --quest-log-slot-seg-fill: var(--color-semantic-bg-nonactive);
+  --quest-log-slot-seg-fill: var(--color-book-pedia-idle);
 }
 
 .quest-log-slot-seg--on::before,
@@ -9173,7 +9336,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 
 #book-ui[data-tab="quest"] .quest-log-list.quest-board-cards .quest-card,
 #book-ui[data-tab="quest"] .quest-log-list.quest-log-list--completed .quest-card {
-  --frame-fill-color: #f3e6c4;
+  --frame-fill-color: var(--color-book-frame-surface);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -9223,7 +9386,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   .quest-log-list.quest-board-cards:not(.quest-log-list--completed)
   .achievement-detail-item.quest-card.ui-frame-box:hover::after {
   filter: none;
-  --frame-fill-color: #f3e6c4;
+  --frame-fill-color: var(--color-book-frame-surface);
   transform: none;
 }
 
@@ -9239,13 +9402,13 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 #book-ui[data-tab="quest"]
   .quest-log-list.quest-log-list--completed
   .quest-card.ui-frame-box.quest-card--kb-selected {
-  --frame-fill-color: #fff6da;
+  --frame-fill-color: var(--color-book-quest-card-selected);
   transform: translateY(-2px);
 }
 
 /* 空きスロット（カード枠内） */
 #book-ui[data-tab="quest"] .quest-log-slot-empty.quest-card {
-  --frame-fill-color: var(--color-semantic-bg-nonactive);
+  --frame-fill-color: var(--color-book-pedia-idle);
   min-height: 280px;
   justify-content: center;
   cursor: default;
@@ -9456,7 +9619,8 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   position: relative;
   cursor: pointer;
   text-align: center;
-  --frame-fill-color: #f2e2b6;
+  overflow: visible;
+  --frame-fill-color: var(--color-book-frame-surface);
 }
 
 /* バッグと同じ: レアリティ枠は常に border.png */
@@ -9466,23 +9630,23 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 
 /* バッグと同じ: レアリティ塗り */
 #book-ui .aquarium-slot-card[data-rarity="common"].ui-frame-box:not(.is-selected):not(.is-nav-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 42%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 42%, var(--color-book-frame-idle));
 }
 
 #book-ui .aquarium-slot-card[data-rarity="uncommon"].ui-frame-box:not(.is-selected):not(.is-nav-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 38%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 38%, var(--color-book-frame-idle));
 }
 
 #book-ui .aquarium-slot-card[data-rarity="rare"].ui-frame-box:not(.is-selected):not(.is-nav-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 38%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 38%, var(--color-book-frame-idle));
 }
 
 #book-ui .aquarium-slot-card[data-rarity="epic"].ui-frame-box:not(.is-selected):not(.is-nav-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 38%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 38%, var(--color-book-frame-idle));
 }
 
 #book-ui .aquarium-slot-card[data-rarity="legendary"].ui-frame-box:not(.is-selected):not(.is-nav-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 40%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 40%, var(--color-book-frame-idle));
 }
 
 /* 選択中もレア色を残しつつクリーム寄りに少し明るく */
@@ -9490,40 +9654,40 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 #book-ui .aquarium-slot-item.state-selected .aquarium-slot-card[data-rarity="common"].ui-frame-box::before,
 #book-ui .aquarium-slot-card[data-rarity="common"].is-selected.ui-frame-box::before,
 #book-ui .aquarium-slot-card[data-rarity="common"].is-nav-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 32%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 32%, var(--color-book-frame-active));
 }
 
 #book-ui .aquarium-slot-item.is-selected .aquarium-slot-card[data-rarity="uncommon"].ui-frame-box::before,
 #book-ui .aquarium-slot-item.state-selected .aquarium-slot-card[data-rarity="uncommon"].ui-frame-box::before,
 #book-ui .aquarium-slot-card[data-rarity="uncommon"].is-selected.ui-frame-box::before,
 #book-ui .aquarium-slot-card[data-rarity="uncommon"].is-nav-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 30%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 30%, var(--color-book-frame-active));
 }
 
 #book-ui .aquarium-slot-item.is-selected .aquarium-slot-card[data-rarity="rare"].ui-frame-box::before,
 #book-ui .aquarium-slot-item.state-selected .aquarium-slot-card[data-rarity="rare"].ui-frame-box::before,
 #book-ui .aquarium-slot-card[data-rarity="rare"].is-selected.ui-frame-box::before,
 #book-ui .aquarium-slot-card[data-rarity="rare"].is-nav-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 30%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 30%, var(--color-book-frame-active));
 }
 
 #book-ui .aquarium-slot-item.is-selected .aquarium-slot-card[data-rarity="epic"].ui-frame-box::before,
 #book-ui .aquarium-slot-item.state-selected .aquarium-slot-card[data-rarity="epic"].ui-frame-box::before,
 #book-ui .aquarium-slot-card[data-rarity="epic"].is-selected.ui-frame-box::before,
 #book-ui .aquarium-slot-card[data-rarity="epic"].is-nav-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 30%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 30%, var(--color-book-frame-active));
 }
 
 #book-ui .aquarium-slot-item.is-selected .aquarium-slot-card[data-rarity="legendary"].ui-frame-box::before,
 #book-ui .aquarium-slot-item.state-selected .aquarium-slot-card[data-rarity="legendary"].ui-frame-box::before,
 #book-ui .aquarium-slot-card[data-rarity="legendary"].is-selected.ui-frame-box::before,
 #book-ui .aquarium-slot-card[data-rarity="legendary"].is-nav-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 32%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 32%, var(--color-book-frame-active));
 }
 
 .aquarium-slot-item.is-selected .aquarium-slot-card.ui-frame-box:not([data-rarity]),
 .aquarium-slot-item.state-selected .aquarium-slot-card.ui-frame-box:not([data-rarity]) {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 .aquarium-slot-item.is-selected .aquarium-slot-card,
@@ -9571,25 +9735,32 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   flex-direction: column;
   align-items: center;
   gap: 0;
-  margin-top: -14px;
-  box-sizing: content-box;
+  margin-top: -10px;
+  box-sizing: border-box;
+  overflow: visible;
 }
 
 .aquarium-slot-name {
   font-size: 15px;
-  font-family: "DotGothic16", sans-serif;
+  font-family: "DotGothic16", sans-serif !important;
   color: var(--color-semantic-text-primary, #320e0e);
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
   max-width: 100%;
-  line-height: 14px;
-  height: fit-content;
+  width: 100%;
+  line-height: 1.3;
+  height: auto;
+  padding: 1px 0;
+  margin: -5px 0;
+  box-sizing: border-box;
+  text-align: center;
 }
 
 .aquarium-slot-meta {
   font-size: var(--font-size-body-sm, 12px);
-  color: var(--color-semantic-text-muted, #5c4030);
+  color: var(--color-semantic-text-muted, var(--color-book-text-secondary));
   line-height: 1.2;
 }
 
@@ -9597,11 +9768,12 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   display: inline-flex;
   align-items: baseline;
   gap: 2px;
+  overflow: visible;
 }
 
 .aquarium-slot-lv-label {
   font-size: 18px;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
 }
 
 .aquarium-slot-lv-num {
@@ -9618,16 +9790,19 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   font-family: "Jersey 10", "DotGothic16", sans-serif;
   font-size: 24px;
   line-height: 1;
-  background: var(--bg-panel-inner, #f2e2b6);
+  background: var(--bg-panel-inner, var(--color-book-frame-surface));
   border-radius: 2px;
   padding: 0 6px;
-  height: 20px;
+  min-height: 24px;
+  height: auto;
   width: fit-content;
+  max-width: 100%;
   box-sizing: border-box;
+  overflow: visible;
 }
 
 .aquarium-slot-bonus-label {
-  color: var(--color-primitive-orange-600, #c2681f);
+  color: var(--color-primitive-orange-600, var(--color-primitive-orange-600));
 }
 
 .aquarium-slot-bonus-num {
@@ -9641,7 +9816,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 .aquarium-slot-empty-label {
   font-size: var(--font-size-body-md, 14px);
   font-family: "DotGothic16", sans-serif;
-  color: var(--color-semantic-text-muted, #5c4030);
+  color: var(--color-semantic-text-muted, var(--color-book-text-secondary));
   margin: 0;
   line-height: 1.2;
   text-align: center;
@@ -9654,7 +9829,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   font-size: 14px;
   font-family: "DotGothic16", sans-serif;
   padding: 1px 5px;
-  background: rgba(124, 184, 108, 0.45);
+  background: color-mix(in srgb, var(--color-semantic-bg-active) 45%, transparent);
   color: var(--color-semantic-text-primary, #320e0e);
   border-radius: 2px;
 }
@@ -9671,7 +9846,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   overflow-y: auto;
   overflow-x: hidden;
   padding: 8px 14px 10px;
-  background: var(--color-primitive-natural-sand-400, #ecd5ab);
+  background: var(--color-book-frame-active);
   border-radius: 8px;
   box-sizing: border-box;
   color: var(--color-semantic-text-detail, #212121);
@@ -9715,7 +9890,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   font-family: "DotGothic16", sans-serif;
   font-size: 17px;
   line-height: 1.2;
-  color: var(--color-primitive-orange-600, #c2681f);
+  color: var(--color-primitive-orange-600, var(--color-primitive-orange-600));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -9730,8 +9905,8 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   gap: 0;
   padding: 0 8px;
   border-radius: 2px;
-  background: var(--bg-panel-inner, #f2e2b6);
-  color: var(--color-semantic-text-secondary, #5c4030);
+  background: var(--bg-panel-inner, var(--color-book-frame-surface));
+  color: var(--color-semantic-text-secondary, var(--color-book-text-secondary));
   flex-shrink: 0;
 }
 
@@ -9769,7 +9944,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   font-family: "Jersey 10", "DotGothic16", sans-serif;
   font-size: 20px;
   line-height: normal;
-  color: var(--color-semantic-text-secondary, #5c4030);
+  color: var(--color-semantic-text-secondary, var(--color-book-text-secondary));
 }
 
 .aquarium-detail-lv-num {
@@ -9791,8 +9966,8 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   min-width: 0;
   width: 100%;
   height: 10px;
-  background: #b9a67e;
-  border: 2px solid #704a2b;
+  background: var(--color-primitive-natural-sand-300);
+  border: 2px solid var(--color-semantic-border-soft);
   overflow: hidden;
   box-sizing: border-box;
   position: relative;
@@ -9800,7 +9975,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 
 .aquarium-growth-gauge-fill {
   height: 100%;
-  background: var(--color-primitive-green-600, #4e8a42);
+  background: var(--color-primitive-green-600, var(--color-primitive-green-600));
   width: 0%;
 }
 
@@ -9817,7 +9992,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   justify-content: center;
   padding: 4px 6px;
   border-radius: 2px;
-  background: #f2e2b6;
+  background: var(--color-book-frame-surface);
   font-family: "DotGothic16", sans-serif;
   font-size: 14px;
   line-height: 1;
@@ -9856,7 +10031,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 #book-ui .aquarium-detail-action.nes-btn.ui-frame-box {
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -9906,13 +10081,13 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 #book-ui .aquarium-detail-action.nes-btn.ui-frame-box.is-confirm {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
 }
 
 #book-ui .aquarium-detail-action.nes-btn.ui-frame-box.is-disabled,
 #book-ui .aquarium-detail-action.nes-btn.ui-frame-box:disabled {
-  --frame-fill-color: #cbb792;
-  color: #5c4030;
+  --frame-fill-color: var(--color-book-frame-idle);
+  color: var(--color-book-text-secondary);
   cursor: not-allowed;
   opacity: 0.85;
 }
@@ -9947,7 +10122,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 
 /* 水槽バッグ選択（Book内）は従来どおり茶系。釣果の放流/入れかえは catch-result-dimmer（黒50%）を共有 */
 #book-ui .aquarium-bag-pick-layer {
-  background: rgba(35, 28, 20, 0.5);
+  background: color-mix(in srgb, var(--color-book-overlay) 50%, transparent);
 }
 
 #catch-bag-full-ui .aquarium-bag-pick-layer {
@@ -9959,7 +10134,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   width: min(100%, 420px);
   max-height: min(80vh, 560px);
   padding: 16px;
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -9979,7 +10154,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   font-family: "Jersey 10", "DotGothic16", sans-serif;
   font-size: 28px;
   line-height: 1;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   text-align: center;
 }
 
@@ -10011,7 +10186,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   font-family: "Jersey 10", "DotGothic16", sans-serif;
   font-size: 28px;
   line-height: 1;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   text-align: center;
 }
 
@@ -10052,7 +10227,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   display: none;
 }
 
-/* ダイアログ塗り（--frame-fill-color）に合わせた上下フェード
+/* バッグ選択ダイアログ背景に合わせた上下フェード
  * カード内の名前・スペック（z-index: 10）より前面に出す */
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid-wrap > .book-list-scroll-fade {
   z-index: 20;
@@ -10061,8 +10236,8 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid-wrap > .book-list-scroll-fade--bottom {
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--frame-fill-color, #f2e2b6) 94%, transparent) 0%,
-    color-mix(in srgb, var(--frame-fill-color, #f2e2b6) 52%, transparent) 42%,
+    color-mix(in srgb, #eed3a5 94%, transparent) 0%,
+    color-mix(in srgb, #eed3a5 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -10070,8 +10245,8 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid-wrap > .book-list-scroll-fade--top {
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--frame-fill-color, #f2e2b6) 94%, transparent) 0%,
-    color-mix(in srgb, var(--frame-fill-color, #f2e2b6) 52%, transparent) 42%,
+    color-mix(in srgb, #eed3a5 94%, transparent) 0%,
+    color-mix(in srgb, #eed3a5 52%, transparent) 42%,
     transparent 100%
   );
 }
@@ -10146,7 +10321,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   max-width: calc(100% - 8px);
   padding: 2px 6px;
   border-radius: 4px;
-  background: #f2e2b6;
+  background: var(--color-book-frame-surface);
   color: var(--color-primitive-orange-600);
   box-sizing: border-box;
 }
@@ -10173,49 +10348,49 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="common"].ui-frame-box:not(.is-selected):not(.is-nav-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 42%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 42%, var(--color-book-frame-idle));
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="uncommon"].ui-frame-box:not(.is-selected):not(.is-nav-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 38%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 38%, var(--color-book-frame-idle));
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="rare"].ui-frame-box:not(.is-selected):not(.is-nav-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 38%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 38%, var(--color-book-frame-idle));
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="epic"].ui-frame-box:not(.is-selected):not(.is-nav-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 38%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 38%, var(--color-book-frame-idle));
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="legendary"].ui-frame-box:not(.is-selected):not(.is-nav-selected)::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 40%, #cbb792);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 40%, var(--color-book-frame-idle));
 }
 
 /* 選択中もレア色を残しつつクリーム寄りに少し明るく（バッグタブと同型） */
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="common"].is-selected.ui-frame-box::before,
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="common"].is-nav-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 32%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-common) 32%, var(--color-book-frame-active));
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="uncommon"].is-selected.ui-frame-box::before,
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="uncommon"].is-nav-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 30%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-uncommon) 30%, var(--color-book-frame-active));
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="rare"].is-selected.ui-frame-box::before,
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="rare"].is-nav-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 30%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-rare) 30%, var(--color-book-frame-active));
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="epic"].is-selected.ui-frame-box::before,
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="epic"].is-nav-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 30%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-epic) 30%, var(--color-book-frame-active));
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="legendary"].is-selected.ui-frame-box::before,
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item[data-rarity="legendary"].is-nav-selected.ui-frame-box::before {
-  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 32%, #e8cfa6);
+  --frame-fill-color: color-mix(in srgb, var(--color-rarity-legendary) 32%, var(--color-book-frame-active));
 }
 
 :is(#book-ui, #catch-bag-full-ui) .aquarium-bag-pick-grid .book-list-item.is-selected.ui-frame-box::after,
@@ -10242,7 +10417,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   .aquarium-bag-pick-grid
   .aquarium-bag-pick-card:hover
   > .book-list-item.ui-frame-box:not(.is-selected):not(.is-nav-selected) {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
   transform: translateY(-4px);
 }
 
@@ -10262,7 +10437,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   font-family: "DotGothic16", sans-serif;
   font-size: 14px;
   line-height: 1.4;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   text-align: center;
 }
 
@@ -10291,7 +10466,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 
 :is(#book-ui, #catch-bag-full-ui) :is(#aquarium-bag-pick-cancel, #catch-bag-pick-cancel).nes-btn.ui-frame-box,
 #catch-bag-full-ui #catch-bag-decision-release.nes-btn.ui-frame-box {
-  --frame-fill-color: #b8a88c;
+  --frame-fill-color: var(--color-primitive-natural-sand-300);
   color: #320e0e;
   width: 64px;
 }
@@ -10302,7 +10477,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 #catch-bag-full-ui #catch-bag-decision-swap.nes-btn.ui-frame-box {
-  --frame-fill-color: #7cb86c;
+  --frame-fill-color: var(--color-semantic-bg-active);
   color: #fff;
 }
 
@@ -10338,11 +10513,11 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 
 :is(#book-ui, #catch-bag-full-ui) :is(#aquarium-bag-pick-cancel, #catch-bag-pick-cancel).nes-btn.ui-frame-box.is-nav-selected,
 #catch-bag-full-ui #catch-bag-decision-release.nes-btn.ui-frame-box.is-nav-selected {
-  --frame-fill-color: #e8cfa6;
+  --frame-fill-color: var(--color-book-frame-active);
 }
 
 #catch-bag-full-ui #catch-bag-decision-swap.nes-btn.ui-frame-box.is-nav-selected {
-  --frame-fill-color: #c2681f;
+  --frame-fill-color: var(--color-primitive-orange-600);
   color: #fff;
 }
 
@@ -10357,7 +10532,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px 12px;
-  --frame-fill-color: #f2e2b6;
+  --frame-fill-color: var(--color-book-frame-surface);
   box-sizing: border-box;
 }
 
@@ -10370,13 +10545,13 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   image-rendering: pixelated;
   background: transparent;
   overflow: hidden;
-  border: 2px solid rgba(112, 74, 43, 0.45);
+  border: 2px solid color-mix(in srgb, var(--color-semantic-border-soft) 45%, transparent);
   border-radius: 4px;
 }
 
 .aquarium-canvas-wrap.is-nav-selected {
-  border-color: var(--color-primitive-orange-600, #c2681f);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primitive-orange-600, #c2681f) 45%, transparent);
+  border-color: var(--color-primitive-orange-600, var(--color-primitive-orange-600));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primitive-orange-600, var(--color-primitive-orange-600)) 45%, transparent);
 }
 
 .aquarium-canvas-wrap canvas {
@@ -10418,7 +10593,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 .aquarium-food-option.is-selected {
-  --frame-fill-color: var(--color-primitive-orange-600, #c2681f);
+  --frame-fill-color: var(--color-primitive-orange-600, var(--color-primitive-orange-600));
   color: #fff;
 }
 
@@ -10428,8 +10603,8 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 
 .aquarium-food-option.is-disabled,
 .aquarium-food-option:disabled {
-  --frame-fill-color: #cbb792;
-  color: #5c4030;
+  --frame-fill-color: var(--color-book-frame-idle);
+  color: var(--color-book-text-secondary);
   opacity: 0.55;
   cursor: not-allowed;
   filter: grayscale(0.55);
@@ -10437,13 +10612,13 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 
 .aquarium-food-option.is-disabled .aquarium-food-option-count,
 .aquarium-food-option:disabled .aquarium-food-option-count {
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
 }
 
 .aquarium-food-option.is-disabled.is-selected,
 .aquarium-food-option:disabled.is-selected {
-  --frame-fill-color: #cbb792;
-  color: #5c4030;
+  --frame-fill-color: var(--color-book-frame-idle);
+  color: var(--color-book-text-secondary);
 }
 
 .aquarium-food-option-icon {
@@ -10476,7 +10651,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   font-size: 24px;
   line-height: 1;
   letter-spacing: 0;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
   text-transform: uppercase;
   white-space: nowrap;
   margin-right: 2px;
@@ -10488,10 +10663,10 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  background: rgba(112, 74, 43, 0.10);
-  border: 1px solid rgba(112, 74, 43, 0.18);
+  background: color-mix(in srgb, var(--color-semantic-border-soft) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-semantic-border-soft) 18%, transparent);
   border-radius: 4px;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
 }
 
 .aquarium-bonus-chip-label {
@@ -10505,7 +10680,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
   font-family: "Jersey 10", "DotGothic16", sans-serif;
   font-size: 24px;
   line-height: 1;
-  color: #5c4030;
+  color: var(--color-book-text-secondary);
 }
 
 .aquarium-bonus-chip:not(.is-active) .aquarium-bonus-chip-value {
@@ -10518,16 +10693,32 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 
 /* ========== 水中探索モーダル ========== */
 .exploration-overlay {
+  /* 上=装備UI帯 / 下=クエストUI帯。モーダルは間に等しい gap で配置 */
+  --exploration-hud-top: 120px;
+  --exploration-hud-bottom: 90px;
+  --exploration-gap: 14px;
+  --exploration-safe-x: 16px;
   position: fixed;
   inset: 0;
   z-index: 1800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows:
+    var(--exploration-hud-top)
+    var(--exploration-gap)
+    minmax(0, 1fr)
+    var(--exploration-gap)
+    var(--exploration-hud-bottom);
+  padding: 0 var(--exploration-safe-x);
+  box-sizing: border-box;
   background: rgba(12, 22, 36, 0.55);
   pointer-events: auto;
   animation: exploration-overlay-fade-in var(--exploration-fade-sec, 0.35s) ease-out both;
+}
+
+/* 探索中はプレイヤー/所持金/クエストHUDを黒塗りの前面に */
+body.ui-exploration-open #status-ui {
+  z-index: 1900 !important;
 }
 
 @keyframes exploration-overlay-fade-in {
@@ -10561,21 +10752,22 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 .exploration-modal.ui-frame-box {
   --frame-slice: 80;
   --frame-scale: 0.24;
-  --frame-fill-color: #edcc9b;
+  --frame-fill-color: var(--color-book-parchment);
   --frame-fill-inset: calc(var(--frame-slice) * var(--frame-scale) * 1px);
   --exploration-frame-pad: calc(var(--frame-slice) * var(--frame-scale) * 1px + 4px);
-  --exploration-hint-h: 40px;
+  grid-row: 3;
+  grid-column: 1;
   padding: var(--exploration-frame-pad);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   box-sizing: border-box;
-  width: min(
-    calc(100vw - 12px),
-    calc((100vh - 12px - var(--exploration-hint-h)) * 3 / 2)
-  );
-  max-width: calc(100vw - 12px);
-  max-height: calc(100vh - 12px);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
 }
 
 .exploration-modal.ui-frame-box::after {
@@ -10584,9 +10776,11 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 
 .exploration-canvas-wrap {
   position: relative;
+  flex: 1 1 auto;
   width: 100%;
-  aspect-ratio: 3 / 2;
-  max-height: calc(100vh - 12px - var(--exploration-frame-pad) * 2 - var(--exploration-hint-h));
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   background: #061422;
   -webkit-mask-image: url(/images/ui/watermask.png);
@@ -10677,14 +10871,7 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
 }
 
 .exploration-hint {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  justify-content: center;
-  flex: 0 0 auto;
-  font-family: 'DotGothic16', sans-serif;
-  font-size: 13px;
-  color: var(--color-semantic-text-secondary, #5c4030);
+  display: none;
 }
 
 @media (max-width: 720px) {
@@ -10702,3 +10889,151 @@ body.ui-menu-input-keyboard .quest-card.is-nav-selected .quest-card__accept.ui-f
     max-height: none;
   }
 }
+
+/* Book UI 配色リアルタイムエディタ（モーダル非依存） */
+.book-color-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 3600;
+  pointer-events: none;
+}
+
+.book-color-editor__chrome {
+  pointer-events: auto;
+  position: fixed;
+  right: 16px;
+  bottom: 72px;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(72vh, 640px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  --frame-fill-color: var(--color-book-frame-surface);
+  color: var(--color-semantic-text-primary);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.book-color-editor__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: grab;
+  user-select: none;
+}
+
+.book-color-editor__header:active {
+  cursor: grabbing;
+}
+
+.book-color-editor__title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.book-color-editor__note {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--color-book-text-secondary);
+}
+
+.book-color-editor__status {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--color-semantic-text-stat-value);
+}
+
+.book-color-editor__status.is-error {
+  color: var(--color-book-stat-down);
+}
+
+.book-color-editor__close {
+  flex: 0 0 auto;
+  min-width: 36px;
+}
+
+.book-color-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.book-color-editor__body {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding-right: 2px;
+}
+
+.book-color-editor__group h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--color-book-text-secondary);
+}
+
+.book-color-editor__row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 78px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.book-color-editor__swatch-wrap {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--color-semantic-border-book);
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--color-primitive-white);
+}
+
+.book-color-editor__picker {
+  width: 48px;
+  height: 48px;
+  margin: -8px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.book-color-editor__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.book-color-editor__label {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.book-color-editor__var {
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--color-semantic-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-color-editor__hex {
+  width: 100%;
+  min-height: 28px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.book-color-editor__hex,
+.book-color-editor__hex * {
+  font-family: "Jersey 10", sans-serif !important;
+}
+
