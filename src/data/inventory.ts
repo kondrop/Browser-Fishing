@@ -70,6 +70,10 @@ export interface PlayerData {
   /** 水槽で最後に選んだエサ種別（次回も引き継ぐ） */
   aquariumSelectedFoodTier: AquariumFoodTier;
   aquarium: AquariumFishEntry[];     // 水槽内の魚（最大3）
+  /** 最後にいた釣り場。未保存セーブは淡水 */
+  worldAreaId?: string;
+  worldX?: number;
+  worldY?: number;
 }
 
 // プレイヤーデータの初期値
@@ -112,6 +116,9 @@ export function createInitialPlayerData(): PlayerData {
     aquariumPremiumFoodCount: 0,
     aquariumSelectedFoodTier: 'normal',
     aquarium: [],
+    worldAreaId: 'freshwater',
+    worldX: 600,
+    worldY: 500,
   };
 }
 
@@ -494,6 +501,9 @@ export function loadPlayerData(): PlayerData {
               ...(typeof e.lastFedSatietyMs === 'number' ? { lastFedSatietyMs: e.lastFedSatietyMs } : {}),
             }))
           : [],
+        worldAreaId: typeof parsed.worldAreaId === 'string' ? parsed.worldAreaId : initial.worldAreaId,
+        worldX: typeof parsed.worldX === 'number' ? parsed.worldX : initial.worldX,
+        worldY: typeof parsed.worldY === 'number' ? parsed.worldY : initial.worldY,
       };
     } catch {
       console.error('Failed to load player data');

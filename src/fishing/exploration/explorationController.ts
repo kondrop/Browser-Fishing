@@ -101,6 +101,7 @@ export class ExplorationController {
       rarityBonuses: options.rarityBonuses,
       junkWeightMultiplier: options.junkWeightMultiplier,
       castDistanceRatio: options.castDistanceRatio,
+      habitat: options.habitat,
       timeSec,
     });
     loadPickupImages();

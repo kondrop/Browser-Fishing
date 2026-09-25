@@ -1,5 +1,6 @@
 import type { FishConfig } from '../../data/fishConfig';
 import type { RarityBonuses } from '../../data/fish';
+import type { Habitat } from '../../data/fishTypes';
 
 export type FishExplorationState =
   | 'swimming'
@@ -120,6 +121,7 @@ export type ExplorationStartOptions = {
   castDistanceRatio: number;
   baitId: string | null;
   lureId: string | null;
+  habitat?: Habitat;
   onHookSuccess: (result: ExplorationResult) => void;
   onCancel: () => void;
   onPickupCollect?: (event: ExplorationPickupCollectEvent) => void;

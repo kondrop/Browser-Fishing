@@ -463,10 +463,19 @@ img {
 /* Lv.表示（左） */
 #level-section {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   flex: 0 0 auto;
+}
+
+.area-name-label {
+  font-family: 'DotGothic16', sans-serif !important;
+  font-size: 16px;
+  line-height: 1.2;
+  color: #5f2d1d;
+  text-shadow: 0 1px 0 rgba(255, 248, 231, 0.7);
+  pointer-events: none;
 }
 
 /* 所持数背景.png を9スライス枠のみ使う（中央の fill は使わず、中は単色）。

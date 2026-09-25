@@ -259,6 +259,19 @@ import { explorationConfig } from '../fishing/exploration/explorationConfig';
 import { applyHookDepthToFightParams } from '../fishing/exploration/explorationFish';
 import type { ExplorationPickupCollectEvent, ExplorationResult } from '../fishing/exploration/explorationTypes';
 import { drawWaterWarpPostEffect } from '../render/waterWarp';
+import {
+  DEFAULT_AREA_ID,
+  findAreaExit,
+  getAreaConfig,
+  isPointInWater as isAreaPointInWater,
+  isWalkableOverWater,
+  parseAreaId,
+  resolveAreaSpawn,
+  type AreaConfig,
+  type AreaExit,
+  type AreaId,
+} from '../world/areaConfig';
+import { createPlaceholderMap } from '../world/placeholderMap';
 
 const FishingState = {
   IDLE: 0,
@@ -594,7 +607,11 @@ export default class GameScene extends Phaser.Scene {
       this.nudgeQuestBoardScrollOnVerticalEdge(dir);
     }
   };
-  private readonly bulletinBoardZone = { x: 750, y: 480, width: 70, height: 60 };
+  private readonly AREA_TRANSFER_FADE_MS = 280;
+  private currentAreaId: AreaId = DEFAULT_AREA_ID;
+  private worldLayer: Phaser.GameObjects.Container | null = null;
+  private areaTransferBusy = false;
+  private lastHudAreaId: AreaId | null = null;
   /** キー選択行の右下に表示する指し示しアイコン（body 直下・fixed） */
   private kbSelectionPointerEl: HTMLDivElement | null = null;
   /** 指マーカーが表示中か（初回表示・再表示はスナップ、移動のみイージング） */
@@ -952,109 +969,23 @@ export default class GameScene extends Phaser.Scene {
       savePlayerData(this.playerData);
     }
     this.hudExpShown = this.playerData.exp;
+    this.currentAreaId = parseAreaId(this.playerData.worldAreaId);
 
     const mainCfg = config.main;
-
-    // マップサイズ（キャンバスより大きい）
-    const mapWidth = 1200;
-    const mapHeight = 900;
+    const area = this.getCurrentArea();
 
     // カメラの背景色（マップ外の部分）
     this.cameras.main.setBackgroundColor('#2d5a1a');
 
-    this.physics.world.setBounds(0, 0, mapWidth, mapHeight);
-
-    // ============================================
-    // マップデザイン
-    // ============================================
-    
-    // 背景（草地）
-    this.add.rectangle(0, 0, mapWidth, mapHeight, 0x5a9f3a).setOrigin(0);
-    
-    // 草地のテクスチャ風装飾（ランダムな濃い草）
-    for (let i = 0; i < 100; i++) {
-        const x = Phaser.Math.Between(0, mapWidth);
-        const y = Phaser.Math.Between(250, mapHeight);
-        const size = Phaser.Math.Between(20, 50);
-        this.add.circle(x, y, size, 0x4a8f2a, 0.3);
-    }
-
-    // === 中央の大きな池 ===
-    // 池の外枠（砂浜）
-    this.add.ellipse(600, 200, 900, 350, 0xc2b280).setOrigin(0.5);
-    // 池本体（水）
-    this.add.ellipse(600, 200, 850, 300, 0x4fa4f4).setOrigin(0.5);
-    // 池の深い部分
-    this.add.ellipse(600, 190, 650, 200, 0x3d8bd4).setOrigin(0.5);
-    // 水面のキラキラ
-    for (let i = 0; i < 15; i++) {
-        const x = Phaser.Math.Between(250, 950);
-        const y = Phaser.Math.Between(80, 280);
-        this.add.ellipse(x, y, 8, 4, 0xffffff, 0.4);
-    }
-
-    // === 左下の小さな池 ===
-    this.add.ellipse(150, 700, 250, 200, 0xc2b280).setOrigin(0.5);
-    this.add.ellipse(150, 700, 220, 170, 0x4fa4f4).setOrigin(0.5);
-    this.add.ellipse(150, 695, 150, 100, 0x3d8bd4).setOrigin(0.5);
-
-    // === 右側の川 ===
-    // 川の流れ
-    this.add.rectangle(1100, 400, 120, 500, 0xc2b280).setOrigin(0.5);
-    this.add.rectangle(1100, 400, 80, 500, 0x4fa4f4).setOrigin(0.5);
-    this.add.rectangle(1100, 400, 50, 500, 0x3d8bd4, 0.5).setOrigin(0.5);
-
-    // === 装飾：木 ===
-    const treePositions = [
-        { x: 100, y: 450 }, { x: 50, y: 520 }, { x: 180, y: 480 },
-        { x: 300, y: 600 }, { x: 350, y: 700 }, { x: 280, y: 800 },
-        { x: 900, y: 500 }, { x: 950, y: 600 }, { x: 850, y: 700 },
-        { x: 500, y: 750 }, { x: 700, y: 800 }, { x: 600, y: 850 },
-    ];
-    for (const pos of treePositions) {
-        // 木の幹
-        this.add.rectangle(pos.x, pos.y + 20, 16, 30, 0x8b5a2b).setOrigin(0.5);
-        // 木の葉
-        this.add.circle(pos.x, pos.y - 10, 28, 0x2d5a1d);
-        this.add.circle(pos.x - 12, pos.y, 20, 0x3d6a2d);
-        this.add.circle(pos.x + 12, pos.y, 20, 0x3d6a2d);
-    }
-
-    // === 装飾：岩 ===
-    const rockPositions = [
-        { x: 400, y: 450 }, { x: 750, y: 550 }, { x: 200, y: 850 },
-        { x: 1000, y: 750 }, { x: 550, y: 650 },
-    ];
-    for (const pos of rockPositions) {
-        this.add.ellipse(pos.x, pos.y, 40, 25, 0x666666).setOrigin(0.5);
-        this.add.ellipse(pos.x - 5, pos.y - 5, 30, 18, 0x888888).setOrigin(0.5);
-    }
-
-    // === 装飾：花 ===
-    for (let i = 0; i < 30; i++) {
-        const x = Phaser.Math.Between(50, mapWidth - 150);
-        const y = Phaser.Math.Between(400, mapHeight - 50);
-        const colors = [0xff6b6b, 0xffd93d, 0xffffff, 0xff9ff3];
-        const color = colors[Phaser.Math.Between(0, colors.length - 1)];
-        this.add.circle(x, y, 4, color);
-    }
-
-    // === 掲示板（クエスト受注） ===
-    const bb = this.bulletinBoardZone;
-    this.add.rectangle(bb.x, bb.y + 8, 12, 50, 0x8b5a2b).setOrigin(0.5).setDepth(5);
-    this.add.rectangle(bb.x, bb.y - 18, 72, 52, 0xc9a66b).setOrigin(0.5).setDepth(5);
-    this.add.rectangle(bb.x - 14, bb.y - 22, 18, 14, 0xfff8e7).setOrigin(0.5).setDepth(6);
-    this.add.rectangle(bb.x + 10, bb.y - 14, 16, 12, 0xfff8e7).setOrigin(0.5).setDepth(6);
-    this.add.rectangle(bb.x + 2, bb.y - 6, 20, 14, 0xfff8e7).setOrigin(0.5).setDepth(6);
-    // ============================================
-    // プレイヤー
-    // ============================================
+    this.physics.world.setBounds(0, 0, area.mapWidth, area.mapHeight);
+    this.rebuildWorldMap();
     const playerSize = mainCfg['1-1_プレイヤーサイズ'];
     const baseFrameHeight = 24;
     const playerScale = (playerSize / baseFrameHeight) * 2;
 
+    const spawn = resolveAreaSpawn(area, this.playerData.worldX, this.playerData.worldY);
     this.player = this.physics.add
-      .sprite(600, 500, 'player', 0)
+      .sprite(spawn.x, spawn.y, 'player', 0)
       .setScale(playerScale);
 
     const body = this.player.body as Phaser.Physics.Arcade.Body;
@@ -1407,7 +1338,7 @@ export default class GameScene extends Phaser.Scene {
                 }
             } else if (this.questBoardOpen) {
                 this.acceptSelectedQuestFromBoard();
-            } else if (this.state === FishingState.IDLE && this.isNearBulletinBoard()) {
+            } else if (this.state === FishingState.IDLE && !this.areaTransferBusy && this.isNearBulletinBoard()) {
                 this.openQuestBoard();
             }
         });
@@ -1415,6 +1346,7 @@ export default class GameScene extends Phaser.Scene {
         // Fキーで掲示板
         this.input.keyboard.on('keydown-F', () => {
             if (this.state !== FishingState.IDLE) return;
+            if (this.areaTransferBusy) return;
             if (this.unifiedBookOpen) return;
             if (this.questBoardOpen) {
                 this.closeQuestBoard();
@@ -1482,6 +1414,7 @@ export default class GameScene extends Phaser.Scene {
                 return;
             }
             if (this.state === FishingState.IDLE) {
+                if (this.areaTransferBusy) return;
                 if (!this.isNearWater()) {
                     this.showResult("水辺に近づいてください", 1500);
                 } else if (!this.canCastTowardWater()) {
@@ -1790,6 +1723,7 @@ export default class GameScene extends Phaser.Scene {
                   </div>
                 </div>
               </div>
+              <div id="area-name" class="area-name-label">${this.getCurrentArea().name}</div>
             </div>
             <div id="top-right-col">
               <div id="money-display" class="money-display" aria-label="所持金">
@@ -2097,6 +2031,8 @@ export default class GameScene extends Phaser.Scene {
       if (nameEl) (nameEl as HTMLElement).textContent = playerName;
       this.lastPlayerName = playerName;
     }
+
+    this.updateAreaNameHud();
     
     // 経験値バー（変更時のみ更新）。リザルト閉鎖アニメ待ちの間は据え置き
     if (!this.isHudExpFrozen()) {
@@ -2707,6 +2643,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.state === FishingState.IDLE) {
         this.handleMovement();
+        this.tryStartAreaTransfer();
         this.updateIdleWorldHints();
     } else {
         const body = this.player.body as Phaser.Physics.Arcade.Body;
@@ -2734,11 +2671,17 @@ export default class GameScene extends Phaser.Scene {
     this.updateCameraFollow(delta);
     this.drawFishingRig();
     this.updateGameWorldTextPositions();
+    this.syncWorldPositionToSave();
 
     this.refreshKbSelectionPointer();
   }
 
   handleMovement() {
+    if (this.areaTransferBusy) {
+      const idleBody = this.player.body as Phaser.Physics.Arcade.Body;
+      idleBody.setVelocity(0);
+      return;
+    }
     const speed = config.main['1-5_移動速度'];
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     body.setVelocity(0);
@@ -2779,16 +2722,14 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // --- 水辺判定 ---
-  
-  // 水辺エリアの定義
-  private waterAreas = [
-    // 中央の池（楕円形）
-    { type: 'ellipse' as const, x: 600, y: 200, width: 850, height: 300 },
-    // 左下の池
-    { type: 'ellipse' as const, x: 150, y: 700, width: 220, height: 170 },
-    // 右の川
-    { type: 'rect' as const, x: 1060, y: 150, width: 80, height: 500 },
-  ];
+
+  private getCurrentArea(): AreaConfig {
+    return getAreaConfig(this.currentAreaId);
+  }
+
+  private get waterAreas() {
+    return this.getCurrentArea().waterAreas;
+  }
 
   isNearWater(): boolean {
     const px = this.player.x;
@@ -2815,25 +2756,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   isPointInWater(x: number, y: number): boolean {
-    for (const area of this.waterAreas) {
-        if (area.type === 'ellipse') {
-            const dx = (x - area.x) / (area.width / 2);
-            const dy = (y - area.y) / (area.height / 2);
-            if (dx * dx + dy * dy <= 1) {
-                return true;
-            }
-        } else if (area.type === 'rect') {
-            if (x >= area.x && x <= area.x + area.width &&
-                y >= area.y && y <= area.y + area.height) {
-                return true;
-            }
-        }
-    }
-    return false;
+    return isAreaPointInWater(this.getCurrentArea(), x, y);
   }
 
   isInsideWater(): boolean {
-    return this.isPointInWater(this.player.x, this.player.y);
+    const area = this.getCurrentArea();
+    if (isWalkableOverWater(area, this.player.x, this.player.y)) return false;
+    return isAreaPointInWater(area, this.player.x, this.player.y);
   }
 
   /** 指定方向に水源があるか（複数距離をサンプルして狭い川も拾う） */
@@ -2915,6 +2844,70 @@ export default class GameScene extends Phaser.Scene {
             }
         }
     }
+  }
+
+  private rebuildWorldMap(): void {
+    this.worldLayer?.destroy(true);
+    this.worldLayer = createPlaceholderMap(this, this.getCurrentArea());
+  }
+
+  private syncWorldPositionToSave(): void {
+    if (!this.player) return;
+    this.playerData.worldAreaId = this.currentAreaId;
+    this.playerData.worldX = Math.round(this.player.x);
+    this.playerData.worldY = Math.round(this.player.y);
+  }
+
+  private updateAreaNameHud(): void {
+    if (!this.statusUIElement) return;
+    if (this.lastHudAreaId === this.currentAreaId) return;
+    const el = this.statusUIElement.querySelector('#area-name') as HTMLElement | null;
+    if (el) el.textContent = this.getCurrentArea().name;
+    this.lastHudAreaId = this.currentAreaId;
+  }
+
+  private tryStartAreaTransfer(): void {
+    if (this.areaTransferBusy) return;
+    if (this.state !== FishingState.IDLE) return;
+    if (this.modalStack.length > 0 || this.unifiedBookOpen) return;
+    const exit = findAreaExit(this.getCurrentArea(), this.player.x, this.player.y);
+    if (!exit) return;
+    this.beginAreaTransfer(exit);
+  }
+
+  private beginAreaTransfer(exit: AreaExit): void {
+    this.areaTransferBusy = true;
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    body.setVelocity(0);
+    if (this.player.anims.currentAnim?.key === 'player-walk') {
+      this.player.anims.play('player-idle', true);
+    }
+    this.hidePlayerHint();
+    const cam = this.cameras.main;
+    cam.fadeOut(this.AREA_TRANSFER_FADE_MS, 0, 0, 0);
+    cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      this.applyAreaTransfer(exit);
+      cam.fadeIn(this.AREA_TRANSFER_FADE_MS, 0, 0, 0);
+      cam.once(Phaser.Cameras.Scene2D.Events.FADE_IN_COMPLETE, () => {
+        this.areaTransferBusy = false;
+      });
+    });
+  }
+
+  private applyAreaTransfer(exit: AreaExit): void {
+    this.currentAreaId = exit.to;
+    const area = this.getCurrentArea();
+    this.rebuildWorldMap();
+    this.physics.world.setBounds(0, 0, area.mapWidth, area.mapHeight);
+    this.player.setPosition(exit.arriveAt.x, exit.arriveAt.y);
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    body.setVelocity(0);
+    const cam = this.cameras.main;
+    cam.scrollX = this.player.x - cam.width / 2;
+    cam.scrollY = this.player.y - cam.height / 2;
+    this.syncWorldPositionToSave();
+    savePlayerData(this.playerData);
+    this.updateAreaNameHud();
   }
 
   // --- 釣りリグ（背面担ぎ・Graphics） ---
@@ -3757,6 +3750,7 @@ export default class GameScene extends Phaser.Scene {
       castDistanceRatio: this.lastCastDistanceRatio,
       baitId: this.playerData.equippedBaitId,
       lureId: this.playerData.equippedLureId,
+      habitat: this.getCurrentArea().habitat,
       onHookSuccess: (result) => this.onExplorationHookSuccess(result),
       onCancel: () => this.onExplorationCancel(),
       onPickupCollect: (event) => this.onExplorationPickupCollect(event),
@@ -12545,10 +12539,11 @@ export default class GameScene extends Phaser.Scene {
   // ============================================
 
   isNearBulletinBoard(): boolean {
+    const zone = this.getCurrentArea().bulletinBoard;
+    if (!zone) return false;
     const px = this.player.x;
     const py = this.player.y;
     const margin = 55;
-    const zone = this.bulletinBoardZone;
     return (
       px >= zone.x - zone.width / 2 - margin &&
       px <= zone.x + zone.width / 2 + margin &&

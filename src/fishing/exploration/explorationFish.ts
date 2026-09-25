@@ -1,4 +1,5 @@
 import { getRandomFish, type RarityBonuses } from '../../data/fish';
+import type { Habitat } from '../../data/fishTypes';
 import { generateRandomSize } from '../../data/inventory';
 import {
   AQUARIUM_SPEED_MUL_MIN,
@@ -62,10 +63,12 @@ export function createExplorationFish(options: {
   castDistanceRatio: number;
   spawn: 'inside' | 'left' | 'right';
   timeSec: number;
+  habitat?: Habitat;
   avoid?: Array<{ x: number; y: number }>;
 }): ExplorationFish {
   const fish = getRandomFish(options.rarityBonuses, {
     junkWeightMultiplier: options.junkWeightMultiplier,
+    habitat: options.habitat,
   });
   const size = generateRandomSize(fish.maxSize, options.castDistanceRatio);
   const bounds = getSwimBounds();
@@ -122,6 +125,7 @@ export function createInitialFish(options: {
   junkWeightMultiplier: number;
   castDistanceRatio: number;
   timeSec: number;
+  habitat?: Habitat;
 }): ExplorationFish[] {
   const list: ExplorationFish[] = [];
   for (let i = 0; i < explorationConfig.initialFishCount; i++) {

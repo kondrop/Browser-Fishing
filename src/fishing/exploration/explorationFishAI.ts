@@ -245,6 +245,7 @@ function refillFish(
         rarityBonuses: options.rarityBonuses,
         junkWeightMultiplier: options.junkWeightMultiplier,
         castDistanceRatio: options.castDistanceRatio,
+        habitat: options.habitat,
         spawn,
         timeSec,
         avoid: fishes,

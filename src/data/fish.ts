@@ -59,10 +59,33 @@ export interface RarityBonuses {
 
 export interface FishRollOptions {
   junkWeightMultiplier?: number;
+  /** 指定時はその生息地の魚 + ゴミのみ */
+  habitat?: Habitat;
+}
+
+function isJunkFish(fish: FishConfig): boolean {
+  return fish.id.startsWith('junk_');
+}
+
+function pickWeightedFish(list: FishConfig[], junkWeightMul: number): FishConfig {
+  const getWeight = (f: FishConfig) => (isJunkFish(f) ? f.weight * junkWeightMul : f.weight);
+  const totalFishWeight = list.reduce((sum, f) => sum + getWeight(f), 0);
+  if (totalFishWeight <= 0) return list[0];
+  let fishRandom = Math.random() * totalFishWeight;
+  for (const fish of list) {
+    fishRandom -= getWeight(fish);
+    if (fishRandom <= 0) return fish;
+  }
+  return list[0];
 }
 
 // ランダムに魚を取得（レア度と個別weightの重み付き）
 export function getRandomFish(bonuses?: RarityBonuses, options?: FishRollOptions): FishConfig {
+  const habitat = options?.habitat;
+  const pool = habitat
+    ? fishDatabase.filter((f) => isJunkFish(f) || f.habitat === habitat)
+    : fishDatabase;
+
   // ボーナス適用後のレア度ウェイトを計算
   const adjustedWeights: Record<Rarity, number> = {
     [Rarity.COMMON]: rarityWeights[Rarity.COMMON] * (bonuses?.commonBonus || 1.0),
@@ -86,21 +109,15 @@ export function getRandomFish(bonuses?: RarityBonuses, options?: FishRollOptions
   }
   
   // 2. 選ばれたレア度の魚から、個別weightで重み付けして選ぶ
-  const fishOfRarity = fishDatabase.filter(f => f.rarity === selectedRarity);
   const junkWeightMul = Math.max(0, options?.junkWeightMultiplier ?? 1);
-  const getWeight = (f: FishConfig) => f.id.startsWith('junk_') ? f.weight * junkWeightMul : f.weight;
-  const totalFishWeight = fishOfRarity.reduce((sum, f) => sum + getWeight(f), 0);
-  
-  let fishRandom = Math.random() * totalFishWeight;
-  for (const fish of fishOfRarity) {
-    fishRandom -= getWeight(fish);
-    if (fishRandom <= 0) {
-      return fish;
-    }
+  let fishOfRarity = pool.filter((f) => f.rarity === selectedRarity);
+  if (fishOfRarity.length === 0) {
+    fishOfRarity = pool.filter((f) => !isJunkFish(f));
   }
-  
-  // フォールバック
-  return fishOfRarity[0];
+  if (fishOfRarity.length === 0) {
+    fishOfRarity = pool;
+  }
+  return pickWeightedFish(fishOfRarity, junkWeightMul);
 }
 
 // IDから魚を取得
